@@ -7,7 +7,6 @@ import {
 	hashToken,
 	checkTokenReuse,
 	checkEphemeralIdFraud,
-	checkIpFraud,
 } from '../lib/turnstile';
 import { logValidation, createSubmission } from '../lib/database';
 import logger from '../lib/logger';
@@ -153,15 +152,19 @@ app.post('/', async (c) => {
 			}
 		}
 
-		// Fraud detection
+		// Fraud detection (requires ephemeral ID)
 		let fraudCheck;
 		if (validation.ephemeralId) {
-			// Use ephemeral ID fraud check (preferred)
 			fraudCheck = await checkEphemeralIdFraud(validation.ephemeralId, db);
 		} else {
-			// Fallback to IP-based fraud check
-			logger.info('Using IP-based fraud detection (ephemeral ID not available)');
-			fraudCheck = await checkIpFraud(metadata.remoteIp, db);
+			// No ephemeral ID available - skip fraud detection (fail open)
+			// Note: Ephemeral IDs are an Enterprise Turnstile feature
+			logger.warn('Ephemeral ID not available - skipping fraud detection');
+			fraudCheck = {
+				allowed: true,
+				riskScore: 0,
+				warnings: ['Ephemeral ID not available'],
+			};
 		}
 
 		if (!fraudCheck.allowed) {

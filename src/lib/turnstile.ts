@@ -120,6 +120,7 @@ export async function checkTokenReuse(
  * Check for fraud patterns based on ephemeral ID
  * Research-based thresholds: Legitimate users submit 1-2 times max, 3+ = abuse
  * Time window: 1 hour for registration forms
+ * Enhanced with IP diversity detection (rotating proxies/botnets)
  */
 export async function checkEphemeralIdFraud(
 	ephemeralId: string,
@@ -153,6 +154,25 @@ export async function checkEphemeralIdFraud(
 		else if (submissionCount >= 2) {
 			warnings.push('Multiple submissions detected (2)');
 			riskScore = 50;
+		}
+
+		// Check IP diversity (same ephemeral ID from multiple IPs = proxy rotation/botnet)
+		const uniqueIps = await db
+			.prepare(
+				`SELECT COUNT(DISTINCT remote_ip) as count
+				 FROM submissions
+				 WHERE ephemeral_id = ?
+				 AND created_at > ?`
+			)
+			.bind(ephemeralId, oneHourAgo)
+			.first<{ count: number }>();
+
+		const ipCount = uniqueIps?.count || 0;
+
+		// Same ephemeral ID from 3+ different IPs = suspicious (proxy rotation)
+		if (ipCount >= 3 && submissionCount > 0) {
+			warnings.push(`Multiple IPs for same ephemeral ID (${ipCount} IPs)`);
+			riskScore += 40;
 		}
 
 		// Check validation attempts (high-frequency token generation = bot)
@@ -217,6 +237,7 @@ export async function checkEphemeralIdFraud(
 				allowed,
 				warnings,
 				submissions_1h: submissionCount,
+				unique_ips: ipCount,
 				validations_1h: validationCount,
 			},
 			'Fraud check completed'
@@ -240,102 +261,3 @@ export async function checkEphemeralIdFraud(
 	}
 }
 
-/**
- * Fallback fraud check based on IP when ephemeral ID is not available
- * Note: Less reliable than ephemeral ID (shared IPs, proxies, NAT)
- * Use same thresholds as ephemeral ID but with lower confidence
- */
-export async function checkIpFraud(
-	remoteIp: string,
-	db: D1Database
-): Promise<FraudCheckResult> {
-	const warnings: string[] = [];
-	let riskScore = 0;
-
-	try {
-		// Check IP submissions in last hour
-		const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-
-		const recentSubmissions = await db
-			.prepare(
-				`SELECT COUNT(*) as count
-				 FROM submissions
-				 WHERE remote_ip = ?
-				 AND created_at > ?`
-			)
-			.bind(remoteIp, oneHourAgo)
-			.first<{ count: number }>();
-
-		const submissionCount = recentSubmissions?.count || 0;
-
-		// Use same thresholds as ephemeral ID but with caution (shared IPs exist)
-		if (submissionCount >= 5) {
-			warnings.push('Excessive submissions from IP (5+)');
-			riskScore = 100;
-		} else if (submissionCount >= 3) {
-			warnings.push('Multiple submissions from IP (3-4)');
-			riskScore = 70;
-		}
-
-		const allowed = riskScore < 70;
-
-		// Auto-blacklist high-risk IPs (but with shorter durations due to shared IP concerns)
-		if (!allowed && riskScore >= 70) {
-			const confidence = riskScore >= 100 ? 'medium' : 'low'; // Never 'high' for IPs (shared IPs exist)
-			// Shorter blacklist periods for IPs: 3 days max (vs 7 for ephemeral IDs)
-			const expiresIn = riskScore >= 100 ? 86400 * 3 : 86400;
-
-			await addToBlacklist(db, {
-				ipAddress: remoteIp,
-				blockReason: `Automated: ${submissionCount} submissions in 1 hour - ${warnings.join(', ')}`,
-				confidence,
-				expiresIn,
-				submissionCount: submissionCount,
-				detectionMetadata: {
-					risk_score: riskScore,
-					warnings,
-					submissions_1h: submissionCount,
-					detected_at: new Date().toISOString(),
-					note: 'IP-based detection (less reliable)',
-				},
-			});
-
-			logger.warn(
-				{
-					remoteIp,
-					riskScore,
-					confidence,
-					expiresIn,
-					submissionCount,
-				},
-				'IP address auto-blacklisted (fallback detection)'
-			);
-		}
-
-		logger.info(
-			{
-				remoteIp,
-				riskScore,
-				allowed,
-				warnings,
-				submissions_1h: submissionCount,
-			},
-			'IP-based fraud check completed'
-		);
-
-		return {
-			allowed,
-			reason: allowed ? undefined : 'High risk based on IP activity',
-			riskScore,
-			warnings,
-		};
-	} catch (error) {
-		logger.error({ error, remoteIp }, 'Error during IP fraud check');
-		return {
-			allowed: true,
-			reason: 'Fraud check failed (allowing)',
-			riskScore: 0,
-			warnings: ['Fraud check error'],
-		};
-	}
-}
