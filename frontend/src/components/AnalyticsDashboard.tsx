@@ -4,6 +4,7 @@ import { Alert, AlertDescription } from './ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { SearchBar } from './analytics/filters/SearchBar';
 import { DateRangePicker } from './analytics/filters/DateRangePicker';
+import { MultiSelect } from './analytics/filters/MultiSelect';
 import { TimeSeriesChart } from './analytics/charts/TimeSeriesChart';
 import { BarChart } from './analytics/charts/BarChart';
 import { DataTable } from './analytics/tables/DataTable';
@@ -133,6 +134,7 @@ export default function AnalyticsDashboard() {
 
 	// Filter states
 	const [searchQuery, setSearchQuery] = useState('');
+	const [selectedCountries, setSelectedCountries] = useState<string[]>([]);
 	const [dateRange, setDateRange] = useState({
 		start: subDays(new Date(), 30),
 		end: new Date(),
@@ -162,6 +164,11 @@ export default function AnalyticsDashboard() {
 		}
 	}, []);
 
+	// Reset pagination when filters change
+	useEffect(() => {
+		setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+	}, [searchQuery, selectedCountries.join(','), dateRange.start.toISOString(), dateRange.end.toISOString()]);
+
 	// Reload submissions when filters, pagination, or sorting change
 	useEffect(() => {
 		if (apiKey) {
@@ -169,6 +176,7 @@ export default function AnalyticsDashboard() {
 		}
 	}, [
 		searchQuery,
+		selectedCountries.join(','),
 		dateRange.start.toISOString(),
 		dateRange.end.toISOString(),
 		pagination.pageIndex,
@@ -278,6 +286,11 @@ export default function AnalyticsDashboard() {
 			// Add search query
 			if (searchQuery.trim()) {
 				params.append('search', searchQuery.trim());
+			}
+
+			// Add countries filter
+			if (selectedCountries.length > 0) {
+				params.append('countries', selectedCountries.join(','));
 			}
 
 			// Add date range
@@ -574,11 +587,18 @@ export default function AnalyticsDashboard() {
 				</CardHeader>
 				<CardContent className="space-y-4">
 					{/* Filters */}
-					<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+					<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 						<SearchBar
 							value={searchQuery}
 							onChange={setSearchQuery}
 							placeholder="Search by email, name, or IP..."
+						/>
+						<MultiSelect
+							options={countries.map((c) => ({ value: c.country, label: c.country }))}
+							value={selectedCountries}
+							onChange={setSelectedCountries}
+							placeholder="Filter by countries..."
+							label="Countries"
 						/>
 						<DateRangePicker value={dateRange} onChange={setDateRange} />
 					</div>
