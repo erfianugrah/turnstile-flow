@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { SearchBar } from './analytics/filters/SearchBar';
 import { DateRangePicker } from './analytics/filters/DateRangePicker';
 import { MultiSelect } from './analytics/filters/MultiSelect';
+import { RangeSlider } from './analytics/filters/RangeSlider';
 import { TimeSeriesChart } from './analytics/charts/TimeSeriesChart';
 import { BarChart } from './analytics/charts/BarChart';
 import { DataTable } from './analytics/tables/DataTable';
@@ -136,6 +137,7 @@ export default function AnalyticsDashboard() {
 	// Filter states
 	const [searchQuery, setSearchQuery] = useState('');
 	const [selectedCountries, setSelectedCountries] = useState<string[]>([]);
+	const [botScoreRange, setBotScoreRange] = useState<[number, number]>([0, 100]);
 	const [dateRange, setDateRange] = useState({
 		start: subDays(new Date(), 30),
 		end: new Date(),
@@ -168,7 +170,7 @@ export default function AnalyticsDashboard() {
 	// Reset pagination when filters change
 	useEffect(() => {
 		setPagination((prev) => ({ ...prev, pageIndex: 0 }));
-	}, [searchQuery, selectedCountries.join(','), dateRange.start.toISOString(), dateRange.end.toISOString()]);
+	}, [searchQuery, selectedCountries.join(','), botScoreRange.join(','), dateRange.start.toISOString(), dateRange.end.toISOString()]);
 
 	// Reload submissions when filters, pagination, or sorting change
 	useEffect(() => {
@@ -178,6 +180,7 @@ export default function AnalyticsDashboard() {
 	}, [
 		searchQuery,
 		selectedCountries.join(','),
+		botScoreRange.join(','),
 		dateRange.start.toISOString(),
 		dateRange.end.toISOString(),
 		pagination.pageIndex,
@@ -294,6 +297,12 @@ export default function AnalyticsDashboard() {
 				params.append('countries', selectedCountries.join(','));
 			}
 
+			// Add bot score range filter
+			if (botScoreRange[0] !== 0 || botScoreRange[1] !== 100) {
+				params.append('botScoreMin', botScoreRange[0].toString());
+				params.append('botScoreMax', botScoreRange[1].toString());
+			}
+
 			// Add date range
 			params.append('startDate', dateRange.start.toISOString());
 			params.append('endDate', dateRange.end.toISOString());
@@ -372,6 +381,12 @@ export default function AnalyticsDashboard() {
 			// Add countries filter
 			if (selectedCountries.length > 0) {
 				params.append('countries', selectedCountries.join(','));
+			}
+
+			// Add bot score range filter
+			if (botScoreRange[0] !== 0 || botScoreRange[1] !== 100) {
+				params.append('botScoreMin', botScoreRange[0].toString());
+				params.append('botScoreMax', botScoreRange[1].toString());
 			}
 
 			// Add date range
@@ -653,7 +668,7 @@ export default function AnalyticsDashboard() {
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
-					{/* Filters */}
+					{/* Filters Row 1 */}
 					<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 						<SearchBar
 							value={searchQuery}
@@ -668,6 +683,18 @@ export default function AnalyticsDashboard() {
 							label="Countries"
 						/>
 						<DateRangePicker value={dateRange} onChange={setDateRange} />
+					</div>
+
+					{/* Filters Row 2 */}
+					<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+						<RangeSlider
+							min={0}
+							max={100}
+							value={botScoreRange}
+							onChange={setBotScoreRange}
+							label="Bot Score Range"
+							step={1}
+						/>
 					</div>
 
 					{/* Export Buttons */}
