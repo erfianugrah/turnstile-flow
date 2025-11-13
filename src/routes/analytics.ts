@@ -8,6 +8,7 @@ import {
 	getAsnDistribution,
 	getTlsVersionDistribution,
 	getJa3Distribution,
+	getJa4Distribution,
 	getSubmissionById,
 } from '../lib/database';
 import logger from '../lib/logger';
@@ -225,6 +226,31 @@ app.get('/ja3', async (c) => {
 			{
 				error: 'Internal server error',
 				message: 'Failed to fetch JA3 distribution',
+			},
+			500
+		);
+	}
+});
+
+// GET /api/analytics/ja4 - Get JA4 fingerprint distribution
+app.get('/ja4', async (c) => {
+	try {
+		const db = c.env.DB;
+		const distribution = await getJa4Distribution(db);
+
+		logger.info('JA4 distribution retrieved');
+
+		return c.json({
+			success: true,
+			data: distribution,
+		});
+	} catch (error) {
+		logger.error({ error }, 'Error fetching JA4 distribution');
+
+		return c.json(
+			{
+				error: 'Internal server error',
+				message: 'Failed to fetch JA4 distribution',
 			},
 			500
 		);

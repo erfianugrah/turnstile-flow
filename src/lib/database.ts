@@ -352,6 +352,29 @@ export async function getJa3Distribution(db: D1Database) {
 }
 
 /**
+ * Get JA4 fingerprint distribution (top 10)
+ */
+export async function getJa4Distribution(db: D1Database) {
+	try {
+		const result = await db
+			.prepare(
+				`SELECT ja4, COUNT(*) as count
+				 FROM submissions
+				 WHERE ja4 IS NOT NULL
+				 GROUP BY ja4
+				 ORDER BY count DESC
+				 LIMIT 10`
+			)
+			.all();
+
+		return result.results;
+	} catch (error) {
+		logger.error({ error }, 'Error fetching JA4 distribution');
+		throw error;
+	}
+}
+
+/**
  * Get single submission by ID with all fields
  */
 export async function getSubmissionById(db: D1Database, id: number) {

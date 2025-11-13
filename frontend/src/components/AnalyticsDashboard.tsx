@@ -97,6 +97,11 @@ interface Ja3Data {
 	count: number;
 }
 
+interface Ja4Data {
+	ja4: string;
+	count: number;
+}
+
 export default function AnalyticsDashboard() {
 	const [stats, setStats] = useState<ValidationStats | null>(null);
 	const [submissions, setSubmissions] = useState<Submission[]>([]);
@@ -105,6 +110,7 @@ export default function AnalyticsDashboard() {
 	const [asnData, setAsnData] = useState<AsnData[]>([]);
 	const [tlsData, setTlsData] = useState<TlsData[]>([]);
 	const [ja3Data, setJa3Data] = useState<Ja3Data[]>([]);
+	const [ja4Data, setJa4Data] = useState<Ja4Data[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
@@ -145,6 +151,7 @@ export default function AnalyticsDashboard() {
 				asnRes,
 				tlsRes,
 				ja3Res,
+				ja4Res,
 			] = await Promise.all([
 				fetch('/api/analytics/stats', { headers }),
 				fetch('/api/analytics/submissions?limit=10', { headers }),
@@ -153,6 +160,7 @@ export default function AnalyticsDashboard() {
 				fetch('/api/analytics/asn', { headers }),
 				fetch('/api/analytics/tls', { headers }),
 				fetch('/api/analytics/ja3', { headers }),
+				fetch('/api/analytics/ja4', { headers }),
 			]);
 
 			// Check for 401 errors (unauthorized)
@@ -172,12 +180,13 @@ export default function AnalyticsDashboard() {
 				!botScoresRes.ok ||
 				!asnRes.ok ||
 				!tlsRes.ok ||
-				!ja3Res.ok
+				!ja3Res.ok ||
+				!ja4Res.ok
 			) {
 				throw new Error('Failed to fetch analytics');
 			}
 
-			const [statsData, submissionsData, countriesData, botScoresData, asnData, tlsData, ja3DataRes] =
+			const [statsData, submissionsData, countriesData, botScoresData, asnData, tlsData, ja3DataRes, ja4DataRes] =
 				await Promise.all([
 					statsRes.json(),
 					submissionsRes.json(),
@@ -186,6 +195,7 @@ export default function AnalyticsDashboard() {
 					asnRes.json(),
 					tlsRes.json(),
 					ja3Res.json(),
+					ja4Res.json(),
 				]);
 
 			setStats(statsData.data);
@@ -195,6 +205,7 @@ export default function AnalyticsDashboard() {
 			setAsnData(asnData.data);
 			setTlsData(tlsData.data);
 			setJa3Data(ja3DataRes.data);
+			setJa4Data(ja4DataRes.data);
 		} catch (err) {
 			console.error('Error loading analytics:', err);
 			setError('Failed to load analytics data');
@@ -585,6 +596,34 @@ export default function AnalyticsDashboard() {
 									>
 										<span className="font-mono text-xs truncate flex-1 mr-2">
 											{item.ja3_hash}
+										</span>
+										<span className="text-muted-foreground text-sm">
+											{item.count}
+										</span>
+									</div>
+								))
+							)}
+						</div>
+					</CardContent>
+				</Card>
+
+				<Card>
+					<CardHeader>
+						<CardTitle>JA4 Fingerprints</CardTitle>
+						<CardDescription>Top JA4 hashes</CardDescription>
+					</CardHeader>
+					<CardContent>
+						<div className="space-y-2">
+							{ja4Data.length === 0 ? (
+								<p className="text-muted-foreground text-sm">No data available</p>
+							) : (
+								ja4Data.map((item) => (
+									<div
+										key={item.ja4}
+										className="flex items-center justify-between py-2 border-b last:border-0"
+									>
+										<span className="font-mono text-xs truncate flex-1 mr-2">
+											{item.ja4}
 										</span>
 										<span className="text-muted-foreground text-sm">
 											{item.count}
