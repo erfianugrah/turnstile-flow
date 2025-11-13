@@ -8,6 +8,9 @@ import { MultiSelect } from './analytics/filters/MultiSelect';
 import { RangeSlider } from './analytics/filters/RangeSlider';
 import { TimeSeriesChart } from './analytics/charts/TimeSeriesChart';
 import { BarChart } from './analytics/charts/BarChart';
+import { PieChart } from './analytics/charts/PieChart';
+import { DonutChart } from './analytics/charts/DonutChart';
+import { RadarChart } from './analytics/charts/RadarChart';
 import { DataTable } from './analytics/tables/DataTable';
 import { FraudAlert } from './analytics/cards/FraudAlert';
 import { GlobalControlsBar } from './analytics/controls/GlobalControlsBar';
@@ -831,12 +834,14 @@ export default function AnalyticsDashboard() {
 								<p className="text-muted-foreground text-sm">No data available</p>
 							</div>
 						) : (
-							<BarChart
-								data={botScores}
-								xAxisKey="score_range"
-								yAxisKey="count"
-								layout="vertical"
+							<DonutChart
+								data={botScores.map((item) => ({
+									name: item.score_range,
+									value: item.count,
+								}))}
 								height={300}
+								centerLabel="Total"
+								centerValue={botScores.reduce((sum, item) => sum + item.count, 0).toString()}
 								formatTooltip={(value) => `${value} submissions`}
 							/>
 						)}
@@ -969,6 +974,78 @@ export default function AnalyticsDashboard() {
 								))
 							)}
 						</div>
+					</CardContent>
+				</Card>
+			</div>
+
+			{/* Advanced Analytics Visualizations */}
+			<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+				<Card>
+					<CardHeader>
+						<CardTitle>Performance Metrics</CardTitle>
+						<CardDescription>Multi-dimensional analysis</CardDescription>
+					</CardHeader>
+					<CardContent>
+						{stats ? (
+							<RadarChart
+								data={[
+									{
+										metric: 'Success Rate',
+										value: stats.total > 0 ? (stats.successful / stats.total) * 100 : 0,
+										fullMark: 100,
+									},
+									{
+										metric: 'Allowed Rate',
+										value: stats.total > 0 ? (stats.allowed / stats.total) * 100 : 0,
+										fullMark: 100,
+									},
+									{
+										metric: 'Avg Bot Score',
+										value: stats.avg_risk_score || 0,
+										fullMark: 100,
+									},
+									{
+										metric: 'Total Volume',
+										value: Math.min((stats.total / 1000) * 100, 100),
+										fullMark: 100,
+									},
+									{
+										metric: 'Unique IDs',
+										value: Math.min((stats.unique_ephemeral_ids / 500) * 100, 100),
+										fullMark: 100,
+									},
+								]}
+								height={300}
+								formatTooltip={(value) => `${value.toFixed(1)}%`}
+							/>
+						) : (
+							<div className="flex items-center justify-center h-[300px]">
+								<p className="text-muted-foreground text-sm">No data available</p>
+							</div>
+						)}
+					</CardContent>
+				</Card>
+
+				<Card>
+					<CardHeader>
+						<CardTitle>TLS Version Distribution</CardTitle>
+						<CardDescription>TLS versions breakdown</CardDescription>
+					</CardHeader>
+					<CardContent>
+						{tlsData.length === 0 ? (
+							<div className="flex items-center justify-center h-[300px]">
+								<p className="text-muted-foreground text-sm">No data available</p>
+							</div>
+						) : (
+							<PieChart
+								data={tlsData.map((item) => ({
+									name: item.tls_version || 'Unknown',
+									value: item.count,
+								}))}
+								height={300}
+								formatTooltip={(value) => `${value} connections`}
+							/>
+						)}
 					</CardContent>
 				</Card>
 			</div>
