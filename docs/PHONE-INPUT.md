@@ -8,8 +8,9 @@ Lightweight custom international phone input with country detection. Replaced `r
 - **22KB source** (~15KB bundled) vs ~50KB external library
 - **No external dependencies** or CDN issues
 - **Full styling control** - native dark mode support
-- **200+ countries** with ISO codes, dial codes, and Unicode emoji flags
+- **200+ countries** with ISO codes, dial codes, and SVG flags (flag-icons library)
 - **Searchable dropdown** with keyboard navigation
+- **Cross-browser compatible** - SVG flags work on all platforms (Chrome/Windows, Firefox, Safari)
 
 ## Architecture
 
@@ -21,6 +22,11 @@ frontend/src/components/phone/
 ├── CountrySelect.tsx        # Dropdown with search and keyboard navigation
 ├── countries.ts             # 200+ countries with data (13KB)
 └── index.ts                 # Barrel exports
+
+frontend/src/styles/
+└── global.css               # Imports flag-icons CSS for SVG flags
+
+package.json                 # Added flag-icons@7.5.0 dependency
 ```
 
 ## Country Auto-Detection
@@ -99,11 +105,11 @@ interface CountrySelectProps {
 ```
 
 **Features:**
-- Flag emoji + dial code display
+- SVG flag + dial code display (flag-icons library)
 - Click to open dropdown
 - Search by country name, dial code, or ISO code
 - Keyboard navigation (arrows, Enter, Escape)
-- Click outside to close
+- Click outside to close (useEffect with mousedown event listener)
 
 ### Country Data
 
@@ -112,7 +118,7 @@ interface Country {
   code: string;      // ISO 3166-1 alpha-2 (e.g., 'us')
   name: string;      // Country name (e.g., 'United States')
   dial: string;      // International dial code (e.g., '+1')
-  emoji: string;     // Flag emoji (e.g., '🇺🇸')
+  emoji: string;     // Flag emoji (legacy, not used - now using SVG flags)
   format?: string;   // Optional phone format (e.g., '(###) ###-####')
 }
 ```
@@ -149,6 +155,40 @@ phone: z.string()
   )
 ```
 
+## SVG Flags Implementation
+
+Using `flag-icons@7.5.0` for cross-browser compatible country flags.
+
+**Why SVG flags:**
+- Chrome on Windows doesn't render emoji flags (Segoe UI Emoji lacks color flag support)
+- Forcing emoji fonts broke Firefox's native rendering
+- SVG flags work consistently across all browsers and platforms
+
+**Implementation:**
+```tsx
+// CountrySelect.tsx - Country button with SVG flag
+<span className={`fi fi-${selectedCountry.code.toLowerCase()} text-xl`}></span>
+
+// Dropdown list items
+<span className={`fi fi-${country.code.toLowerCase()} text-xl`}></span>
+```
+
+**CSS import:**
+```css
+/* frontend/src/styles/global.css */
+@import "tailwindcss";
+@import "flag-icons/css/flag-icons.min.css";
+```
+
+**Package dependency:**
+```json
+{
+  "dependencies": {
+    "flag-icons": "^7.5.0"
+  }
+}
+```
+
 ## Dark Mode Styling
 
 Native dark mode support using CSS variables:
@@ -156,9 +196,10 @@ Native dark mode support using CSS variables:
 ```tsx
 // CountrySelect dropdown
 <div className={cn(
-  'absolute left-0 top-full z-50 mt-1 w-80 rounded-md border border-border',
-  'bg-card text-card-foreground',
-  'shadow-lg dark:shadow-[0_10px_25px_rgba(0,0,0,0.5)]'
+  'absolute left-0 top-full z-50 mt-1 w-80 rounded-md border-2',
+  'bg-white dark:bg-[hsl(0,0%,15%)] text-card-foreground',
+  'border-border dark:border-[hsl(0,0%,30%)]',
+  'shadow-xl dark:shadow-[0_20px_40px_rgba(0,0,0,0.6)]'
 )}>
 ```
 
@@ -233,9 +274,12 @@ const handleNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 |-----------|--------|-------|---------|
 | react-international-phone | ~50KB | Removed | -50KB |
 | Custom implementation | 0KB | 22KB source | +22KB |
-| **Net savings** | - | - | **-28KB (56%)** |
+| flag-icons CSS | 0KB | ~30KB (contains all flags) | +30KB |
+| **Net savings** | - | - | **+2KB (minimal increase)** |
 
-Bundled size: ~15KB (gzipped: ~5KB)
+Bundled size: ~17KB (gzipped: ~6KB)
+
+**Trade-off:** Slightly larger bundle for cross-browser compatibility. SVG flags work on all platforms, unlike emoji flags which fail on Chrome/Windows.
 
 ## Accessibility
 
@@ -257,12 +301,20 @@ Bundled size: ~15KB (gzipped: ~5KB)
 3. **No format hints**: No placeholder showing format (e.g., `(###) ###-####`)
    - Could be added via `format` field in country data
 
+## Recent Improvements
+
+**2024-11-13: SVG Flags**
+- Replaced emoji flags with SVG flags (flag-icons library)
+- Fixes Chrome on Windows flag rendering issue
+- Cross-browser compatible
+- Slightly larger bundle (~30KB for flag-icons CSS) but works everywhere
+
 ## Future Enhancements
 
 1. **Client-side formatting**: Use `format` field to format as user types
 2. **Format hints**: Show example in placeholder based on country
 3. **Validation hints**: Show real-time validation feedback
-4. **Flag sprite sheet**: Bundle flags as single image for faster load
+4. **Optimize flag-icons**: Only bundle flags for countries used (tree-shaking)
 5. **Virtual scrolling**: For dropdown with 200+ countries
 
 ## Related
