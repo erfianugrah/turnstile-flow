@@ -91,6 +91,7 @@ export default function SubmissionForm() {
 
 			if (response.ok) {
 				setFlowStep('success');
+				setFlowError(undefined); // Clear any previous errors
 				setSubmitResult({
 					type: 'success',
 					message: result.message || 'Form submitted successfully!',
@@ -107,11 +108,30 @@ export default function SubmissionForm() {
 					}
 				}, 3000);
 			} else {
+				// Handle different error types with appropriate messaging
+				let userFriendlyMessage = result.message || 'Submission failed. Please try again.';
+
+				// Fraud detection / Rate limiting (429, 403)
+				if (response.status === 429) {
+					userFriendlyMessage = 'You have made too many submission attempts. Please wait before trying again.';
+				} else if (response.status === 403) {
+					userFriendlyMessage = 'Your submission has been blocked for security reasons. If you believe this is an error, please contact support.';
+				} else if (response.status === 409) {
+					// Duplicate email
+					userFriendlyMessage = result.message || 'This email address has already been registered.';
+				} else if (response.status === 400) {
+					// Validation error - use server message
+					userFriendlyMessage = result.message || 'Please check your information and try again.';
+				} else if (response.status >= 500) {
+					// Server error
+					userFriendlyMessage = 'A server error occurred. Please try again in a few moments.';
+				}
+
 				setFlowStep('error');
-				setFlowError(result.message || 'Submission failed. Please try again.');
+				setFlowError(undefined); // Don't show in flow, only in Alert
 				setSubmitResult({
 					type: 'error',
-					message: result.message || 'Submission failed. Please try again.',
+					message: userFriendlyMessage,
 				});
 				setTurnstileToken(null);
 				hasSubmittedRef.current = false;
@@ -123,13 +143,17 @@ export default function SubmissionForm() {
 		} catch (error) {
 			console.error('Submission error:', error);
 			setFlowStep('error');
-			setFlowError('An error occurred. Please try again.');
+			setFlowError(undefined); // Don't show in flow, only in Alert
 			setSubmitResult({
 				type: 'error',
-				message: 'An error occurred. Please try again.',
+				message: 'A network error occurred. Please check your connection and try again.',
 			});
 			setTurnstileToken(null);
 			hasSubmittedRef.current = false;
+			// Reset Turnstile
+			if (turnstileRef.current) {
+				turnstileRef.current.reset();
+			}
 		}
 	};
 
@@ -163,11 +187,12 @@ export default function SubmissionForm() {
 	const handleTurnstileError = (error?: string) => {
 		console.error('Turnstile error:', error);
 		setFlowStep('error');
-		setFlowError('Verification failed. Please try again.');
+		setFlowError(undefined); // Don't show in flow, only in Alert
 		setSubmitResult({
 			type: 'error',
-			message: 'Verification failed. Please try again.',
+			message: 'Security verification failed. Please refresh the page and try again.',
 		});
+		hasSubmittedRef.current = false;
 	};
 
 	const handleBeforeInteractive = () => {
@@ -183,19 +208,36 @@ export default function SubmissionForm() {
 	const handleExpired = () => {
 		console.log('Token expired');
 		setFlowStep('error');
-		setFlowError('Verification expired. Please try again.');
+		setFlowError(undefined); // Don't show in flow, only in Alert
+		setSubmitResult({
+			type: 'error',
+			message: 'Security verification expired. Please try again.',
+		});
+		setTurnstileToken(null);
+		hasSubmittedRef.current = false;
 	};
 
 	const handleTimeout = () => {
 		console.log('Challenge timeout');
 		setFlowStep('error');
-		setFlowError('Verification timed out. Please try again.');
+		setFlowError(undefined); // Don't show in flow, only in Alert
+		setSubmitResult({
+			type: 'error',
+			message: 'Security verification timed out. Please try again.',
+		});
+		setTurnstileToken(null);
+		hasSubmittedRef.current = false;
 	};
 
 	const handleUnsupported = () => {
 		console.log('Browser unsupported');
 		setFlowStep('error');
-		setFlowError('Your browser does not support verification.');
+		setFlowError(undefined); // Don't show in flow, only in Alert
+		setSubmitResult({
+			type: 'error',
+			message: 'Your browser does not support security verification. Please try a different browser.',
+		});
+		hasSubmittedRef.current = false;
 	};
 
 	return (
