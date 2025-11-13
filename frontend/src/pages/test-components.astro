@@ -1,0 +1,11 @@
+---
+import Layout from '../layouts/Layout.astro';
+import ComponentTester from '../components/ComponentTester';
+---
+
+<Layout title="Component Testing">
+	<main class="container mx-auto px-4 py-8">
+		<h1 class="text-3xl font-bold mb-8">Analytics Component Testing</h1>
+		<ComponentTester client:load />
+	</main>
+</Layout>

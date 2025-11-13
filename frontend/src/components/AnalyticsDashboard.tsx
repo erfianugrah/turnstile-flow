@@ -2,6 +2,21 @@ import { useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from './ui/card';
 import { Alert, AlertDescription } from './ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
+import { SearchBar } from './analytics/filters/SearchBar';
+import { DateRangePicker } from './analytics/filters/DateRangePicker';
+import { MultiSelect } from './analytics/filters/MultiSelect';
+import { RangeSlider } from './analytics/filters/RangeSlider';
+import { TimeSeriesChart } from './analytics/charts/TimeSeriesChart';
+import { BarChart } from './analytics/charts/BarChart';
+import { PieChart } from './analytics/charts/PieChart';
+import { DonutChart } from './analytics/charts/DonutChart';
+import { RadarChart } from './analytics/charts/RadarChart';
+import { DataTable } from './analytics/tables/DataTable';
+import { FraudAlert } from './analytics/cards/FraudAlert';
+import { GlobalControlsBar } from './analytics/controls/GlobalControlsBar';
+import { Download, RefreshCw } from 'lucide-react';
+import { subDays } from 'date-fns';
+import type { ColumnDef, PaginationState, SortingState } from '@tanstack/react-table';
 
 interface ValidationStats {
 	total: number;
@@ -97,6 +112,11 @@ interface Ja3Data {
 	count: number;
 }
 
+interface Ja4Data {
+	ja4: string;
+	count: number;
+}
+
 export default function AnalyticsDashboard() {
 	const [stats, setStats] = useState<ValidationStats | null>(null);
 	const [submissions, setSubmissions] = useState<Submission[]>([]);
@@ -105,6 +125,8 @@ export default function AnalyticsDashboard() {
 	const [asnData, setAsnData] = useState<AsnData[]>([]);
 	const [tlsData, setTlsData] = useState<TlsData[]>([]);
 	const [ja3Data, setJa3Data] = useState<Ja3Data[]>([]);
+	const [ja4Data, setJa4Data] = useState<Ja4Data[]>([]);
+	const [fraudPatterns, setFraudPatterns] = useState<any>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
@@ -118,6 +140,34 @@ export default function AnalyticsDashboard() {
 	const [selectedSubmission, setSelectedSubmission] = useState<SubmissionDetail | null>(null);
 	const [modalLoading, setModalLoading] = useState(false);
 
+	// Filter states
+	const [searchQuery, setSearchQuery] = useState('');
+	const [selectedCountries, setSelectedCountries] = useState<string[]>([]);
+	const [botScoreRange, setBotScoreRange] = useState<[number, number]>([0, 100]);
+	const [dateRange, setDateRange] = useState({
+		start: subDays(new Date(), 30),
+		end: new Date(),
+	});
+
+	// Pagination and sorting states
+	const [pagination, setPagination] = useState<PaginationState>({
+		pageIndex: 0,
+		pageSize: 10,
+	});
+	const [sorting, setSorting] = useState<SortingState>([{ id: 'created_at', desc: true }]);
+	const [totalCount, setTotalCount] = useState(0);
+	const [submissionsLoading, setSubmissionsLoading] = useState(false);
+
+	// Time-series data
+	const [timeSeriesData, setTimeSeriesData] = useState<any[]>([]);
+
+	// Auto-refresh state
+	const [autoRefresh, setAutoRefresh] = useState(false);
+	const [refreshInterval, setRefreshInterval] = useState(30); // seconds
+
+	// Table view state
+	const [tableView, setTableView] = useState<'compact' | 'comfortable' | 'spacious'>('comfortable');
+
 	useEffect(() => {
 		// Check for saved API key in localStorage
 		const savedApiKey = localStorage.getItem('analytics-api-key');
@@ -130,6 +180,41 @@ export default function AnalyticsDashboard() {
 		}
 	}, []);
 
+	// Reset pagination when filters change
+	useEffect(() => {
+		setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+	}, [searchQuery, selectedCountries.join(','), botScoreRange.join(','), dateRange.start.toISOString(), dateRange.end.toISOString()]);
+
+	// Reload submissions when filters, pagination, or sorting change
+	useEffect(() => {
+		if (apiKey) {
+			loadSubmissions(apiKey);
+		}
+	}, [
+		searchQuery,
+		selectedCountries.join(','),
+		botScoreRange.join(','),
+		dateRange.start.toISOString(),
+		dateRange.end.toISOString(),
+		pagination.pageIndex,
+		pagination.pageSize,
+		sorting.length > 0 ? sorting[0].id : '',
+		sorting.length > 0 ? sorting[0].desc : false,
+		apiKey,
+	]);
+
+	// Auto-refresh interval
+	useEffect(() => {
+		if (!autoRefresh || !apiKey) return;
+
+		const intervalId = setInterval(() => {
+			loadAnalytics(apiKey);
+			loadSubmissions(apiKey);
+		}, refreshInterval * 1000);
+
+		return () => clearInterval(intervalId);
+	}, [autoRefresh, refreshInterval, apiKey]);
+
 	const loadAnalytics = async (key: string) => {
 		setLoading(true);
 		setError(null);
@@ -139,20 +224,24 @@ export default function AnalyticsDashboard() {
 		try {
 			const [
 				statsRes,
-				submissionsRes,
 				countriesRes,
 				botScoresRes,
 				asnRes,
 				tlsRes,
 				ja3Res,
+				ja4Res,
+				timeSeriesRes,
+				fraudRes,
 			] = await Promise.all([
 				fetch('/api/analytics/stats', { headers }),
-				fetch('/api/analytics/submissions?limit=10', { headers }),
 				fetch('/api/analytics/countries', { headers }),
 				fetch('/api/analytics/bot-scores', { headers }),
 				fetch('/api/analytics/asn', { headers }),
 				fetch('/api/analytics/tls', { headers }),
 				fetch('/api/analytics/ja3', { headers }),
+				fetch('/api/analytics/ja4', { headers }),
+				fetch('/api/analytics/time-series?metric=submissions&interval=day', { headers }),
+				fetch('/api/analytics/fraud-patterns', { headers }),
 			]);
 
 			// Check for 401 errors (unauthorized)
@@ -167,39 +256,109 @@ export default function AnalyticsDashboard() {
 
 			if (
 				!statsRes.ok ||
-				!submissionsRes.ok ||
 				!countriesRes.ok ||
 				!botScoresRes.ok ||
 				!asnRes.ok ||
 				!tlsRes.ok ||
-				!ja3Res.ok
+				!ja3Res.ok ||
+				!ja4Res.ok ||
+				!timeSeriesRes.ok ||
+				!fraudRes.ok
 			) {
 				throw new Error('Failed to fetch analytics');
 			}
 
-			const [statsData, submissionsData, countriesData, botScoresData, asnData, tlsData, ja3DataRes] =
+			const [statsData, countriesData, botScoresData, asnData, tlsData, ja3DataRes, ja4DataRes, timeSeriesDataRes, fraudDataRes] =
 				await Promise.all([
 					statsRes.json(),
-					submissionsRes.json(),
 					countriesRes.json(),
 					botScoresRes.json(),
 					asnRes.json(),
 					tlsRes.json(),
 					ja3Res.json(),
+					ja4Res.json(),
+					timeSeriesRes.json(),
+					fraudRes.json(),
 				]);
 
 			setStats(statsData.data);
-			setSubmissions(submissionsData.data);
 			setCountries(countriesData.data);
 			setBotScores(botScoresData.data);
 			setAsnData(asnData.data);
 			setTlsData(tlsData.data);
 			setJa3Data(ja3DataRes.data);
+			setJa4Data(ja4DataRes.data);
+			setTimeSeriesData(timeSeriesDataRes.data || []);
+			setFraudPatterns(fraudDataRes.data);
+
+			// Load submissions separately with filters
+			await loadSubmissions(key);
 		} catch (err) {
 			console.error('Error loading analytics:', err);
 			setError('Failed to load analytics data');
 		} finally {
 			setLoading(false);
+		}
+	};
+
+	const loadSubmissions = async (key: string) => {
+		setSubmissionsLoading(true);
+		const headers = key ? { 'X-API-KEY': key } : {};
+
+		try {
+			// Build query parameters
+			const params = new URLSearchParams();
+			params.append('limit', pagination.pageSize.toString());
+			params.append('offset', (pagination.pageIndex * pagination.pageSize).toString());
+
+			// Add sorting
+			if (sorting.length > 0) {
+				params.append('sortBy', sorting[0].id);
+				params.append('sortOrder', sorting[0].desc ? 'desc' : 'asc');
+			}
+
+			// Add search query
+			if (searchQuery.trim()) {
+				params.append('search', searchQuery.trim());
+			}
+
+			// Add countries filter
+			if (selectedCountries.length > 0) {
+				params.append('countries', selectedCountries.join(','));
+			}
+
+			// Add bot score range filter
+			if (botScoreRange[0] !== 0 || botScoreRange[1] !== 100) {
+				params.append('botScoreMin', botScoreRange[0].toString());
+				params.append('botScoreMax', botScoreRange[1].toString());
+			}
+
+			// Add date range
+			params.append('startDate', dateRange.start.toISOString());
+			params.append('endDate', dateRange.end.toISOString());
+
+			const res = await fetch(`/api/analytics/submissions?${params.toString()}`, { headers });
+
+			if (res.status === 401) {
+				localStorage.removeItem('analytics-api-key');
+				setApiKey('');
+				setShowApiKeyDialog(true);
+				setApiKeyError('Invalid or missing API key. Please enter a valid key.');
+				return;
+			}
+
+			if (!res.ok) {
+				throw new Error('Failed to fetch submissions');
+			}
+
+			const data = await res.json();
+			setSubmissions(data.data);
+			setTotalCount(data.total || 0);
+		} catch (err) {
+			console.error('Error loading submissions:', err);
+			// Don't set global error, just log it
+		} finally {
+			setSubmissionsLoading(false);
 		}
 	};
 
@@ -228,6 +387,78 @@ export default function AnalyticsDashboard() {
 		}
 	};
 
+	const handleExport = async (format: 'csv' | 'json') => {
+		if (!apiKey) return;
+
+		const headers = { 'X-API-KEY': apiKey };
+
+		try {
+			// Build query parameters (same as loadSubmissions but without limit/offset)
+			const params = new URLSearchParams();
+			params.append('format', format);
+
+			// Add sorting
+			if (sorting.length > 0) {
+				params.append('sortBy', sorting[0].id);
+				params.append('sortOrder', sorting[0].desc ? 'desc' : 'asc');
+			}
+
+			// Add search query
+			if (searchQuery.trim()) {
+				params.append('search', searchQuery.trim());
+			}
+
+			// Add countries filter
+			if (selectedCountries.length > 0) {
+				params.append('countries', selectedCountries.join(','));
+			}
+
+			// Add bot score range filter
+			if (botScoreRange[0] !== 0 || botScoreRange[1] !== 100) {
+				params.append('botScoreMin', botScoreRange[0].toString());
+				params.append('botScoreMax', botScoreRange[1].toString());
+			}
+
+			// Add date range
+			params.append('startDate', dateRange.start.toISOString());
+			params.append('endDate', dateRange.end.toISOString());
+
+			const res = await fetch(`/api/analytics/export?${params.toString()}`, { headers });
+
+			if (res.status === 401) {
+				localStorage.removeItem('analytics-api-key');
+				setApiKey('');
+				setShowApiKeyDialog(true);
+				setApiKeyError('Invalid or missing API key. Please enter a valid key.');
+				return;
+			}
+
+			if (!res.ok) {
+				throw new Error('Failed to export data');
+			}
+
+			// Get the blob and trigger download
+			const blob = await res.blob();
+			const url = window.URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+
+			// Extract filename from Content-Disposition header or use default
+			const contentDisposition = res.headers.get('Content-Disposition');
+			const filenameMatch = contentDisposition?.match(/filename="?([^"]+)"?/);
+			const filename = filenameMatch ? filenameMatch[1] : `submissions-export-${new Date().toISOString().split('T')[0]}.${format}`;
+
+			a.download = filename;
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+			window.URL.revokeObjectURL(url);
+		} catch (err) {
+			console.error('Error exporting data:', err);
+			alert('Failed to export data');
+		}
+	};
+
 	const handleApiKeySubmit = () => {
 		if (!apiKeyInput.trim()) {
 			setApiKeyError('Please enter an API key');
@@ -242,6 +473,105 @@ export default function AnalyticsDashboard() {
 		setApiKeyInput('');
 		loadAnalytics(trimmedKey);
 	};
+
+	const handleManualRefresh = () => {
+		if (apiKey) {
+			loadAnalytics(apiKey);
+			loadSubmissions(apiKey);
+		}
+	};
+
+	const handleClearFilters = () => {
+		setSearchQuery('');
+		setSelectedCountries([]);
+		setBotScoreRange([0, 100]);
+		setDateRange({
+			start: subDays(new Date(), 30),
+			end: new Date(),
+		});
+	};
+
+	const hasActiveFilters =
+		searchQuery.trim() !== '' ||
+		selectedCountries.length > 0 ||
+		botScoreRange[0] !== 0 ||
+		botScoreRange[1] !== 100 ||
+		dateRange.start.getTime() !== subDays(new Date(), 30).setHours(0, 0, 0, 0) ||
+		dateRange.end.getTime() !== new Date().setHours(23, 59, 59, 999);
+
+	// Define columns for DataTable
+	const columns: ColumnDef<Submission>[] = [
+		{
+			accessorKey: 'id',
+			header: 'ID',
+			cell: ({ row }) => <span className="font-mono text-xs">{row.original.id}</span>,
+		},
+		{
+			accessorKey: 'first_name',
+			header: 'Name',
+			cell: ({ row }) => (
+				<span>
+					{row.original.first_name} {row.original.last_name}
+				</span>
+			),
+		},
+		{
+			accessorKey: 'email',
+			header: 'Email',
+			cell: ({ row }) => <span className="text-xs">{row.original.email}</span>,
+		},
+		{
+			accessorKey: 'country',
+			header: 'Country',
+			cell: ({ row }) => <span>{row.original.country || 'N/A'}</span>,
+		},
+		{
+			accessorKey: 'remote_ip',
+			header: 'IP',
+			cell: ({ row }) => (
+				<span className="font-mono text-xs">{row.original.remote_ip || 'N/A'}</span>
+			),
+		},
+		{
+			accessorKey: 'bot_score',
+			header: 'Bot Score',
+			cell: ({ row }) => {
+				const score = row.original.bot_score;
+				return (
+					<span
+						className={`font-semibold ${
+							score && score < 30
+								? 'text-destructive'
+								: score && score >= 70
+								? 'text-green-600 dark:text-green-400'
+								: 'text-yellow-600 dark:text-yellow-400'
+						}`}
+					>
+						{score !== null ? score : 'N/A'}
+					</span>
+				);
+			},
+		},
+		{
+			accessorKey: 'created_at',
+			header: 'Date',
+			cell: ({ row }) => (
+				<span className="text-xs">{new Date(row.original.created_at).toLocaleString()}</span>
+			),
+		},
+		{
+			id: 'actions',
+			header: 'Actions',
+			cell: ({ row }) => (
+				<button
+					onClick={() => loadSubmissionDetail(row.original.id)}
+					className="text-xs text-primary hover:underline"
+				>
+					View Details
+				</button>
+			),
+		},
+	];
 
 	if (loading) {
 		return (
@@ -302,6 +632,22 @@ export default function AnalyticsDashboard() {
 			</Dialog>
 
 			<div className="space-y-6">
+				{/* Auto-refresh Controls */}
+				<GlobalControlsBar
+					autoRefresh={autoRefresh}
+					refreshInterval={refreshInterval}
+					onAutoRefreshChange={setAutoRefresh}
+					onRefreshIntervalChange={setRefreshInterval}
+					onManualRefresh={handleManualRefresh}
+					onExportCSV={() => handleExport('csv')}
+					onExportJSON={() => handleExport('json')}
+					hasActiveFilters={hasActiveFilters}
+					onClearFilters={handleClearFilters}
+					tableView={tableView}
+					onTableViewChange={setTableView}
+					isLoading={loading || submissionsLoading}
+				/>
+
 				{/* Stats Grid */}
 				<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
 				<Card>
@@ -361,87 +707,94 @@ export default function AnalyticsDashboard() {
 				</Card>
 			</div>
 
-			{/* Recent Submissions - Expanded View */}
+			{/* Fraud Detection */}
+			<FraudAlert data={fraudPatterns} loading={loading} />
+
+			{/* Submissions Time Series */}
+			<Card>
+				<CardHeader>
+					<CardTitle>Submissions Over Time</CardTitle>
+					<CardDescription>Daily submission volume (last 30 days)</CardDescription>
+				</CardHeader>
+				<CardContent>
+					{timeSeriesData.length > 0 ? (
+						<TimeSeriesChart
+							data={timeSeriesData}
+							type="area"
+							height={250}
+							yAxisLabel="Submissions"
+							formatTooltip={(value) => `${value.toFixed(0)} submissions`}
+						/>
+					) : (
+						<div className="flex items-center justify-center h-[250px]">
+							<p className="text-muted-foreground text-sm">No time-series data available</p>
+						</div>
+					)}
+				</CardContent>
+			</Card>
+
+			{/* Recent Submissions with Filters */}
 			<Card>
 				<CardHeader>
 					<CardTitle>Recent Submissions</CardTitle>
 					<CardDescription>
-						Latest form submissions (click row for full details)
+						Search and filter form submissions (click row for full details)
 					</CardDescription>
 				</CardHeader>
-				<CardContent>
-					<div className="overflow-x-auto">
-						<table className="w-full text-sm">
-							<thead>
-								<tr className="border-b">
-									<th className="text-left py-2 px-3">ID</th>
-									<th className="text-left py-2 px-3">Name</th>
-									<th className="text-left py-2 px-3">Email</th>
-									<th className="text-left py-2 px-3">Country</th>
-									<th className="text-left py-2 px-3">IP</th>
-									<th className="text-left py-2 px-3">Bot Score</th>
-									<th className="text-left py-2 px-3">ASN</th>
-									<th className="text-left py-2 px-3">TLS Ver</th>
-									<th className="text-left py-2 px-3">JA3 Hash</th>
-									<th className="text-left py-2 px-3">Date</th>
-								</tr>
-							</thead>
-							<tbody>
-								{submissions.length === 0 ? (
-									<tr>
-										<td colSpan={10} className="text-center py-4 text-muted-foreground">
-											No submissions yet
-										</td>
-									</tr>
-								) : (
-									submissions.map((sub) => (
-										<tr
-											key={sub.id}
-											className="border-b hover:bg-muted/50 cursor-pointer transition-colors"
-											onClick={() => loadSubmissionDetail(sub.id)}
-										>
-											<td className="py-2 px-3 font-mono text-xs">{sub.id}</td>
-											<td className="py-2 px-3">
-												{sub.first_name} {sub.last_name}
-											</td>
-											<td className="py-2 px-3 text-xs">{sub.email}</td>
-											<td className="py-2 px-3">{sub.country || 'N/A'}</td>
-											<td className="py-2 px-3 font-mono text-xs">
-												{sub.remote_ip || 'N/A'}
-											</td>
-											<td className="py-2 px-3">
-												<span
-													className={`font-semibold ${
-														sub.bot_score && sub.bot_score < 30
-															? 'text-destructive'
-															: sub.bot_score && sub.bot_score >= 70
-															? 'text-green-600 dark:text-green-400'
-															: 'text-yellow-600 dark:text-yellow-400'
-													}`}
-												>
-													{sub.bot_score !== null ? sub.bot_score : 'N/A'}
-												</span>
-											</td>
-											<td className="py-2 px-3 font-mono text-xs">
-												{sub.asn || 'N/A'}
-											</td>
-											<td className="py-2 px-3 font-mono text-xs">
-												{sub.tls_version || 'N/A'}
-											</td>
-											<td className="py-2 px-3 font-mono text-xs truncate max-w-[100px]">
-												{sub.ja3_hash
-													? `${sub.ja3_hash.substring(0, 12)}...`
-													: 'N/A'}
-											</td>
-											<td className="py-2 px-3 text-xs">
-												{new Date(sub.created_at).toLocaleString()}
-											</td>
-										</tr>
-									))
-								)}
-							</tbody>
-						</table>
+				<CardContent className="space-y-4">
+					{/* Filters Row 1 */}
+					<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+						<SearchBar
+							value={searchQuery}
+							onChange={setSearchQuery}
+							placeholder="Search by email, name, or IP..."
+						/>
+						<MultiSelect
+							options={countries.map((c) => ({ value: c.country, label: c.country }))}
+							value={selectedCountries}
+							onChange={setSelectedCountries}
+							placeholder="Filter by countries..."
+							label="Countries"
+						/>
+						<DateRangePicker value={dateRange} onChange={setDateRange} />
 					</div>
+
+					{/* Filters Row 2 */}
+					<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+						<RangeSlider
+							min={0}
+							max={100}
+							value={botScoreRange}
+							onChange={setBotScoreRange}
+							label="Bot Score Range"
+							step={1}
+						/>
+					</div>
+
+					{/* Data Table */}
+					{submissionsLoading ? (
+						<div className="flex items-center justify-center py-12">
+							<p className="text-muted-foreground">Loading submissions...</p>
+						</div>
+					) : (
+						<DataTable
+							data={submissions}
+							columns={columns}
+							totalCount={totalCount}
+							manualPagination={true}
+							manualSorting={true}
+							onPaginationChange={(updater) => {
+								const newPagination =
+									typeof updater === 'function' ? updater(pagination) : updater;
+								setPagination(newPagination);
+							}}
+							onSortingChange={(updater) => {
+								const newSorting =
+									typeof updater === 'function' ? updater(sorting) : updater;
+								setSorting(newSorting);
+							}}
+						/>
+					)}
 				</CardContent>
 			</Card>
 
@@ -453,21 +806,20 @@ export default function AnalyticsDashboard() {
 						<CardDescription>Top countries</CardDescription>
 					</CardHeader>
 					<CardContent>
-						<div className="space-y-2">
-							{countries.length === 0 ? (
-								<p className="text-muted-foreground">No data available</p>
-							) : (
-								countries.slice(0, 10).map((item) => (
-									<div
-										key={item.country}
-										className="flex items-center justify-between py-2 border-b last:border-0"
-									>
-										<span className="font-medium">{item.country}</span>
-										<span className="text-muted-foreground">{item.count}</span>
-									</div>
-								))
-							)}
-						</div>
+						{countries.length === 0 ? (
+							<div className="flex items-center justify-center h-[300px]">
+								<p className="text-muted-foreground text-sm">No data available</p>
+							</div>
+						) : (
+							<BarChart
+								data={countries.slice(0, 10)}
+								xAxisKey="country"
+								yAxisKey="count"
+								layout="vertical"
+								height={300}
+								formatTooltip={(value) => `${value} submissions`}
+							/>
+						)}
 					</CardContent>
 				</Card>
 
@@ -477,21 +829,22 @@ export default function AnalyticsDashboard() {
 						<CardDescription>Score ranges</CardDescription>
 					</CardHeader>
 					<CardContent>
-						<div className="space-y-2">
-							{botScores.length === 0 ? (
-								<p className="text-muted-foreground">No data available</p>
-							) : (
-								botScores.map((item) => (
-									<div
-										key={item.score_range}
-										className="flex items-center justify-between py-2 border-b last:border-0"
-									>
-										<span className="font-medium">{item.score_range}</span>
-										<span className="text-muted-foreground">{item.count}</span>
-									</div>
-								))
-							)}
-						</div>
+						{botScores.length === 0 ? (
+							<div className="flex items-center justify-center h-[300px]">
+								<p className="text-muted-foreground text-sm">No data available</p>
+							</div>
+						) : (
+							<DonutChart
+								data={botScores.map((item) => ({
+									name: item.score_range,
+									value: item.count,
+								}))}
+								height={300}
+								centerLabel="Total"
+								centerValue={botScores.reduce((sum, item) => sum + item.count, 0).toString()}
+								formatTooltip={(value) => `${value} submissions`}
+							/>
+						)}
 					</CardContent>
 				</Card>
 			</div>
@@ -593,6 +946,106 @@ export default function AnalyticsDashboard() {
 								))
 							)}
 						</div>
+					</CardContent>
+				</Card>
+
+				<Card>
+					<CardHeader>
+						<CardTitle>JA4 Fingerprints</CardTitle>
+						<CardDescription>Top JA4 hashes</CardDescription>
+					</CardHeader>
+					<CardContent>
+						<div className="space-y-2">
+							{ja4Data.length === 0 ? (
+								<p className="text-muted-foreground text-sm">No data available</p>
+							) : (
+								ja4Data.map((item) => (
+									<div
+										key={item.ja4}
+										className="flex items-center justify-between py-2 border-b last:border-0"
+									>
+										<span className="font-mono text-xs truncate flex-1 mr-2">
+											{item.ja4}
+										</span>
+										<span className="text-muted-foreground text-sm">
+											{item.count}
+										</span>
+									</div>
+								))
+							)}
+						</div>
+					</CardContent>
+				</Card>
+			</div>
+
+			{/* Advanced Analytics Visualizations */}
+			<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+				<Card>
+					<CardHeader>
+						<CardTitle>Performance Metrics</CardTitle>
+						<CardDescription>Multi-dimensional analysis</CardDescription>
+					</CardHeader>
+					<CardContent>
+						{stats ? (
+							<RadarChart
+								data={[
+									{
+										metric: 'Success Rate',
+										value: stats.total > 0 ? (stats.successful / stats.total) * 100 : 0,
+										fullMark: 100,
+									},
+									{
+										metric: 'Allowed Rate',
+										value: stats.total > 0 ? (stats.allowed / stats.total) * 100 : 0,
+										fullMark: 100,
+									},
+									{
+										metric: 'Avg Bot Score',
+										value: stats.avg_risk_score || 0,
+										fullMark: 100,
+									},
+									{
+										metric: 'Total Volume',
+										value: Math.min((stats.total / 1000) * 100, 100),
+										fullMark: 100,
+									},
+									{
+										metric: 'Unique IDs',
+										value: Math.min((stats.unique_ephemeral_ids / 500) * 100, 100),
+										fullMark: 100,
+									},
+								]}
+								height={300}
+								formatTooltip={(value) => `${value.toFixed(1)}%`}
+							/>
+						) : (
+							<div className="flex items-center justify-center h-[300px]">
+								<p className="text-muted-foreground text-sm">No data available</p>
+							</div>
+						)}
+					</CardContent>
+				</Card>
+
+				<Card>
+					<CardHeader>
+						<CardTitle>TLS Version Distribution</CardTitle>
+						<CardDescription>TLS versions breakdown</CardDescription>
+					</CardHeader>
+					<CardContent>
+						{tlsData.length === 0 ? (
+							<div className="flex items-center justify-center h-[300px]">
+								<p className="text-muted-foreground text-sm">No data available</p>
+							</div>
+						) : (
+							<PieChart
+								data={tlsData.map((item) => ({
+									name: item.tls_version || 'Unknown',
+									value: item.count,
+								}))}
+								height={300}
+								formatTooltip={(value) => `${value} connections`}
+							/>
+						)}
 					</CardContent>
 				</Card>
 			</div>
