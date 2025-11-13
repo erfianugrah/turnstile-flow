@@ -686,89 +686,106 @@ function getDateFormatString(interval: string): string | null {
  */
 export async function detectFraudPatterns(db: D1Database): Promise<any> {
 	try {
-		// Pattern 1: Duplicate IP addresses with multiple submissions
-		const duplicateIpsQuery = `
+		// Pattern 1: Blacklisted Ephemeral IDs (currently blocked)
+		const blacklistedQuery = `
 			SELECT
-				remote_ip,
-				COUNT(*) as submission_count,
-				GROUP_CONCAT(DISTINCT email) as emails,
-				AVG(bot_score) as avg_bot_score
-			FROM submissions
-			WHERE created_at >= datetime('now', '-24 hours')
-			GROUP BY remote_ip
-			HAVING COUNT(*) >= 3
-			ORDER BY submission_count DESC
-			LIMIT 10
+				ephemeral_id,
+				block_reason,
+				detection_confidence as confidence,
+				submission_count,
+				blocked_at as created_at,
+				expires_at,
+				detection_metadata
+			FROM fraud_blacklist
+			WHERE expires_at > datetime('now')
+				AND ephemeral_id IS NOT NULL
+			ORDER BY blocked_at DESC
+			LIMIT 20
 		`;
 
-		// Pattern 2: Low bot score submissions (< 30)
-		const lowBotScoresQuery = `
+		// Pattern 2: High-Risk Ephemeral IDs (3+ submissions in 1 hour)
+		// These match the threshold in checkEphemeralIdFraud (line 178)
+		const highRiskEphemeralQuery = `
 			SELECT
-				id, email, remote_ip, bot_score, country, created_at
-			FROM submissions
-			WHERE bot_score IS NOT NULL
-				AND bot_score < 30
-				AND created_at >= datetime('now', '-7 days')
-			ORDER BY bot_score ASC, created_at DESC
-			LIMIT 10
-		`;
-
-		// Pattern 3: Rapid submissions (multiple in short time)
-		const rapidSubmissionsQuery = `
-			SELECT
-				remote_ip,
-				COUNT(*) as count,
-				MIN(created_at) as first_submission,
-				MAX(created_at) as last_submission,
-				ROUND((JULIANDAY(MAX(created_at)) - JULIANDAY(MIN(created_at))) * 24 * 60, 2) as time_span_minutes,
-				GROUP_CONCAT(DISTINCT email) as emails
-			FROM submissions
-			WHERE created_at >= datetime('now', '-1 hour')
-			GROUP BY remote_ip
-			HAVING COUNT(*) >= 2
-				AND time_span_minutes < 5
-			ORDER BY count DESC
-			LIMIT 10
-		`;
-
-		// Pattern 4: Duplicate emails
-		const duplicateEmailsQuery = `
-			SELECT
-				email,
+				ephemeral_id,
 				COUNT(*) as submission_count,
 				COUNT(DISTINCT remote_ip) as unique_ips,
 				GROUP_CONCAT(DISTINCT country) as countries,
-				AVG(bot_score) as avg_bot_score
+				MIN(created_at) as first_submission,
+				MAX(created_at) as last_submission,
+				ROUND((JULIANDAY(MAX(created_at)) - JULIANDAY(MIN(created_at))) * 24 * 60, 2) as time_span_minutes
 			FROM submissions
-			WHERE created_at >= datetime('now', '-7 days')
-			GROUP BY email
-			HAVING COUNT(*) >= 2
-			ORDER BY submission_count DESC
+			WHERE created_at >= datetime('now', '-1 hour')
+				AND ephemeral_id IS NOT NULL
+			GROUP BY ephemeral_id
+			HAVING COUNT(*) >= 3
+			ORDER BY submission_count DESC, unique_ips DESC
 			LIMIT 10
 		`;
 
-		const [duplicateIps, lowBotScores, rapidSubmissions, duplicateEmails] = await Promise.all([
-			db.prepare(duplicateIpsQuery).all(),
-			db.prepare(lowBotScoresQuery).all(),
-			db.prepare(rapidSubmissionsQuery).all(),
-			db.prepare(duplicateEmailsQuery).all(),
+		// Pattern 3: Proxy Rotation (same ephemeral ID from 3+ different IPs)
+		// Detects rotating proxies/botnets - matches checkEphemeralIdFraud (line 202)
+		const proxyRotationQuery = `
+			SELECT
+				ephemeral_id,
+				COUNT(*) as submission_count,
+				COUNT(DISTINCT remote_ip) as unique_ips,
+				GROUP_CONCAT(DISTINCT remote_ip) as ip_addresses,
+				GROUP_CONCAT(DISTINCT country) as countries,
+				MIN(created_at) as first_seen,
+				MAX(created_at) as last_seen
+			FROM submissions
+			WHERE created_at >= datetime('now', '-1 hour')
+				AND ephemeral_id IS NOT NULL
+			GROUP BY ephemeral_id
+			HAVING COUNT(DISTINCT remote_ip) >= 3
+			ORDER BY unique_ips DESC, submission_count DESC
+			LIMIT 10
+		`;
+
+		// Pattern 4: High-Frequency Validators (10+ validation attempts in 1 hour)
+		// Detects bots rapidly generating tokens - matches checkEphemeralIdFraud (line 221)
+		const highFrequencyQuery = `
+			SELECT
+				ephemeral_id,
+				COUNT(*) as validation_count,
+				COUNT(DISTINCT remote_ip) as unique_ips,
+				SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successful_validations,
+				SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) as failed_validations,
+				MIN(created_at) as first_attempt,
+				MAX(created_at) as last_attempt,
+				ROUND((JULIANDAY(MAX(created_at)) - JULIANDAY(MIN(created_at))) * 24 * 60, 2) as time_span_minutes
+			FROM turnstile_validations
+			WHERE created_at >= datetime('now', '-1 hour')
+				AND ephemeral_id IS NOT NULL
+			GROUP BY ephemeral_id
+			HAVING COUNT(*) >= 10
+			ORDER BY validation_count DESC
+			LIMIT 10
+		`;
+
+		const [blacklisted, highRiskEphemeral, proxyRotation, highFrequency] = await Promise.all([
+			db.prepare(blacklistedQuery).all(),
+			db.prepare(highRiskEphemeralQuery).all(),
+			db.prepare(proxyRotationQuery).all(),
+			db.prepare(highFrequencyQuery).all(),
 		]);
 
 		logger.info(
 			{
-				duplicate_ips: duplicateIps.results.length,
-				low_bot_scores: lowBotScores.results.length,
-				rapid_submissions: rapidSubmissions.results.length,
-				duplicate_emails: duplicateEmails.results.length,
+				blacklisted: blacklisted.results.length,
+				high_risk_ephemeral: highRiskEphemeral.results.length,
+				proxy_rotation: proxyRotation.results.length,
+				high_frequency: highFrequency.results.length,
 			},
-			'Fraud patterns detected'
+			'Ephemeral ID fraud patterns detected'
 		);
 
 		return {
-			duplicate_ips: duplicateIps.results,
-			low_bot_scores: lowBotScores.results,
-			rapid_submissions: rapidSubmissions.results,
-			duplicate_emails: duplicateEmails.results,
+			blacklisted: blacklisted.results,
+			high_risk_ephemeral: highRiskEphemeral.results,
+			proxy_rotation: proxyRotation.results,
+			high_frequency: highFrequency.results,
 		};
 	} catch (error) {
 		logger.error({ error }, 'Error detecting fraud patterns');

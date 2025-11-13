@@ -1,70 +1,10 @@
 // Cloudflare Request types based on Workers documentation
 // See: https://developers.cloudflare.com/workers/runtime-apis/request/#incomingrequestcfproperties
 
-export interface IncomingRequestCfProperties {
-	// Geographic data
-	city?: string;
-	continent?: string;
-	country?: string;
-	latitude?: string;
-	longitude?: string;
-	postalCode?: string;
-	region?: string;
-	regionCode?: string;
-	timezone?: string;
+import type { IncomingRequestCfProperties } from '@cloudflare/workers-types';
 
-	// Network data
-	asn?: number;
-	asOrganization?: string;
-	colo?: string;
-
-	// TLS/HTTP data
-	httpProtocol?: string;
-	tlsVersion?: string;
-	tlsCipher?: string;
-	tlsClientAuth?: {
-		certPresented?: string;
-		certVerified?: string;
-		certRevoked?: string;
-	};
-
-	// Bot Management
-	botManagement?: {
-		score?: number; // 1-99
-		verifiedBot?: boolean;
-		jsDetection?: {
-			passed: boolean;
-		};
-		detectionIds?: number[];
-		ja3Hash?: string;
-		ja4?: string;
-		ja4Signals?: {
-			h2h3_ratio_1h?: number;
-			heuristic_ratio_1h?: number;
-			reqs_quantile_1h?: number;
-			uas_rank_1h?: number;
-			browser_ratio_1h?: number;
-			paths_rank_1h?: number;
-			reqs_rank_1h?: number;
-			cache_ratio_1h?: number;
-			ips_rank_1h?: number;
-			ips_quantile_1h?: number;
-		};
-		staticResource?: boolean;
-		corporateProxy?: boolean;
-	};
-
-	// Trust score
-	clientTrustScore?: number; // 0-100
-
-	// EU country flag
-	isEUCountry?: string; // "0" or "1"
-}
-
-// Extended Request type with cf property
-export interface CloudflareRequest extends Request {
-	cf?: IncomingRequestCfProperties;
-}
+// Re-export for convenience
+export type { IncomingRequestCfProperties };
 
 // Extracted metadata from request
 export interface RequestMetadata {
@@ -105,9 +45,9 @@ export interface RequestMetadata {
 }
 
 // Helper function to extract metadata from Request
-export function extractRequestMetadata(request: CloudflareRequest): RequestMetadata {
+export function extractRequestMetadata(request: Request): RequestMetadata {
 	const headers = request.headers;
-	const cf = request.cf;
+	const cf = request.cf as IncomingRequestCfProperties | undefined;
 
 	// Get IP from cf-connecting-ip header (most reliable) or fallback to CF property
 	const remoteIp = headers.get('cf-connecting-ip') ||
@@ -142,17 +82,18 @@ export function extractRequestMetadata(request: CloudflareRequest): RequestMetad
 		tlsCipher: cf?.tlsCipher,
 
 		// Bot detection (prefer cf.botManagement over headers)
+		// Note: Some properties are Enterprise-only and may not be in public types
 		botScore: cf?.botManagement?.score ||
 		         (headers.get('cf-bot-score') ? parseInt(headers.get('cf-bot-score')!, 10) : undefined),
 		clientTrustScore: cf?.clientTrustScore,
 		verifiedBot: cf?.botManagement?.verifiedBot || headers.get('cf-verified-bot') === 'true',
-		jsDetectionPassed: cf?.botManagement?.jsDetection?.passed,
-		detectionIds: cf?.botManagement?.detectionIds,
+		jsDetectionPassed: (cf?.botManagement as any)?.jsDetection?.passed,
+		detectionIds: (cf?.botManagement as any)?.detectionIds,
 
 		// Fingerprints (prefer cf.botManagement over headers)
 		ja3Hash: cf?.botManagement?.ja3Hash || headers.get('cf-ja3-hash') || undefined,
-		ja4: cf?.botManagement?.ja4 || headers.get('cf-ja4') || undefined,
-		ja4Signals: cf?.botManagement?.ja4Signals,
+		ja4: (cf?.botManagement as any)?.ja4 || headers.get('cf-ja4') || undefined,
+		ja4Signals: (cf?.botManagement as any)?.ja4Signals,
 	};
 }
 

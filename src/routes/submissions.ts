@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import type { Env, CloudflareRequest } from '../lib/types';
+import type { Env, FraudCheckResult } from '../lib/types';
 import { formSubmissionSchema, sanitizeFormData } from '../lib/validation';
 import { extractRequestMetadata } from '../lib/types';
 import {
@@ -21,8 +21,7 @@ app.post('/', async (c) => {
 		const secretKey = c.env['TURNSTILE-SECRET-KEY'];
 
 		// Extract request metadata
-		const cfRequest = c.req.raw as CloudflareRequest;
-		const metadata = extractRequestMetadata(cfRequest);
+		const metadata = extractRequestMetadata(c.req.raw);
 
 		logger.info(
 			{
@@ -98,10 +97,10 @@ app.post('/', async (c) => {
 		// Even failed validations can have ephemeral IDs that we need to track
 
 		// Initialize fraud check result (default: allow with 0 risk score)
-		let fraudCheck = {
+		let fraudCheck: FraudCheckResult = {
 			allowed: true,
 			riskScore: 0,
-			warnings: [] as string[],
+			warnings: [],
 		};
 
 		// EPHEMERAL ID BLACKLIST CHECK & FRAUD DETECTION (performance optimization)

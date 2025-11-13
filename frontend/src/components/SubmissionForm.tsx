@@ -31,8 +31,8 @@ export default function SubmissionForm() {
 			try {
 				const response = await fetch('/api/geo');
 				const data = await response.json();
-				if (data.success && data.countryCode) {
-					setDefaultCountry(data.countryCode.toLowerCase());
+				if ((data as any).success && (data as any).countryCode) {
+					setDefaultCountry((data as any).countryCode.toLowerCase());
 				}
 			} catch (error) {
 				console.error('Failed to detect country:', error);
@@ -85,7 +85,7 @@ export default function SubmissionForm() {
 				}),
 			});
 
-			const result = await response.json();
+			const result = await response.json() as any;
 
 			if (response.ok) {
 				setFlowStep('success');

@@ -67,7 +67,7 @@ test.describe('Fraud Detection Patterns', () => {
 			browser.newContext(),
 		]);
 
-		const results = [];
+		const results: Array<{ status: number; data: any }> = [];
 
 		for (const context of contexts) {
 			const page = await context.newPage();

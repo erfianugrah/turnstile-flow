@@ -1,12 +1,12 @@
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Shield, Activity, Globe, Zap } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../../ui/card';
 import { Alert, AlertDescription } from '../../ui/alert';
 
 interface FraudPattern {
-	duplicate_ips: any[];
-	low_bot_scores: any[];
-	rapid_submissions: any[];
-	duplicate_emails: any[];
+	blacklisted: any[];
+	high_risk_ephemeral: any[];
+	proxy_rotation: any[];
+	high_frequency: any[];
 }
 
 interface FraudAlertProps {
@@ -15,8 +15,9 @@ interface FraudAlertProps {
 }
 
 /**
- * FraudAlert displays potential fraud patterns detected in submissions
- * Shows warnings for duplicate IPs, low bot scores, rapid submissions, and duplicate emails
+ * FraudAlert displays ephemeral ID-based fraud patterns
+ * Aligns with fraud detection in src/routes/submissions.ts:96-242
+ * Shows: blacklisted IDs, high-risk patterns, proxy rotation, and high-frequency validators
  */
 export function FraudAlert({ data, loading }: FraudAlertProps) {
 	if (loading) {
@@ -24,8 +25,8 @@ export function FraudAlert({ data, loading }: FraudAlertProps) {
 			<Card>
 				<CardHeader>
 					<CardTitle className="flex items-center gap-2">
-						<AlertTriangle size={20} className="text-yellow-600" />
-						Fraud Detection
+						<Shield size={20} className="text-yellow-600" />
+						Ephemeral ID Fraud Detection
 					</CardTitle>
 					<CardDescription>Analyzing for suspicious patterns</CardDescription>
 				</CardHeader>
@@ -41,24 +42,24 @@ export function FraudAlert({ data, loading }: FraudAlertProps) {
 	}
 
 	const totalAlerts =
-		data.duplicate_ips.length +
-		data.low_bot_scores.length +
-		data.rapid_submissions.length +
-		data.duplicate_emails.length;
+		data.blacklisted.length +
+		data.high_risk_ephemeral.length +
+		data.proxy_rotation.length +
+		data.high_frequency.length;
 
 	if (totalAlerts === 0) {
 		return (
 			<Card>
 				<CardHeader>
 					<CardTitle className="flex items-center gap-2">
-						<AlertTriangle size={20} className="text-green-600 dark:text-green-400" />
-						Fraud Detection
+						<Shield size={20} className="text-green-600 dark:text-green-400" />
+						Ephemeral ID Fraud Detection
 					</CardTitle>
 					<CardDescription>No suspicious patterns detected</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<p className="text-muted-foreground text-sm">
-						All submissions appear legitimate based on recent activity.
+						All ephemeral IDs appear legitimate. No blacklisted IDs, proxy rotation, or abuse patterns detected.
 					</p>
 				</CardContent>
 			</Card>
@@ -69,114 +70,154 @@ export function FraudAlert({ data, loading }: FraudAlertProps) {
 		<Card>
 			<CardHeader>
 				<CardTitle className="flex items-center gap-2">
-					<AlertTriangle size={20} className="text-yellow-600" />
-					Fraud Detection
+					<Shield size={20} className="text-yellow-600" />
+					Ephemeral ID Fraud Detection
 				</CardTitle>
 				<CardDescription>
 					{totalAlerts} suspicious {totalAlerts === 1 ? 'pattern' : 'patterns'} detected
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-4">
-				{/* Duplicate IPs */}
-				{data.duplicate_ips.length > 0 && (
-					<Alert>
+				{/* Blacklisted Ephemeral IDs */}
+				{data.blacklisted.length > 0 && (
+					<Alert className="border-red-600">
 						<AlertDescription>
-							<div className="font-semibold mb-2">Duplicate IP Addresses ({data.duplicate_ips.length})</div>
-							<div className="space-y-2 text-sm">
-								{data.duplicate_ips.slice(0, 3).map((item: any, index: number) => (
-									<div key={index} className="p-2 bg-secondary rounded">
-										<div className="flex justify-between">
-											<span className="font-mono">{item.remote_ip}</span>
-											<span className="text-muted-foreground">{item.submission_count} submissions</span>
-										</div>
-										{item.avg_bot_score !== null && (
-											<div className="text-xs text-muted-foreground mt-1">
-												Avg bot score: {item.avg_bot_score.toFixed(0)}
-											</div>
-										)}
-									</div>
-								))}
-								{data.duplicate_ips.length > 3 && (
-									<div className="text-xs text-muted-foreground">
-										+{data.duplicate_ips.length - 3} more
-									</div>
-								)}
+							<div className="font-semibold mb-2 flex items-center gap-2">
+								<AlertTriangle size={16} className="text-red-600" />
+								Blacklisted Ephemeral IDs ({data.blacklisted.length})
 							</div>
-						</AlertDescription>
-					</Alert>
-				)}
-
-				{/* Low Bot Scores */}
-				{data.low_bot_scores.length > 0 && (
-					<Alert>
-						<AlertDescription>
-							<div className="font-semibold mb-2">Low Bot Scores ({data.low_bot_scores.length})</div>
 							<div className="space-y-2 text-sm">
-								{data.low_bot_scores.slice(0, 3).map((item: any, index: number) => (
-									<div key={index} className="p-2 bg-secondary rounded">
-										<div className="flex justify-between">
-											<span>{item.email}</span>
-											<span className="text-destructive font-semibold">Score: {item.bot_score}</span>
+								{data.blacklisted.slice(0, 3).map((item: any, index: number) => (
+									<div key={index} className="p-2 bg-secondary rounded border border-red-600/20">
+										<div className="flex justify-between items-start">
+											<span className="font-mono text-xs break-all">{item.ephemeral_id}</span>
+											<span className={`text-xs px-2 py-0.5 rounded ${
+												item.confidence === 'high' ? 'bg-red-600 text-white' :
+												item.confidence === 'medium' ? 'bg-orange-600 text-white' :
+												'bg-yellow-600 text-white'
+											}`}>
+												{item.confidence}
+											</span>
 										</div>
 										<div className="text-xs text-muted-foreground mt-1">
-											{item.remote_ip} • {item.country || 'Unknown'}
-										</div>
-									</div>
-								))}
-								{data.low_bot_scores.length > 3 && (
-									<div className="text-xs text-muted-foreground">
-										+{data.low_bot_scores.length - 3} more
-									</div>
-								)}
-							</div>
-						</AlertDescription>
-					</Alert>
-				)}
-
-				{/* Rapid Submissions */}
-				{data.rapid_submissions.length > 0 && (
-					<Alert>
-						<AlertDescription>
-							<div className="font-semibold mb-2">Rapid Submissions ({data.rapid_submissions.length})</div>
-							<div className="space-y-2 text-sm">
-								{data.rapid_submissions.slice(0, 3).map((item: any, index: number) => (
-									<div key={index} className="p-2 bg-secondary rounded">
-										<div className="flex justify-between">
-											<span className="font-mono">{item.remote_ip}</span>
-											<span className="text-muted-foreground">{item.count} in {item.time_span_minutes}min</span>
-										</div>
-									</div>
-								))}
-								{data.rapid_submissions.length > 3 && (
-									<div className="text-xs text-muted-foreground">
-										+{data.rapid_submissions.length - 3} more
-									</div>
-								)}
-							</div>
-						</AlertDescription>
-					</Alert>
-				)}
-
-				{/* Duplicate Emails */}
-				{data.duplicate_emails.length > 0 && (
-					<Alert>
-						<AlertDescription>
-							<div className="font-semibold mb-2">Duplicate Emails ({data.duplicate_emails.length})</div>
-							<div className="space-y-2 text-sm">
-								{data.duplicate_emails.slice(0, 3).map((item: any, index: number) => (
-									<div key={index} className="p-2 bg-secondary rounded">
-										<div className="flex justify-between">
-											<span>{item.email}</span>
-											<span className="text-muted-foreground">{item.submission_count} submissions</span>
+											{item.block_reason}
 										</div>
 										<div className="text-xs text-muted-foreground mt-1">
-											{item.unique_ips} unique IPs • {item.countries}
+											Submissions: {item.submission_count} • Expires: {new Date(item.expires_at).toLocaleString()}
 										</div>
 									</div>
 								))}
-								{data.duplicate_emails.length > 3 && (
+								{data.blacklisted.length > 3 && (
 									<div className="text-xs text-muted-foreground">
-										+{data.duplicate_emails.length - 3} more
+										+{data.blacklisted.length - 3} more blocked IDs
+									</div>
+								)}
+							</div>
+						</AlertDescription>
+					</Alert>
+				)}
+
+				{/* High-Risk Ephemeral IDs (3+ submissions in 1 hour) */}
+				{data.high_risk_ephemeral.length > 0 && (
+					<Alert className="border-orange-600">
+						<AlertDescription>
+							<div className="font-semibold mb-2 flex items-center gap-2">
+								<Activity size={16} className="text-orange-600" />
+								High-Risk Ephemeral IDs ({data.high_risk_ephemeral.length})
+							</div>
+							<div className="text-xs text-muted-foreground mb-2">
+								Ephemeral IDs with 3+ submissions in 1 hour (threshold: src/lib/turnstile.ts:178)
+							</div>
+							<div className="space-y-2 text-sm">
+								{data.high_risk_ephemeral.slice(0, 3).map((item: any, index: number) => (
+									<div key={index} className="p-2 bg-secondary rounded border border-orange-600/20">
+										<div className="flex justify-between">
+											<span className="font-mono text-xs break-all">{item.ephemeral_id}</span>
+											<span className="text-destructive font-semibold">{item.submission_count} submissions</span>
+										</div>
+										<div className="text-xs text-muted-foreground mt-1">
+											{item.unique_ips} unique IPs • {item.countries || 'Unknown countries'}
+										</div>
+										<div className="text-xs text-muted-foreground">
+											Timespan: {item.time_span_minutes?.toFixed(1) || '0'} minutes
+										</div>
+									</div>
+								))}
+								{data.high_risk_ephemeral.length > 3 && (
+									<div className="text-xs text-muted-foreground">
+										+{data.high_risk_ephemeral.length - 3} more high-risk IDs
+									</div>
+								)}
+							</div>
+						</AlertDescription>
+					</Alert>
+				)}
+
+				{/* Proxy Rotation (same ephemeral ID from multiple IPs) */}
+				{data.proxy_rotation.length > 0 && (
+					<Alert className="border-purple-600">
+						<AlertDescription>
+							<div className="font-semibold mb-2 flex items-center gap-2">
+								<Globe size={16} className="text-purple-600" />
+								Proxy Rotation Detected ({data.proxy_rotation.length})
+							</div>
+							<div className="text-xs text-muted-foreground mb-2">
+								Same ephemeral ID from 3+ different IPs - possible botnet/proxy (src/lib/turnstile.ts:202)
+							</div>
+							<div className="space-y-2 text-sm">
+								{data.proxy_rotation.slice(0, 3).map((item: any, index: number) => (
+									<div key={index} className="p-2 bg-secondary rounded border border-purple-600/20">
+										<div className="flex justify-between">
+											<span className="font-mono text-xs break-all">{item.ephemeral_id}</span>
+											<span className="text-purple-600 font-semibold">{item.unique_ips} IPs</span>
+										</div>
+										<div className="text-xs text-muted-foreground mt-1">
+											{item.submission_count} submissions • {item.countries || 'Unknown countries'}
+										</div>
+										<div className="text-xs text-muted-foreground font-mono mt-1 truncate" title={item.ip_addresses}>
+											IPs: {item.ip_addresses}
+										</div>
+									</div>
+								))}
+								{data.proxy_rotation.length > 3 && (
+									<div className="text-xs text-muted-foreground">
+										+{data.proxy_rotation.length - 3} more proxy rotation patterns
+									</div>
+								)}
+							</div>
+						</AlertDescription>
+					</Alert>
+				)}
+
+				{/* High-Frequency Validators (10+ attempts in 1 hour) */}
+				{data.high_frequency.length > 0 && (
+					<Alert className="border-yellow-600">
+						<AlertDescription>
+							<div className="font-semibold mb-2 flex items-center gap-2">
+								<Zap size={16} className="text-yellow-600" />
+								High-Frequency Validators ({data.high_frequency.length})
+							</div>
+							<div className="text-xs text-muted-foreground mb-2">
+								Ephemeral IDs with 10+ validation attempts in 1 hour - possible bot (src/lib/turnstile.ts:221)
+							</div>
+							<div className="space-y-2 text-sm">
+								{data.high_frequency.slice(0, 3).map((item: any, index: number) => (
+									<div key={index} className="p-2 bg-secondary rounded border border-yellow-600/20">
+										<div className="flex justify-between">
+											<span className="font-mono text-xs break-all">{item.ephemeral_id}</span>
+											<span className="text-yellow-600 font-semibold">{item.validation_count} attempts</span>
+										</div>
+										<div className="text-xs text-muted-foreground mt-1">
+											Success: {item.successful_validations} • Failed: {item.failed_validations}
+										</div>
+										<div className="text-xs text-muted-foreground">
+											{item.unique_ips} unique IPs • Timespan: {item.time_span_minutes?.toFixed(1) || '0'} minutes
+										</div>
+									</div>
+								))}
+								{data.high_frequency.length > 3 && (
+									<div className="text-xs text-muted-foreground">
+										+{data.high_frequency.length - 3} more high-frequency validators
 									</div>
 								)}
 							</div>

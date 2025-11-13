@@ -219,7 +219,7 @@ export default function AnalyticsDashboard() {
 		setLoading(true);
 		setError(null);
 
-		const headers = key ? { 'X-API-KEY': key } : {};
+		const headers: HeadersInit = key ? { 'X-API-KEY': key } : {};
 
 		try {
 			const [
@@ -231,7 +231,6 @@ export default function AnalyticsDashboard() {
 				ja3Res,
 				ja4Res,
 				timeSeriesRes,
-				fraudRes,
 			] = await Promise.all([
 				fetch('/api/analytics/stats', { headers }),
 				fetch('/api/analytics/countries', { headers }),
@@ -241,7 +240,6 @@ export default function AnalyticsDashboard() {
 				fetch('/api/analytics/ja3', { headers }),
 				fetch('/api/analytics/ja4', { headers }),
 				fetch('/api/analytics/time-series?metric=submissions&interval=day', { headers }),
-				fetch('/api/analytics/fraud-patterns', { headers }),
 			]);
 
 			// Check for 401 errors (unauthorized)
@@ -262,13 +260,12 @@ export default function AnalyticsDashboard() {
 				!tlsRes.ok ||
 				!ja3Res.ok ||
 				!ja4Res.ok ||
-				!timeSeriesRes.ok ||
-				!fraudRes.ok
+				!timeSeriesRes.ok
 			) {
 				throw new Error('Failed to fetch analytics');
 			}
 
-			const [statsData, countriesData, botScoresData, asnData, tlsData, ja3DataRes, ja4DataRes, timeSeriesDataRes, fraudDataRes] =
+			const [statsData, countriesData, botScoresData, asnData, tlsData, ja3DataRes, ja4DataRes, timeSeriesDataRes] =
 				await Promise.all([
 					statsRes.json(),
 					countriesRes.json(),
@@ -278,18 +275,31 @@ export default function AnalyticsDashboard() {
 					ja3Res.json(),
 					ja4Res.json(),
 					timeSeriesRes.json(),
-					fraudRes.json(),
 				]);
 
-			setStats(statsData.data);
-			setCountries(countriesData.data);
-			setBotScores(botScoresData.data);
-			setAsnData(asnData.data);
-			setTlsData(tlsData.data);
-			setJa3Data(ja3DataRes.data);
-			setJa4Data(ja4DataRes.data);
-			setTimeSeriesData(timeSeriesDataRes.data || []);
-			setFraudPatterns(fraudDataRes.data);
+			setStats((statsData as any).data);
+			setCountries((countriesData as any).data);
+			setBotScores((botScoresData as any).data);
+			setAsnData((asnData as any).data);
+			setTlsData((tlsData as any).data);
+			setJa3Data((ja3DataRes as any).data);
+			setJa4Data((ja4DataRes as any).data);
+			setTimeSeriesData((timeSeriesDataRes as any).data || []);
+
+			// Load fraud patterns separately - don't fail the whole page if this fails
+			try {
+				const fraudRes = await fetch('/api/analytics/fraud-patterns', { headers });
+				if (fraudRes.ok) {
+					const fraudDataRes = await fraudRes.json();
+					setFraudPatterns((fraudDataRes as any).data);
+				} else {
+					console.warn('Failed to load fraud patterns:', await fraudRes.text());
+					setFraudPatterns(null);
+				}
+			} catch (err) {
+				console.error('Error loading fraud patterns:', err);
+				setFraudPatterns(null);
+			}
 
 			// Load submissions separately with filters
 			await loadSubmissions(key);
@@ -303,7 +313,7 @@ export default function AnalyticsDashboard() {
 
 	const loadSubmissions = async (key: string) => {
 		setSubmissionsLoading(true);
-		const headers = key ? { 'X-API-KEY': key } : {};
+		const headers: HeadersInit = key ? { 'X-API-KEY': key } : {};
 
 		try {
 			// Build query parameters
@@ -352,8 +362,8 @@ export default function AnalyticsDashboard() {
 			}
 
 			const data = await res.json();
-			setSubmissions(data.data);
-			setTotalCount(data.total || 0);
+			setSubmissions((data as any).data);
+			setTotalCount((data as any).total || 0);
 		} catch (err) {
 			console.error('Error loading submissions:', err);
 			// Don't set global error, just log it
@@ -364,7 +374,7 @@ export default function AnalyticsDashboard() {
 
 	const loadSubmissionDetail = async (id: number) => {
 		setModalLoading(true);
-		const headers = apiKey ? { 'X-API-KEY': apiKey } : {};
+		const headers: HeadersInit = apiKey ? { 'X-API-KEY': apiKey } : {};
 		try {
 			const res = await fetch(`/api/analytics/submissions/${id}`, { headers });
 			if (res.status === 401) {
@@ -378,7 +388,7 @@ export default function AnalyticsDashboard() {
 				throw new Error('Failed to fetch submission details');
 			}
 			const data = await res.json();
-			setSelectedSubmission(data.data);
+			setSelectedSubmission((data as any).data);
 		} catch (err) {
 			console.error('Error loading submission details:', err);
 			alert('Failed to load submission details');
@@ -782,12 +792,12 @@ export default function AnalyticsDashboard() {
 							totalCount={totalCount}
 							manualPagination={true}
 							manualSorting={true}
-							onPaginationChange={(updater) => {
+							onPaginationChange={(updater: PaginationState | ((old: PaginationState) => PaginationState)) => {
 								const newPagination =
 									typeof updater === 'function' ? updater(pagination) : updater;
 								setPagination(newPagination);
 							}}
-							onSortingChange={(updater) => {
+							onSortingChange={(updater: SortingState | ((old: SortingState) => SortingState)) => {
 								const newSorting =
 									typeof updater === 'function' ? updater(sorting) : updater;
 								setSorting(newSorting);

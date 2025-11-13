@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "build": "cd frontend && npm run build && cd ..",
-    "deploy": "npm run build && wrangler deploy",
+    "typecheck": "tsc --noEmit && cd frontend && npm run typecheck && cd ..",
+    "deploy": "npm run typecheck && npm run build && wrangler deploy",
     "tail": "wrangler tail",
     "cf-typegen": "wrangler types",
     "test": "playwright test",
@@ -26,6 +27,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250107.0",
     "@playwright/test": "^1.56.1",
+    "typescript": "^5.9.3",
     "wrangler": "^4.47.0"
   }
 }

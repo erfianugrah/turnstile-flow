@@ -699,13 +699,21 @@ app.get('/fraud-patterns', async (c) => {
 			data: patterns,
 		});
 	} catch (error) {
-		logger.error({ error }, 'Error detecting fraud patterns');
+		const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+		const errorStack = error instanceof Error ? error.stack : undefined;
+
+		logger.error({
+			error,
+			message: errorMessage,
+			stack: errorStack
+		}, 'Error detecting fraud patterns');
 
 		return c.json(
 			{
 				success: false,
 				error: 'Internal server error',
 				message: 'Failed to detect fraud patterns',
+				details: errorMessage, // Include error details for debugging
 			},
 			500
 		);
