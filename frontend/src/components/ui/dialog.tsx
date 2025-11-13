@@ -34,8 +34,8 @@ export function Dialog({ open, onClose, onOpenChange, children }: DialogProps) {
 				className="absolute inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm"
 				onClick={onClose || onOpenChange ? handleClose : undefined}
 			/>
-			{/* Dialog */}
-			<div className="relative z-50 w-full max-w-4xl max-h-[90vh] overflow-hidden m-auto">
+			{/* Dialog - let DialogContent control max-width */}
+			<div className="relative z-50">
 				{children}
 			</div>
 		</div>
@@ -46,7 +46,8 @@ export function DialogContent({ className, children, ...props }: React.HTMLAttri
 	return (
 		<div
 			className={cn(
-				'bg-background border rounded-lg shadow-xl dark:shadow-[0_20px_40px_rgba(0,0,0,0.7)] overflow-y-auto max-h-[90vh]',
+				'bg-background border rounded-lg shadow-xl dark:shadow-[0_20px_40px_rgba(0,0,0,0.7)]',
+				'overflow-y-auto max-h-[90vh] w-full max-w-4xl',
 				className
 			)}
 			{...props}
