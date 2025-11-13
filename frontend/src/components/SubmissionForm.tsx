@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { PhoneInput } from './phone';
+import { DateOfBirthInput } from './DateOfBirthInput';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from './ui/card';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -56,6 +57,7 @@ export default function SubmissionForm() {
 	});
 
 	const phoneValue = watch('phone');
+	const dateOfBirthValue = watch('dateOfBirth');
 
 	const onSubmit = async (data: FormData) => {
 		setSubmitResult(null);
@@ -285,7 +287,8 @@ export default function SubmissionForm() {
 
 							<div className="space-y-2">
 								<Label htmlFor="phone" className="text-sm font-medium">
-									Phone Number <span className="text-destructive">*</span>
+									Phone Number{' '}
+									<span className="text-xs text-muted-foreground font-normal">(Optional)</span>
 								</Label>
 								<PhoneInput
 									defaultCountry={defaultCountry}
@@ -304,7 +307,8 @@ export default function SubmissionForm() {
 
 							<div className="space-y-2">
 								<Label htmlFor="address" className="text-sm font-medium">
-									Street Address <span className="text-destructive">*</span>
+									Address{' '}
+									<span className="text-xs text-muted-foreground font-normal">(Optional)</span>
 								</Label>
 								<Input
 									id="address"
@@ -329,19 +333,12 @@ export default function SubmissionForm() {
 						<h3 className="text-lg font-semibold text-foreground border-b pb-2">
 							Additional Information
 						</h3>
-						<div className="bg-muted/30 rounded-lg p-5 space-y-2">
-							<Label htmlFor="dateOfBirth" className="text-sm font-medium">
-								Date of Birth <span className="text-destructive">*</span>
-								<span className="text-xs text-muted-foreground ml-2">(Must be 18+)</span>
-							</Label>
-							<Input
-								id="dateOfBirth"
-								type="date"
-								{...register('dateOfBirth')}
+						<div className="bg-muted/30 rounded-lg p-5">
+							<DateOfBirthInput
+								value={dateOfBirthValue || ''}
+								onChange={(date) => setValue('dateOfBirth', date, { shouldValidate: true })}
 								disabled={isSubmitting}
-								className={errors.dateOfBirth ? 'border-destructive' : ''}
-								aria-invalid={!!errors.dateOfBirth}
-								aria-describedby={errors.dateOfBirth ? 'dateOfBirth-error' : undefined}
+								error={!!errors.dateOfBirth}
 							/>
 							{errors.dateOfBirth && (
 								<p id="dateOfBirth-error" className="text-sm text-destructive mt-1">
@@ -391,7 +388,7 @@ export default function SubmissionForm() {
 					<div className="border-t pt-8 mt-8 space-y-4">
 						<Button
 							type="submit"
-							className="w-full h-12 text-base font-semibold shadow-md hover:shadow-lg active:shadow-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+							className="w-full h-12 text-base font-semibold shadow-md hover:shadow-lg active:shadow-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed bg-primary text-primary-foreground hover:bg-primary/90"
 							disabled={isSubmitting}
 						>
 							{isSubmitting ? (
@@ -428,7 +425,7 @@ export default function SubmissionForm() {
 											d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
 										/>
 									</svg>
-									Submit Application
+									Submit
 								</span>
 							)}
 						</Button>

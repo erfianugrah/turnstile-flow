@@ -5,9 +5,9 @@ CREATE TABLE IF NOT EXISTS submissions (
 	first_name TEXT NOT NULL,
 	last_name TEXT NOT NULL,
 	email TEXT NOT NULL,
-	phone TEXT NOT NULL,
-	address TEXT NOT NULL,
-	date_of_birth TEXT NOT NULL,
+	phone TEXT, -- Optional: international phone number
+	address TEXT, -- Optional: free-form address (consider structured address fields for production)
+	date_of_birth TEXT, -- Optional: YYYY-MM-DD format
 	-- Turnstile & fraud detection
 	ephemeral_id TEXT,
 	-- Request metadata

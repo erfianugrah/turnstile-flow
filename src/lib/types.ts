@@ -102,9 +102,9 @@ export interface FormSubmission {
 	firstName: string;
 	lastName: string;
 	email: string;
-	phone: string;
-	address: string;
-	dateOfBirth: string;
+	phone?: string; // Optional
+	address?: string; // Optional
+	dateOfBirth?: string; // Optional
 }
 
 // Turnstile validation result

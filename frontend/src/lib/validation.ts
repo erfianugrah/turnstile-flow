@@ -19,21 +19,29 @@ export const formSchema = z.object({
 		.max(100, 'Email must be less than 100 characters'),
 	phone: z
 		.string()
-		.min(1, 'Phone is required')
+		.optional()
 		.refine((val) => {
+			if (!val || val.trim() === '') return true; // Allow empty
 			const digits = val.replace(/\D/g, '');
 			return digits.length >= 7 && digits.length <= 15;
 		}, 'Phone must contain 7-15 digits'),
 	address: z
 		.string()
-		.min(1, 'Address is required')
-		.max(200, 'Address must be less than 200 characters'),
+		.optional()
+		.refine((val) => {
+			if (!val || val.trim() === '') return true; // Allow empty
+			return val.length <= 200;
+		}, 'Address must be less than 200 characters'),
 	dateOfBirth: z
 		.string()
-		.min(1, 'Date of birth is required')
-		.regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format')
-		.refine((date) => {
-			const birthDate = new Date(date);
+		.optional()
+		.refine((val) => {
+			if (!val || val.trim() === '') return true; // Allow empty
+			return /^\d{4}-\d{2}-\d{2}$/.test(val);
+		}, 'Invalid date format (YYYY-MM-DD)')
+		.refine((val) => {
+			if (!val || val.trim() === '') return true; // Allow empty
+			const birthDate = new Date(val);
 			const today = new Date();
 			const age = today.getFullYear() - birthDate.getFullYear();
 			const monthDiff = today.getMonth() - birthDate.getMonth();
