@@ -119,8 +119,8 @@ export function MultiSelect({
 			</button>
 
 			{isOpen && (
-				<div className="absolute top-full left-0 right-0 mt-2 bg-popover border border-border rounded-md shadow-lg z-50 max-h-80 overflow-hidden flex flex-col">
-					<div className="p-2 border-b border-border">
+				<div className="absolute top-full left-0 right-0 mt-2 bg-card border border-border rounded-md shadow-lg z-50 max-h-80 overflow-hidden flex flex-col">
+					<div className="p-2 border-b border-border bg-card">
 						<input
 							type="text"
 							value={searchTerm}
@@ -130,7 +130,7 @@ export function MultiSelect({
 							onClick={(e) => e.stopPropagation()}
 						/>
 					</div>
-					<div className="overflow-y-auto p-2">
+					<div className="overflow-y-auto p-2 bg-card">
 						{filteredOptions.length === 0 ? (
 							<div className="px-3 py-2 text-sm text-muted-foreground">
 								No options found
@@ -142,7 +142,7 @@ export function MultiSelect({
 									<button
 										key={option.value}
 										onClick={() => toggleOption(option.value)}
-										className="w-full flex items-center justify-between px-3 py-2 text-sm rounded hover:bg-accent hover:text-accent-foreground transition-colors"
+										className="w-full flex items-center justify-between px-3 py-2 text-sm rounded text-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
 									>
 										<span>{option.label}</span>
 										{isSelected && (

@@ -1,3 +1,4 @@
+import * as React from 'react';
 import { useState } from 'react';
 import { Download, RefreshCw, X, Save, Filter, Eye } from 'lucide-react';
 
@@ -45,78 +46,96 @@ export function GlobalControlsBar({
 }: GlobalControlsBarProps) {
 	const [showExportMenu, setShowExportMenu] = useState(false);
 	const [showViewMenu, setShowViewMenu] = useState(false);
+	const exportMenuRef = React.useRef<HTMLDivElement>(null);
+	const viewMenuRef = React.useRef<HTMLDivElement>(null);
+
+	// Close dropdowns when clicking outside
+	React.useEffect(() => {
+		const handleClickOutside = (event: MouseEvent) => {
+			if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+				setShowExportMenu(false);
+			}
+			if (viewMenuRef.current && !viewMenuRef.current.contains(event.target as Node)) {
+				setShowViewMenu(false);
+			}
+		};
+
+		document.addEventListener('mousedown', handleClickOutside);
+		return () => document.removeEventListener('mousedown', handleClickOutside);
+	}, []);
 
 	return (
-		<div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-card border border-border rounded-lg shadow-sm">
-			{/* Left Section - Auto-refresh & Manual Refresh */}
-			<div className="flex items-center gap-3">
-				{/* Manual Refresh Button */}
-				{onManualRefresh && (
-					<button
-						onClick={onManualRefresh}
-						disabled={isLoading}
-						className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-foreground bg-secondary hover:bg-secondary/80 rounded-md transition-colors disabled:opacity-50"
-						title="Refresh data"
-					>
-						<RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
-						Refresh
-					</button>
-				)}
+		<div className="p-4 bg-card border border-border rounded-lg shadow-sm">
+			<div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+				{/* Left Section - Auto-refresh & Manual Refresh */}
+				<div className="flex flex-wrap items-center gap-2">
+					{/* Manual Refresh Button */}
+					{onManualRefresh && (
+						<button
+							onClick={onManualRefresh}
+							disabled={isLoading}
+							className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-foreground bg-secondary hover:bg-secondary/80 rounded-md transition-colors disabled:opacity-50"
+							title="Refresh data"
+						>
+							<RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
+							Refresh
+						</button>
+					)}
 
-				{/* Auto-refresh Toggle */}
-				<label className="flex items-center gap-2 cursor-pointer px-3 py-2 bg-secondary rounded-md">
-					<input
-						type="checkbox"
-						checked={autoRefresh}
-						onChange={(e) => onAutoRefreshChange(e.target.checked)}
-						className="w-4 h-4 accent-primary cursor-pointer"
-					/>
-					<span className="text-sm text-foreground">Auto</span>
-				</label>
+					{/* Auto-refresh Toggle */}
+					<label className="flex items-center gap-2 cursor-pointer px-3 py-2 bg-secondary rounded-md">
+						<input
+							type="checkbox"
+							checked={autoRefresh}
+							onChange={(e) => onAutoRefreshChange(e.target.checked)}
+							className="w-4 h-4 accent-primary cursor-pointer"
+						/>
+						<span className="text-sm text-foreground whitespace-nowrap">Auto</span>
+					</label>
 
-				{/* Refresh Interval Selector */}
-				{autoRefresh && (
-					<select
-						value={refreshInterval}
-						onChange={(e) => onRefreshIntervalChange(parseInt(e.target.value))}
-						className="px-3 py-2 text-sm border border-border rounded-md bg-background text-foreground"
-					>
-						<option value={10}>10s</option>
-						<option value={30}>30s</option>
-						<option value={60}>60s</option>
-						<option value={120}>2min</option>
-						<option value={300}>5min</option>
-					</select>
-				)}
-			</div>
+					{/* Refresh Interval Selector */}
+					{autoRefresh && (
+						<select
+							value={refreshInterval}
+							onChange={(e) => onRefreshIntervalChange(parseInt(e.target.value))}
+							className="px-3 py-2 text-sm border border-border rounded-md bg-background text-foreground"
+						>
+							<option value={10}>10s</option>
+							<option value={30}>30s</option>
+							<option value={60}>60s</option>
+							<option value={120}>2min</option>
+							<option value={300}>5min</option>
+						</select>
+					)}
+				</div>
 
-			{/* Center Section - Filter Controls */}
-			<div className="flex items-center gap-2">
-				{hasActiveFilters && (
-					<>
-						<div className="flex items-center gap-2 px-3 py-2 bg-primary/10 text-primary rounded-md">
-							<Filter size={16} />
-							<span className="text-sm font-medium">Filters Active</span>
-						</div>
-						{onClearFilters && (
-							<button
-								onClick={onClearFilters}
-								className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
-								title="Clear all filters"
-							>
-								<X size={14} />
-								Clear
-							</button>
-						)}
-					</>
-				)}
-			</div>
+				{/* Center Section - Filter Controls */}
+				<div className="flex items-center gap-2 flex-1">
+					{hasActiveFilters && (
+						<>
+							<div className="flex items-center gap-2 px-3 py-2 bg-primary/10 text-primary rounded-md">
+								<Filter size={16} />
+								<span className="text-sm font-medium whitespace-nowrap">Filters Active</span>
+							</div>
+							{onClearFilters && (
+								<button
+									onClick={onClearFilters}
+									className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap"
+									title="Clear all filters"
+								>
+									<X size={14} />
+									Clear
+								</button>
+							)}
+						</>
+					)}
+				</div>
 
-			{/* Right Section - Export & View Options */}
-			<div className="flex items-center gap-2">
+				{/* Right Section - Export & View Options */}
+				<div className="flex items-center gap-2">
 				{/* View Options */}
 				{onTableViewChange && (
-					<div className="relative">
+					<div className="relative" ref={viewMenuRef}>
 						<button
 							onClick={() => setShowViewMenu(!showViewMenu)}
 							className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-foreground bg-secondary hover:bg-secondary/80 rounded-md transition-colors"
@@ -127,13 +146,13 @@ export function GlobalControlsBar({
 						</button>
 						{showViewMenu && (
 							<div className="absolute right-0 mt-2 w-40 bg-card border border-border rounded-md shadow-lg z-10">
-								<div className="p-2 space-y-1">
+								<div className="p-2 space-y-1 bg-card">
 									<button
 										onClick={() => {
 											onTableViewChange('compact');
 											setShowViewMenu(false);
 										}}
-										className={`w-full text-left px-3 py-2 text-sm rounded hover:bg-secondary ${
+										className={`w-full text-left px-3 py-2 text-sm text-foreground rounded hover:bg-secondary ${
 											tableView === 'compact' ? 'bg-secondary font-medium' : ''
 										}`}
 									>
@@ -144,7 +163,7 @@ export function GlobalControlsBar({
 											onTableViewChange('comfortable');
 											setShowViewMenu(false);
 										}}
-										className={`w-full text-left px-3 py-2 text-sm rounded hover:bg-secondary ${
+										className={`w-full text-left px-3 py-2 text-sm text-foreground rounded hover:bg-secondary ${
 											tableView === 'comfortable' ? 'bg-secondary font-medium' : ''
 										}`}
 									>
@@ -155,7 +174,7 @@ export function GlobalControlsBar({
 											onTableViewChange('spacious');
 											setShowViewMenu(false);
 										}}
-										className={`w-full text-left px-3 py-2 text-sm rounded hover:bg-secondary ${
+										className={`w-full text-left px-3 py-2 text-sm text-foreground rounded hover:bg-secondary ${
 											tableView === 'spacious' ? 'bg-secondary font-medium' : ''
 										}`}
 									>
@@ -169,7 +188,7 @@ export function GlobalControlsBar({
 
 				{/* Export Menu */}
 				{(onExportCSV || onExportJSON) && (
-					<div className="relative">
+					<div className="relative" ref={exportMenuRef}>
 						<button
 							onClick={() => setShowExportMenu(!showExportMenu)}
 							disabled={isLoading}
@@ -181,14 +200,14 @@ export function GlobalControlsBar({
 						</button>
 						{showExportMenu && (
 							<div className="absolute right-0 mt-2 w-32 bg-card border border-border rounded-md shadow-lg z-10">
-								<div className="p-2 space-y-1">
+								<div className="p-2 space-y-1 bg-card">
 									{onExportCSV && (
 										<button
 											onClick={() => {
 												onExportCSV();
 												setShowExportMenu(false);
 											}}
-											className="w-full text-left px-3 py-2 text-sm rounded hover:bg-secondary"
+											className="w-full text-left px-3 py-2 text-sm text-foreground rounded hover:bg-secondary"
 										>
 											CSV
 										</button>
@@ -199,7 +218,7 @@ export function GlobalControlsBar({
 												onExportJSON();
 												setShowExportMenu(false);
 											}}
-											className="w-full text-left px-3 py-2 text-sm rounded hover:bg-secondary"
+											className="w-full text-left px-3 py-2 text-sm text-foreground rounded hover:bg-secondary"
 										>
 											JSON
 										</button>
@@ -209,6 +228,7 @@ export function GlobalControlsBar({
 						)}
 					</div>
 				)}
+				</div>
 			</div>
 		</div>
 	);

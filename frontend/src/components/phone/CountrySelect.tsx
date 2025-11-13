@@ -76,7 +76,7 @@ export function CountrySelect({ value, onChange, disabled }: CountrySelectProps)
           isOpen && 'ring-2 ring-ring'
         )}
       >
-        <span className="text-lg leading-none">{selectedCountry.emoji}</span>
+        <span className={`fi fi-${selectedCountry.code.toLowerCase()} text-xl`}></span>
         <span className="font-medium">{selectedCountry.dial}</span>
         <svg
           className={cn(
@@ -134,7 +134,7 @@ export function CountrySelect({ value, onChange, disabled }: CountrySelectProps)
                     country.code === value && 'bg-accent text-accent-foreground font-medium'
                   )}
                 >
-                  <span className="text-lg">{country.emoji}</span>
+                  <span className={`fi fi-${country.code.toLowerCase()} text-xl`}></span>
                   <span className="flex-1">{country.name}</span>
                   <span className="text-muted-foreground">{country.dial}</span>
                 </button>

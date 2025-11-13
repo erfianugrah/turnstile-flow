@@ -92,7 +92,7 @@ export function RangeSlider({
 
 			<div className="space-y-3">
 				{/* Value Display */}
-				<div className="flex items-center justify-between text-sm">
+				<div className="flex items-center justify-center gap-6 text-sm">
 					<span className="text-muted-foreground">
 						Min: <span className="font-semibold text-foreground">{localValue[0]}</span>
 					</span>
