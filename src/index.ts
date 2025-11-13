@@ -8,28 +8,30 @@ import geoRoute from './routes/geo';
 
 const app = new Hono<{ Bindings: Env }>();
 
-// Allowed origins for CORS
-const ALLOWED_ORIGINS = [
-	'https://form.erfi.dev',
-	'https://erfi.dev',
-	'https://erfianugrah.com',
-];
-
-// Allow localhost in development
-if (process.env.NODE_ENV === 'development') {
-	ALLOWED_ORIGINS.push('http://localhost:8787', 'http://localhost:4321');
-}
-
 // Middleware
 app.use('*', logger());
 
-// CORS with restricted origins
-app.use('/api/*', cors({
-	origin: ALLOWED_ORIGINS,
-	allowMethods: ['GET', 'POST', 'OPTIONS'],
-	allowHeaders: ['Content-Type'],
-	maxAge: 86400,
-}));
+// CORS with restricted origins from environment
+app.use('/api/*', async (c, next) => {
+	// Get allowed origins from environment variable
+	const allowedOriginsEnv = c.env.ALLOWED_ORIGINS || 'https://form.erfi.dev';
+	const allowedOrigins = allowedOriginsEnv.split(',').map(o => o.trim());
+
+	// Add localhost in development
+	if (c.env.ENVIRONMENT !== 'production') {
+		allowedOrigins.push('http://localhost:8787', 'http://localhost:4321');
+	}
+
+	// Apply CORS
+	const corsMiddleware = cors({
+		origin: allowedOrigins,
+		allowMethods: ['GET', 'POST', 'OPTIONS'],
+		allowHeaders: ['Content-Type'],
+		maxAge: 86400,
+	});
+
+	return corsMiddleware(c, next);
+});
 
 // Security headers middleware
 app.use('*', async (c, next) => {

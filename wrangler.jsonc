@@ -22,7 +22,8 @@
 	],
 	// Environment variables
 	"vars": {
-		"ENVIRONMENT": "production"
+		"ENVIRONMENT": "production",
+		"ALLOWED_ORIGINS": "https://form.erfi.dev,https://erfi.dev,https://erfianugrah.com"
 	},
 	// Observability
 	"observability": {

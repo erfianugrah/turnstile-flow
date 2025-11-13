@@ -24,17 +24,18 @@ Comprehensive technical documentation for **Forminator** - I'm collecting all yo
 |----------|-------------|------|
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | Complete system architecture and design decisions | ~15KB |
 | [SECURITY.md](./SECURITY.md) | Security implementation details and best practices | ~28KB |
-| [API-REFERENCE.md](./API-REFERENCE.md) ⭐ **NEW** | Exhaustive API documentation for all endpoints | ~35KB |
+| [API-REFERENCE.md](./API-REFERENCE.md) | Exhaustive API documentation for all endpoints | ~35KB |
 
 ### Features & Components
 
 | Document | Description | Size |
 |----------|-------------|------|
-| [FORM-VALIDATION.md](./FORM-VALIDATION.md) ⭐ **NEW** | Exhaustive form validation system guide | ~30KB |
-| [PHONE-INPUT.md](./PHONE-INPUT.md) ⭐ **UPDATED** | Custom phone input implementation (70% smaller) | ~14KB |
-| [GEOLOCATION.md](./GEOLOCATION.md) ⭐ **NEW** | Country detection via Cloudflare | ~28KB |
+| [FORM-VALIDATION.md](./FORM-VALIDATION.md) | Exhaustive form validation system guide | ~30KB |
+| [PHONE-INPUT.md](./PHONE-INPUT.md) | Custom phone input implementation (70% smaller) | ~14KB |
+| [GEOLOCATION.md](./GEOLOCATION.md) | Country detection via Cloudflare | ~28KB |
 | [TURNSTILE.md](./TURNSTILE.md) | Turnstile integration and verification | ~18KB |
-| [FRAUD-DETECTION.md](./FRAUD-DETECTION.md) | Ephemeral ID fraud detection strategy | ~28KB |
+| [FRAUD-DETECTION.md](./FRAUD-DETECTION.md) | Ephemeral ID fraud detection with progressive timeouts | ~28KB |
+| [DATABASE-OPERATIONS.md](./DATABASE-OPERATIONS.md) | Complete D1 database management guide | ~35KB |
 | [TURNSTILE-ENHANCEMENTS.md](./TURNSTILE-ENHANCEMENTS.md) | Optional enhancement opportunities | ~10KB |
 
 ## Document Summaries
@@ -78,7 +79,7 @@ Comprehensive technical documentation for **Forminator** - I'm collecting all yo
 
 ---
 
-### [API-REFERENCE.md](./API-REFERENCE.md) ⭐ **NEW**
+### [API-REFERENCE.md](./API-REFERENCE.md)
 **Exhaustive API documentation for all endpoints**
 
 **You'll learn:**
@@ -108,7 +109,7 @@ Comprehensive technical documentation for **Forminator** - I'm collecting all yo
 
 ---
 
-### [FORM-VALIDATION.md](./FORM-VALIDATION.md) ⭐ **NEW**
+### [FORM-VALIDATION.md](./FORM-VALIDATION.md)
 **Exhaustive guide to the form validation system**
 
 **You'll learn:**
@@ -141,7 +142,7 @@ Comprehensive technical documentation for **Forminator** - I'm collecting all yo
 
 ---
 
-### [PHONE-INPUT.md](./PHONE-INPUT.md) ⭐ **NEW**
+### [PHONE-INPUT.md](./PHONE-INPUT.md)
 **Complete guide to the international phone input system**
 
 **You'll learn:**
@@ -175,7 +176,7 @@ Comprehensive technical documentation for **Forminator** - I'm collecting all yo
 
 ---
 
-### [GEOLOCATION.md](./GEOLOCATION.md) ⭐ **NEW**
+### [GEOLOCATION.md](./GEOLOCATION.md)
 **Comprehensive guide to the geolocation system**
 
 **You'll learn:**
@@ -235,13 +236,14 @@ Comprehensive technical documentation for **Forminator** - I'm collecting all yo
 ---
 
 ### [FRAUD-DETECTION.md](./FRAUD-DETECTION.md)
-**Ephemeral ID-based fraud detection strategy**
+**Ephemeral ID-based fraud detection with progressive timeouts**
 
 **You'll learn:**
 - Why ephemeral IDs (not strict rate limiting)
 - What ephemeral IDs are (Enterprise Bot Management)
 - 7-day detection window rationale
 - Pattern recognition algorithm (not real-time blocking)
+- Progressive timeout system (1h → 4h → 8h → 12h → 24h)
 - Risk scoring formula
   - Ephemeral ID checks (preferred, 7-day window)
   - IP-based fallback (1-hour window)
@@ -254,10 +256,43 @@ Comprehensive technical documentation for **Forminator** - I'm collecting all yo
 **Read this if:**
 - You're implementing fraud detection
 - Want to understand ephemeral IDs
-- Need to adjust risk thresholds
+- Need to adjust risk thresholds or timeout durations
 - Experiencing false positives/negatives
 - Want strict rate limiting (guide to Durable Objects)
 - Understanding trade-offs
+
+---
+
+### [DATABASE-OPERATIONS.md](./DATABASE-OPERATIONS.md)
+**Complete D1 database management guide**
+
+**You'll learn:**
+- Database configuration and connection
+- Common viewing operations (count, recent, filtered)
+- Data cleanup commands (delete all, delete old, delete specific)
+- Analytics queries (submissions over time, fraud stats, geographic analysis)
+- Fraud management (view blacklist, manually block/unblock, progressive timeouts)
+- Schema management (initialize, view, migrations)
+- Backup and restore procedures
+- Troubleshooting common issues (foreign keys, timeouts, syntax errors)
+- Performance tips and best practices
+
+**Commands documented:**
+- View submissions, validations, blacklist entries
+- Count records and check database status
+- Delete data (all, old, or specific entries)
+- Manage fraud blacklist (add, remove, view timeouts)
+- Run analytics queries
+- Export and import data
+
+**Read this if:**
+- You need to manage the D1 database
+- Want to clear test data
+- Need to view or export submissions
+- Managing fraud blacklist entries
+- Troubleshooting database issues
+- Setting up backups
+- Learning D1 query syntax
 
 ---
 
@@ -299,6 +334,9 @@ Comprehensive technical documentation for **Forminator** - I'm collecting all yo
 | Security audit required | [SECURITY.md](./SECURITY.md) |
 | Fraud detection too aggressive | [FRAUD-DETECTION.md](./FRAUD-DETECTION.md) → Risk Score section |
 | Test API endpoints | [API-REFERENCE.md](./API-REFERENCE.md) → Testing section |
+| Clear database or view data | [DATABASE-OPERATIONS.md](./DATABASE-OPERATIONS.md) → Common Operations |
+| Manage fraud blacklist | [DATABASE-OPERATIONS.md](./DATABASE-OPERATIONS.md) → Fraud Management |
+| Database query errors | [DATABASE-OPERATIONS.md](./DATABASE-OPERATIONS.md) → Troubleshooting |
 
 ### By System Component
 
@@ -317,6 +355,7 @@ Comprehensive technical documentation for **Forminator** - I'm collecting all yo
 | Fraud detection | [FRAUD-DETECTION.md](./FRAUD-DETECTION.md) |
 | **Database** | |
 | Schema | [../schema.sql](../schema.sql) + [ARCHITECTURE.md](./ARCHITECTURE.md) |
+| D1 Operations | [DATABASE-OPERATIONS.md](./DATABASE-OPERATIONS.md) |
 | Metadata fields | [SECURITY.md](./SECURITY.md) → Request Metadata |
 | **Cloudflare** | |
 | Geolocation headers | [GEOLOCATION.md](./GEOLOCATION.md) → Cloudflare Geolocation |
@@ -466,28 +505,34 @@ When adding/updating a feature:
 
 | System | Documentation | Completeness |
 |--------|--------------|--------------|
-| Form validation | ✅ FORM-VALIDATION.md | Exhaustive |
-| Phone input | ✅ PHONE-INPUT.md | Exhaustive |
-| Geolocation | ✅ GEOLOCATION.md | Exhaustive |
-| API endpoints | ✅ API-REFERENCE.md | Complete |
-| Turnstile | ✅ TURNSTILE.md | Complete |
-| Fraud detection | ✅ FRAUD-DETECTION.md | Complete |
-| Architecture | ✅ ARCHITECTURE.md | Complete |
-| Security | ✅ SECURITY.md | Complete |
-| Database | ⚠️ Schema only | Partial |
-| Analytics UI | ⚠️ Not documented | Needs doc |
-| Deployment | ⚠️ README only | Needs doc |
+| Form validation | FORM-VALIDATION.md | Exhaustive |
+| Phone input | PHONE-INPUT.md | Exhaustive |
+| Geolocation | GEOLOCATION.md | Exhaustive |
+| API endpoints | API-REFERENCE.md | Complete |
+| Turnstile | TURNSTILE.md | Complete |
+| Fraud detection | FRAUD-DETECTION.md | Complete |
+| Architecture | ARCHITECTURE.md | Complete |
+| Security | SECURITY.md | Complete |
+| Database | DATABASE-OPERATIONS.md | Complete |
+| Analytics UI | Not documented | Needs doc |
+| Deployment | README only | Needs doc |
 
 ### Recent Updates
 
-**2024-11-12:** Major documentation expansion
-- ✅ Added [FORM-VALIDATION.md](./FORM-VALIDATION.md) - Exhaustive validation guide (30KB)
-- ✅ Added [PHONE-INPUT.md](./PHONE-INPUT.md) - Complete phone system (32KB)
-- ✅ Added [GEOLOCATION.md](./GEOLOCATION.md) - Comprehensive geo guide (28KB)
-- ✅ Added [API-REFERENCE.md](./API-REFERENCE.md) - Complete API docs (35KB)
-- ✅ Updated this index with comprehensive navigation
+**2025-11-13:** Database operations & fraud detection updates
+- Added DATABASE-OPERATIONS.md - Complete D1 management guide (35KB)
+- Updated FRAUD-DETECTION.md - Progressive timeout system (1h → 24h)
+- Updated CLAUDE.md - Nord theme, database commands, recent enhancements
+- Updated this index with database operations navigation
 
-**Total documentation:** ~200KB of exhaustive technical documentation
+**2024-11-12:** Major documentation expansion
+- Added FORM-VALIDATION.md - Exhaustive validation guide (30KB)
+- Added PHONE-INPUT.md - Complete phone system (32KB)
+- Added GEOLOCATION.md - Comprehensive geo guide (28KB)
+- Added API-REFERENCE.md - Complete API docs (35KB)
+- Updated this index with comprehensive navigation
+
+**Total documentation:** ~235KB of exhaustive technical documentation
 
 ---
 

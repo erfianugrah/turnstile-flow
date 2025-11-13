@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
 
-// Turnstile configuration
-const TURNSTILE_SITEKEY = '0x4AAAAAACAjw0bmUZ7V7fh2';
+// Turnstile configuration from environment
+const TURNSTILE_SITEKEY = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY;
 
 // Turnstile API types
 declare global {
@@ -65,7 +65,7 @@ const TurnstileWidget = forwardRef<TurnstileWidgetHandle, TurnstileWidgetProps>(
 		onExpired,
 		onTimeout,
 		onUnsupported,
-		action = 'submit-form'
+		action = 'registration-form'
 	}, ref) => {
 		const containerRef = useRef<HTMLDivElement>(null);
 		const widgetIdRef = useRef<string | null>(null);

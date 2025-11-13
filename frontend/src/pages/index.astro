@@ -10,7 +10,7 @@ import SubmissionForm from '../components/SubmissionForm';
 			<p class="text-muted-foreground">I'm collecting all your data</p>
 		</div>
 
-		<SubmissionForm client:load />
+		<SubmissionForm client:only="react" />
 
 		<div class="mt-8 text-center">
 			<a href="/analytics" class="text-primary hover:underline">
@@ -20,4 +20,4 @@ import SubmissionForm from '../components/SubmissionForm';
 	</main>
 </Layout>
 
-<script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js"></script>
+<script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"></script>

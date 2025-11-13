@@ -1,18 +1,34 @@
 import { z } from 'zod';
 
-// Address data structure
+// Address data structure - all fields optional, but if any are provided, country is required
 export const addressSchema = z.object({
 	street: z.string().optional(),
 	street2: z.string().optional(),
 	city: z.string().optional(),
 	state: z.string().optional(),
 	postalCode: z.string().optional(),
-	country: z.string().min(2, 'Country is required'),
+	country: z.string().optional(),
 }).optional()
+	.refine((val) => {
+		// If no address data at all, that's fine
+		if (!val) return true;
+
+		// Check if any address fields have content
+		const hasAddressContent = val.street || val.street2 || val.city || val.state || val.postalCode;
+
+		// If address fields have content, country must be provided
+		if (hasAddressContent && (!val.country || val.country.length < 2)) {
+			return false;
+		}
+
+		return true;
+	}, {
+		message: 'Country is required when providing an address'
+	})
 	.transform((val) => {
-		// If address is provided but all fields are empty (only country set), return undefined
+		// Return undefined if all fields are empty
 		if (!val) return undefined;
-		const hasContent = val.street || val.street2 || val.city || val.state || val.postalCode;
+		const hasContent = val.street || val.street2 || val.city || val.state || val.postalCode || val.country;
 		return hasContent ? val : undefined;
 	});
 

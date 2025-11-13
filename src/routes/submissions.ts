@@ -11,6 +11,33 @@ import {
 import { logValidation, createSubmission } from '../lib/database';
 import logger from '../lib/logger';
 import { checkPreValidationBlock } from '../lib/fraud-prevalidation';
+import {
+	ValidationError,
+	RateLimitError,
+	ExternalServiceError,
+	DatabaseError,
+	ConflictError,
+	handleError,
+} from '../lib/errors';
+
+/**
+ * Format wait time in seconds to human-readable string
+ * Examples: "30 minutes", "2 hours", "1 day"
+ */
+function formatWaitTime(seconds: number): string {
+	if (seconds < 60) {
+		return `${seconds} seconds`;
+	} else if (seconds < 3600) {
+		const minutes = Math.ceil(seconds / 60);
+		return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+	} else if (seconds < 86400) {
+		const hours = Math.ceil(seconds / 3600);
+		return `${hours} hour${hours !== 1 ? 's' : ''}`;
+	} else {
+		const days = Math.ceil(seconds / 86400);
+		return `${days} day${days !== 1 ? 's' : ''}`;
+	}
+}
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -39,14 +66,9 @@ app.post('/', async (c) => {
 		const validationResult = formSubmissionSchema.safeParse(body);
 
 		if (!validationResult.success) {
-			logger.warn({ errors: validationResult.error.errors }, 'Form validation failed');
-			return c.json(
-				{
-					error: 'Validation failed',
-					details: validationResult.error.errors,
-				},
-				400
-			);
+			throw new ValidationError('Form validation failed', {
+				errors: validationResult.error.errors,
+			});
 		}
 
 		const { turnstileToken } = validationResult.data;
@@ -61,28 +83,29 @@ app.post('/', async (c) => {
 		const isReused = await checkTokenReuse(tokenHash, db);
 
 		if (isReused) {
-			logger.warn({ tokenHash }, 'Token already used (replay attack)');
+			// Log the validation attempt
+			try {
+				await logValidation(db, {
+					tokenHash,
+					validation: {
+						valid: false,
+						reason: 'token_reused',
+						errors: ['Token already used'],
+					},
+					metadata,
+					riskScore: 100,
+					allowed: false,
+					blockReason: 'Token replay attack detected',
+				});
+			} catch (dbError) {
+				// Non-critical: log but don't fail the request
+				logger.error({ error: dbError }, 'Failed to log token reuse');
+			}
 
-			await logValidation(db, {
+			throw new ValidationError('Token replay attack', {
 				tokenHash,
-				validation: {
-					valid: false,
-					reason: 'token_reused',
-					errors: ['Token already used'],
-				},
-				metadata,
-				riskScore: 100,
-				allowed: false,
-				blockReason: 'Token replay attack detected',
+				userMessage: 'This verification has already been used. Please refresh the page and try again',
 			});
-
-			return c.json(
-				{
-					error: 'Invalid request',
-					message: 'This verification has already been used',
-				},
-				400
-			);
 		}
 
 		// Validate Turnstile token
@@ -110,31 +133,29 @@ app.post('/', async (c) => {
 			const ephemeralIdBlacklist = await checkPreValidationBlock(validation.ephemeralId, metadata.remoteIp, db);
 
 			if (ephemeralIdBlacklist.blocked) {
-				logger.warn(
-					{
-						ephemeralId: validation.ephemeralId,
-						reason: ephemeralIdBlacklist.reason,
-						confidence: ephemeralIdBlacklist.confidence,
-						validationFailed: !validation.valid,
-					},
-					'Request blocked - ephemeral ID previously flagged as fraudulent'
-				);
+				// Log validation attempt
+				try {
+					await logValidation(db, {
+						tokenHash,
+						validation,
+						metadata,
+						riskScore: 100,
+						allowed: false,
+						blockReason: ephemeralIdBlacklist.reason || 'Ephemeral ID blacklisted',
+					});
+				} catch (dbError) {
+					// Non-critical: log but don't fail the request
+					logger.error({ error: dbError }, 'Failed to log blacklist hit');
+				}
 
-				await logValidation(db, {
-					tokenHash,
-					validation,
-					metadata,
-					riskScore: 100,
-					allowed: false,
-					blockReason: ephemeralIdBlacklist.reason || 'Ephemeral ID blacklisted',
-				});
+				// Format wait time message
+				const waitTime = formatWaitTime(ephemeralIdBlacklist.retryAfter || 3600);
 
-				return c.json(
-					{
-						error: 'Request blocked',
-						message: 'Your submission cannot be processed at this time',
-					},
-					403
+				throw new RateLimitError(
+					`Ephemeral ID blacklisted: ${ephemeralIdBlacklist.reason}`,
+					ephemeralIdBlacklist.retryAfter || 3600,
+					ephemeralIdBlacklist.expiresAt || new Date(Date.now() + 3600000).toISOString(),
+					`You have made too many submission attempts. Please wait ${waitTime} before trying again`
 				);
 			}
 
@@ -144,35 +165,29 @@ app.post('/', async (c) => {
 			fraudCheck = await checkEphemeralIdFraud(validation.ephemeralId, db);
 
 			if (!fraudCheck.allowed) {
-				logger.warn(
-					{
-						ephemeralId: validation.ephemeralId,
+				// Log validation attempt
+				try {
+					await logValidation(db, {
+						tokenHash,
+						validation,
+						metadata,
 						riskScore: fraudCheck.riskScore,
-						reason: fraudCheck.reason,
-						warnings: fraudCheck.warnings,
-						validationFailed: !validation.valid,
-					},
-					'Request blocked due to fraud detection (repeated attempts detected)'
-				);
+						allowed: false,
+						blockReason: fraudCheck.reason,
+					});
+				} catch (dbError) {
+					// Non-critical: log but don't fail the request
+					logger.error({ error: dbError }, 'Failed to log fraud check');
+				}
 
-				await logValidation(db, {
-					tokenHash,
-					validation,
-					metadata,
-					riskScore: fraudCheck.riskScore,
-					allowed: false,
-					blockReason: fraudCheck.reason,
-				});
+				// Format wait time message
+				const waitTime = formatWaitTime(fraudCheck.retryAfter || 3600);
 
-				return c.json(
-					{
-						error: 'Too many requests',
-						message: 'Please try again later',
-					},
-					429,
-					{
-						'Retry-After': '3600',
-					}
+				throw new RateLimitError(
+					`Fraud detection triggered: ${fraudCheck.reason}`,
+					fraudCheck.retryAfter || 3600,
+					fraudCheck.expiresAt || new Date(Date.now() + 3600000).toISOString(),
+					`You have made too many submission attempts. Please wait ${waitTime} before trying again`
 				);
 			}
 		} else {
@@ -183,37 +198,32 @@ app.post('/', async (c) => {
 
 		// Now check if validation actually failed
 		if (!validation.valid) {
-			logger.warn(
-				{
-					reason: validation.reason,
-					errors: validation.errors,
-					errorCodes: validation.debugInfo?.codes,
-					errorMessages: validation.debugInfo?.messages,
-					ephemeralId: validation.ephemeralId,
-				},
-				'Turnstile validation failed'
-			);
-
-			await logValidation(db, {
-				tokenHash,
-				validation,
-				metadata,
-				riskScore: 90,
-				allowed: false,
-				blockReason: validation.reason,
-			});
+			// Log validation attempt
+			try {
+				await logValidation(db, {
+					tokenHash,
+					validation,
+					metadata,
+					riskScore: 90,
+					allowed: false,
+					blockReason: validation.reason,
+				});
+			} catch (dbError) {
+				// Non-critical: log but don't fail the request
+				logger.error({ error: dbError }, 'Failed to log failed validation');
+			}
 
 			// Use user-friendly error message from validation
 			const userMessage = validation.userMessage || 'Please complete the verification challenge';
 
-			return c.json(
+			throw new ExternalServiceError(
+				'Turnstile',
+				validation.reason || 'Verification failed',
 				{
-					error: 'Verification failed',
-					message: userMessage,
-					errorCode: validation.errors?.[0], // Include error code for client debugging
-					debug: validation.debugInfo, // Include debug info in development
-				},
-				400
+					errors: validation.errors,
+					errorCodes: validation.debugInfo?.codes,
+					userMessage,
+				}
 			);
 		}
 
@@ -225,30 +235,29 @@ app.post('/', async (c) => {
 			.first<{ id: number; created_at: string }>();
 
 		if (existingSubmission) {
-			logger.warn(
+			// Log validation attempt
+			try {
+				await logValidation(db, {
+					tokenHash,
+					validation,
+					metadata,
+					riskScore: 60, // Medium risk for duplicate email
+					allowed: false,
+					blockReason: 'Duplicate email address',
+				});
+			} catch (dbError) {
+				// Non-critical: log but don't fail the request
+				logger.error({ error: dbError }, 'Failed to log duplicate email');
+			}
+
+			throw new ConflictError(
+				'Duplicate email address',
+				'This email address has already been registered. If you believe this is an error, please contact support',
 				{
 					email: sanitized.email,
 					existingId: existingSubmission.id,
 					existingCreatedAt: existingSubmission.created_at,
-				},
-				'Duplicate email submission attempt'
-			);
-
-			await logValidation(db, {
-				tokenHash,
-				validation,
-				metadata,
-				riskScore: 60, // Medium risk for duplicate email
-				allowed: false,
-				blockReason: 'Duplicate email address',
-			});
-
-			return c.json(
-				{
-					error: 'Duplicate submission',
-					message: 'This email address has already been registered. If you believe this is an error, please contact support.',
-				},
-				409 // 409 Conflict
+				}
 			);
 		}
 
@@ -295,34 +304,7 @@ app.post('/', async (c) => {
 			201
 		);
 	} catch (error) {
-		const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-		const errorStack = error instanceof Error ? error.stack : undefined;
-
-		logger.error({
-			error,
-			errorMessage,
-			errorStack,
-			errorType: error instanceof Error ? error.constructor.name : typeof error
-		}, 'Error processing submission');
-
-		// Check for specific error types to provide better user feedback
-		if (errorMessage.includes('validation') || errorMessage.includes('Invalid')) {
-			return c.json(
-				{
-					error: 'Validation error',
-					message: 'Please check your form data and try again',
-				},
-				400
-			);
-		}
-
-		return c.json(
-			{
-				error: 'Internal server error',
-				message: 'An error occurred while processing your submission. Please try again.',
-			},
-			500
-		);
+		return handleError(error, c);
 	}
 });
 

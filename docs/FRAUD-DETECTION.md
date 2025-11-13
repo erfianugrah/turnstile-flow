@@ -66,10 +66,15 @@ If validation succeeds → Extract ephemeral_id, continue to Layer 3
 - 2+ unique IPs for same ephemeral ID: Block immediately (riskScore = 100)
 - Detects proxy rotation and distributed botnets
 
-**Auto-blacklist if risk ≥ 70:**
-- 100 risk: 7-day block
-- 80-99 risk: 3-day block
-- 70-79 risk: 1-day block
+**Auto-blacklist if risk ≥ 70 (Progressive Timeout System):**
+
+First offense: 1 hour
+Second offense: 4 hours
+Third offense: 8 hours
+Fourth offense: 12 hours
+Fifth+ offense: 24 hours (maximum)
+
+The system tracks offense count over last 24h and applies progressive escalation to repeat offenders.
 
 **IP-based fallback** (when ephemeral ID unavailable):
 - 3+ submissions in 1 hour: +40 risk

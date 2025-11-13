@@ -797,3 +797,158 @@ export async function detectFraudPatterns(db: D1Database): Promise<any> {
 		throw error;
 	}
 }
+
+/**
+ * Get blocked validation statistics
+ */
+export async function getBlockedValidationStats(db: D1Database) {
+	try {
+		const stats = await db
+			.prepare(
+				`SELECT
+					COUNT(*) as total_blocked,
+					COUNT(DISTINCT ephemeral_id) as unique_ephemeral_ids,
+					COUNT(DISTINCT remote_ip) as unique_ips,
+					AVG(risk_score) as avg_risk_score,
+					COUNT(DISTINCT block_reason) as unique_block_reasons
+				 FROM turnstile_validations
+				 WHERE allowed = 0`
+			)
+			.first<{
+				total_blocked: number;
+				unique_ephemeral_ids: number;
+				unique_ips: number;
+				avg_risk_score: number;
+				unique_block_reasons: number;
+			}>();
+
+		return stats;
+	} catch (error) {
+		logger.error({ error }, 'Error fetching blocked validation stats');
+		throw error;
+	}
+}
+
+/**
+ * Get block reason distribution
+ */
+export async function getBlockReasonDistribution(db: D1Database) {
+	try {
+		const result = await db
+			.prepare(
+				`SELECT
+					block_reason,
+					COUNT(*) as count,
+					COUNT(DISTINCT ephemeral_id) as unique_ephemeral_ids,
+					COUNT(DISTINCT remote_ip) as unique_ips,
+					AVG(risk_score) as avg_risk_score
+				 FROM turnstile_validations
+				 WHERE allowed = 0 AND block_reason IS NOT NULL
+				 GROUP BY block_reason
+				 ORDER BY count DESC`
+			)
+			.all();
+
+		return result.results;
+	} catch (error) {
+		logger.error({ error }, 'Error fetching block reason distribution');
+		throw error;
+	}
+}
+
+/**
+ * Get active blacklist entries
+ */
+export async function getActiveBlacklistEntries(db: D1Database) {
+	try {
+		const result = await db
+			.prepare(
+				`SELECT
+					id,
+					ephemeral_id,
+					ip_address,
+					block_reason,
+					detection_confidence,
+					blocked_at,
+					expires_at,
+					submission_count,
+					last_seen_at,
+					detection_metadata
+				 FROM fraud_blacklist
+				 WHERE expires_at > datetime('now')
+				 ORDER BY blocked_at DESC
+				 LIMIT 100`
+			)
+			.all();
+
+		return result.results;
+	} catch (error) {
+		logger.error({ error }, 'Error fetching active blacklist entries');
+		throw error;
+	}
+}
+
+/**
+ * Get blacklist statistics
+ */
+export async function getBlacklistStats(db: D1Database) {
+	try {
+		const stats = await db
+			.prepare(
+				`SELECT
+					COUNT(*) as total_active,
+					COUNT(CASE WHEN detection_confidence = 'high' THEN 1 END) as high_confidence,
+					COUNT(CASE WHEN detection_confidence = 'medium' THEN 1 END) as medium_confidence,
+					COUNT(CASE WHEN detection_confidence = 'low' THEN 1 END) as low_confidence,
+					COUNT(CASE WHEN ephemeral_id IS NOT NULL THEN 1 END) as ephemeral_id_blocks,
+					COUNT(CASE WHEN ip_address IS NOT NULL THEN 1 END) as ip_blocks
+				 FROM fraud_blacklist
+				 WHERE expires_at > datetime('now')`
+			)
+			.first<{
+				total_active: number;
+				high_confidence: number;
+				medium_confidence: number;
+				low_confidence: number;
+				ephemeral_id_blocks: number;
+				ip_blocks: number;
+			}>();
+
+		return stats;
+	} catch (error) {
+		logger.error({ error }, 'Error fetching blacklist stats');
+		throw error;
+	}
+}
+
+/**
+ * Get recent blocked validations with details
+ */
+export async function getRecentBlockedValidations(db: D1Database, limit: number = 50) {
+	try {
+		const result = await db
+			.prepare(
+				`SELECT
+					id,
+					ephemeral_id,
+					remote_ip,
+					country,
+					block_reason,
+					risk_score,
+					bot_score,
+					user_agent,
+					created_at
+				 FROM turnstile_validations
+				 WHERE allowed = 0
+				 ORDER BY created_at DESC
+				 LIMIT ?`
+			)
+			.bind(limit)
+			.all();
+
+		return result.results;
+	} catch (error) {
+		logger.error({ error }, 'Error fetching recent blocked validations');
+		throw error;
+	}
+}

@@ -149,6 +149,8 @@ export interface FraudCheckResult {
 	reason?: string;
 	riskScore: number;
 	warnings: string[];
+	retryAfter?: number; // seconds until user can retry
+	expiresAt?: string; // ISO timestamp when block expires
 }
 
 // Environment bindings
@@ -164,4 +166,6 @@ export interface Env {
 
 	// Variables
 	ENVIRONMENT?: string;
+	ALLOWED_ORIGINS?: string; // Comma-separated list
+	TURNSTILE_SITE_KEY?: string;
 }

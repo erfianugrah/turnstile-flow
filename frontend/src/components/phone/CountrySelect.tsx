@@ -96,10 +96,8 @@ export function CountrySelect({ value, onChange, disabled }: CountrySelectProps)
         <div
           ref={dropdownRef}
           className={cn(
-            'absolute left-0 top-full z-50 mt-1 w-80 rounded-md border-2',
-            'bg-white dark:bg-[hsl(0,0%,15%)] text-card-foreground',
-            'border-border dark:border-[hsl(0,0%,30%)]',
-            'shadow-xl dark:shadow-[0_20px_40px_rgba(0,0,0,0.6)]'
+            'absolute left-0 top-full z-50 mt-1 w-80 rounded-md border',
+            'bg-popover text-popover-foreground border-border shadow-lg backdrop-blur-sm'
           )}
           onKeyDown={handleKeyDown}
         >

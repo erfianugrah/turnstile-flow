@@ -13,6 +13,11 @@ import {
 	getSubmissionById,
 	getTimeSeriesData,
 	detectFraudPatterns,
+	getBlockedValidationStats,
+	getBlockReasonDistribution,
+	getActiveBlacklistEntries,
+	getBlacklistStats,
+	getRecentBlockedValidations,
 } from '../lib/database';
 import type { SubmissionsFilters } from '../lib/database';
 import logger from '../lib/logger';
@@ -714,6 +719,150 @@ app.get('/fraud-patterns', async (c) => {
 				error: 'Internal server error',
 				message: 'Failed to detect fraud patterns',
 				details: errorMessage, // Include error details for debugging
+			},
+			500
+		);
+	}
+});
+
+// GET /api/analytics/blocked-stats - Get blocked validation statistics
+app.get('/blocked-stats', async (c) => {
+	try {
+		const db = c.env.DB;
+		const stats = await getBlockedValidationStats(db);
+
+		logger.info('Blocked validation stats retrieved');
+
+		return c.json({
+			success: true,
+			data: stats,
+		});
+	} catch (error) {
+		logger.error({ error }, 'Error fetching blocked validation stats');
+
+		return c.json(
+			{
+				success: false,
+				error: 'Internal server error',
+				message: 'Failed to fetch blocked validation statistics',
+			},
+			500
+		);
+	}
+});
+
+// GET /api/analytics/block-reasons - Get block reason distribution
+app.get('/block-reasons', async (c) => {
+	try {
+		const db = c.env.DB;
+		const distribution = await getBlockReasonDistribution(db);
+
+		logger.info({ count: distribution.length }, 'Block reason distribution retrieved');
+
+		return c.json({
+			success: true,
+			data: distribution,
+		});
+	} catch (error) {
+		logger.error({ error }, 'Error fetching block reason distribution');
+
+		return c.json(
+			{
+				success: false,
+				error: 'Internal server error',
+				message: 'Failed to fetch block reason distribution',
+			},
+			500
+		);
+	}
+});
+
+// GET /api/analytics/blacklist - Get active blacklist entries
+app.get('/blacklist', async (c) => {
+	try {
+		const db = c.env.DB;
+		const entries = await getActiveBlacklistEntries(db);
+
+		logger.info({ count: entries.length }, 'Active blacklist entries retrieved');
+
+		return c.json({
+			success: true,
+			data: entries,
+		});
+	} catch (error) {
+		logger.error({ error }, 'Error fetching blacklist entries');
+
+		return c.json(
+			{
+				success: false,
+				error: 'Internal server error',
+				message: 'Failed to fetch blacklist entries',
+			},
+			500
+		);
+	}
+});
+
+// GET /api/analytics/blacklist-stats - Get blacklist statistics
+app.get('/blacklist-stats', async (c) => {
+	try {
+		const db = c.env.DB;
+		const stats = await getBlacklistStats(db);
+
+		logger.info('Blacklist stats retrieved');
+
+		return c.json({
+			success: true,
+			data: stats,
+		});
+	} catch (error) {
+		logger.error({ error }, 'Error fetching blacklist stats');
+
+		return c.json(
+			{
+				success: false,
+				error: 'Internal server error',
+				message: 'Failed to fetch blacklist statistics',
+			},
+			500
+		);
+	}
+});
+
+// GET /api/analytics/blocked-validations - Get recent blocked validations
+app.get('/blocked-validations', async (c) => {
+	try {
+		const db = c.env.DB;
+		const limit = c.req.query('limit') ? parseInt(c.req.query('limit')!, 10) : 50;
+
+		// Validate limit
+		if (limit < 1 || limit > 500) {
+			return c.json(
+				{
+					success: false,
+					error: 'Invalid parameter',
+					message: 'limit must be between 1 and 500',
+				},
+				400
+			);
+		}
+
+		const validations = await getRecentBlockedValidations(db, limit);
+
+		logger.info({ count: validations.length }, 'Recent blocked validations retrieved');
+
+		return c.json({
+			success: true,
+			data: validations,
+		});
+	} catch (error) {
+		logger.error({ error }, 'Error fetching blocked validations');
+
+		return c.json(
+			{
+				success: false,
+				error: 'Internal server error',
+				message: 'Failed to fetch blocked validations',
 			},
 			500
 		);

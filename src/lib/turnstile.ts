@@ -146,9 +146,47 @@ export async function checkTokenReuse(
 }
 
 /**
+ * Calculate progressive timeout based on previous offenses
+ * Progressive escalation: 1h → 4h → 8h → 12h → 24h
+ */
+function calculateProgressiveTimeout(offenseCount: number): number {
+	// Progressive time windows in seconds
+	const timeWindows = [
+		3600,    // 1st offense: 1 hour
+		14400,   // 2nd offense: 4 hours
+		28800,   // 3rd offense: 8 hours
+		43200,   // 4th offense: 12 hours
+		86400,   // 5th+ offense: 24 hours
+	];
+
+	// Cap at maximum timeout (24h)
+	const index = Math.min(offenseCount - 1, timeWindows.length - 1);
+	return timeWindows[Math.max(0, index)];
+}
+
+/**
+ * Get offense count for ephemeral ID (how many times blocked in last 24h)
+ */
+async function getOffenseCount(ephemeralId: string, db: D1Database): Promise<number> {
+	const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+	const result = await db
+		.prepare(
+			`SELECT COUNT(*) as count
+			 FROM fraud_blacklist
+			 WHERE ephemeral_id = ?
+			 AND blocked_at > ?`
+		)
+		.bind(ephemeralId, oneDayAgo)
+		.first<{ count: number }>();
+
+	return (result?.count || 0) + 1; // +1 for current offense
+}
+
+/**
  * Check for fraud patterns based on ephemeral ID
  * Research-based thresholds: Legitimate users submit once, 2+ = abuse for registration forms
- * Time window: 1 hour for validation attempts, 24 hours for submissions
+ * Time window: 1 hour for validation attempts (progressive timeout for blocks)
  * Enhanced with IP diversity detection (rotating proxies/botnets)
  *
  * IMPORTANT: This check runs BEFORE the submission is created, so we add +1
@@ -156,6 +194,8 @@ export async function checkTokenReuse(
  *
  * CRITICAL: Due to D1 eventual consistency, we check BOTH submissions AND validations
  * to catch rapid-fire attempts before DB replication catches up.
+ *
+ * PROGRESSIVE BLOCKING: First offense = 1h, escalates to 4h, 8h, 12h, 24h for repeat offenders
  */
 export async function checkEphemeralIdFraud(
 	ephemeralId: string,
@@ -168,7 +208,7 @@ export async function checkEphemeralIdFraud(
 		const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 		const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-		// LAYER 1: Check successful submissions in last 24 hours
+		// LAYER 1: Check successful submissions in last hour (changed from 24h)
 		// For registration forms, legitimate users should only submit ONCE
 		const recentSubmissions = await db
 			.prepare(
@@ -177,7 +217,7 @@ export async function checkEphemeralIdFraud(
 				 WHERE ephemeral_id = ?
 				 AND created_at > ?`
 			)
-			.bind(ephemeralId, oneDayAgo)
+			.bind(ephemeralId, oneHourAgo)
 			.first<{ count: number }>();
 
 		const submissionCount = recentSubmissions?.count || 0;
@@ -185,11 +225,11 @@ export async function checkEphemeralIdFraud(
 		// Add +1 to account for the current submission attempt (runs before creation)
 		const effectiveCount = submissionCount + 1;
 
-		// STRICTER THRESHOLD: Block on 2nd submission (1 existing + 1 current)
+		// STRICTER THRESHOLD: Block on 2nd submission (1 existing + 1 current) IN LAST HOUR
 		// Registration forms should only be submitted once per user
 		if (effectiveCount >= 2) {
 			warnings.push(
-				`Multiple submissions detected (${effectiveCount} total in 24h) - registration forms should only be submitted once`
+				`Multiple submissions detected (${effectiveCount} total in 1h) - registration forms should only be submitted once`
 			);
 			riskScore = 100; // Immediate block
 		}
@@ -246,24 +286,38 @@ export async function checkEphemeralIdFraud(
 
 		const allowed = riskScore < 70;
 
-		// Auto-blacklist high-risk ephemeral IDs
+		// Auto-blacklist high-risk ephemeral IDs with PROGRESSIVE timeout
+		let retryAfter: number | undefined;
+		let expiresAt: string | undefined;
+
 		if (!allowed && riskScore >= 70) {
 			const confidence = riskScore >= 100 ? 'high' : riskScore >= 80 ? 'medium' : 'low';
-			// High confidence (100): 7 days, Medium (80+): 3 days, Low (70+): 1 day
-			const expiresIn = riskScore >= 100 ? 86400 * 7 : riskScore >= 80 ? 86400 * 3 : 86400;
+
+			// Get offense count and calculate progressive timeout
+			const offenseCount = await getOffenseCount(ephemeralId, db);
+			const expiresIn = calculateProgressiveTimeout(offenseCount);
+
+			// Calculate expiry timestamp
+			expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+			retryAfter = expiresIn;
+
+			// Convert seconds to human-readable format for logging
+			const timeoutHours = expiresIn / 3600;
 
 			await addToBlacklist(db, {
 				ephemeralId,
-				blockReason: `Automated: Multiple submissions detected (${effectiveCount} in 24h, ${effectiveValidationCount} validations in 1h) - ${warnings.join(', ')}`,
+				blockReason: `Automated: Multiple submissions detected (${effectiveCount} in 1h, ${effectiveValidationCount} validations in 1h) - ${warnings.join(', ')}`,
 				confidence,
 				expiresIn,
 				submissionCount: effectiveCount,
 				detectionMetadata: {
 					risk_score: riskScore,
 					warnings,
-					submissions_24h: effectiveCount,
+					submissions_1h: effectiveCount,
 					validations_1h: effectiveValidationCount,
 					unique_ips: ipCount,
+					offense_count: offenseCount,
+					timeout_hours: timeoutHours,
 					detected_at: new Date().toISOString(),
 				},
 			});
@@ -274,11 +328,13 @@ export async function checkEphemeralIdFraud(
 					riskScore,
 					confidence,
 					expiresIn,
-					submissions_24h: effectiveCount,
+					offenseCount,
+					timeoutHours,
+					submissions_1h: effectiveCount,
 					validations_1h: effectiveValidationCount,
 					unique_ips: ipCount,
 				},
-				'Ephemeral ID auto-blacklisted'
+				'Ephemeral ID auto-blacklisted with progressive timeout'
 			);
 		}
 
@@ -288,7 +344,7 @@ export async function checkEphemeralIdFraud(
 				riskScore,
 				allowed,
 				warnings,
-				submissions_24h: effectiveCount,
+				submissions_1h: effectiveCount,
 				validations_1h: effectiveValidationCount,
 				unique_ips: ipCount,
 			},
@@ -297,9 +353,11 @@ export async function checkEphemeralIdFraud(
 
 		return {
 			allowed,
-			reason: allowed ? undefined : 'Multiple submissions detected - registration forms allow only one submission',
+			reason: allowed ? undefined : 'You have made too many submission attempts',
 			riskScore,
 			warnings,
+			retryAfter,
+			expiresAt,
 		};
 	} catch (error) {
 		logger.error({ error, ephemeralId }, 'Error during fraud check');

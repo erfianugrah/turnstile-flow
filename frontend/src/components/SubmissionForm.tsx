@@ -13,6 +13,27 @@ import TurnstileWidget, { type TurnstileWidgetHandle } from './TurnstileWidget';
 import { SubmissionFlow, type FlowStep } from './SubmissionFlow';
 import { formSchema, type FormData } from '../lib/validation';
 
+/**
+ * Format seconds into human-readable countdown
+ * Examples: "2:30", "45:00", "1d 3:45"
+ */
+function formatCountdown(seconds: number): string {
+	if (seconds <= 0) return '0:00';
+
+	const days = Math.floor(seconds / 86400);
+	const hours = Math.floor((seconds % 86400) / 3600);
+	const minutes = Math.floor((seconds % 3600) / 60);
+	const secs = seconds % 60;
+
+	if (days > 0) {
+		return `${days}d ${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+	} else if (hours > 0) {
+		return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+	} else {
+		return `${minutes}:${secs.toString().padStart(2, '0')}`;
+	}
+}
+
 export default function SubmissionForm() {
 	const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 	const [submitResult, setSubmitResult] = useState<{
@@ -22,10 +43,16 @@ export default function SubmissionForm() {
 	const [defaultCountry, setDefaultCountry] = useState<string>('us');
 	const [flowStep, setFlowStep] = useState<FlowStep>('idle');
 	const [flowError, setFlowError] = useState<string | undefined>();
+	const [rateLimitInfo, setRateLimitInfo] = useState<{
+		retryAfter: number; // seconds
+		expiresAt: string; // ISO timestamp
+		timeRemaining: number; // seconds (for countdown)
+	} | null>(null);
 
 	const turnstileRef = useRef<TurnstileWidgetHandle>(null);
 	const submitTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 	const hasSubmittedRef = useRef(false);
+	const pendingFormDataRef = useRef<FormData | null>(null);
 
 	// Detect user's country on mount
 	useEffect(() => {
@@ -45,6 +72,29 @@ export default function SubmissionForm() {
 		detectCountry();
 	}, []);
 
+	// Countdown timer for rate limiting
+	useEffect(() => {
+		if (!rateLimitInfo) return;
+
+		// Update countdown every second
+		const interval = setInterval(() => {
+			const now = new Date().getTime();
+			const expiresAt = new Date(rateLimitInfo.expiresAt).getTime();
+			const remaining = Math.max(0, Math.ceil((expiresAt - now) / 1000));
+
+			if (remaining <= 0) {
+				// Rate limit expired, clear it
+				setRateLimitInfo(null);
+				setSubmitResult(null);
+			} else {
+				// Update time remaining
+				setRateLimitInfo(prev => prev ? { ...prev, timeRemaining: remaining } : null);
+			}
+		}, 1000);
+
+		return () => clearInterval(interval);
+	}, [rateLimitInfo]);
+
 	const {
 		register,
 		handleSubmit: handleFormSubmit,
@@ -61,23 +111,13 @@ export default function SubmissionForm() {
 	const dateOfBirthValue = watch('dateOfBirth');
 	const addressValue = watch('address');
 
-	const onSubmit = async (data: FormData) => {
+	const submitWithToken = async (data: FormData, token: string) => {
 		setSubmitResult(null);
 		setFlowError(undefined);
-		setFlowStep('validating');
+		setFlowStep('server-validation');
 
-		// Trigger Turnstile challenge if no token yet
-		if (!turnstileToken) {
-			if (turnstileRef.current) {
-				setFlowStep('turnstile-challenge');
-				turnstileRef.current.execute();
-			}
-			return;
-		}
-
-		// Submit form
+		// Submit form with token
 		try {
-			setFlowStep('server-validation');
 			const response = await fetch('/api/submissions', {
 				method: 'POST',
 				headers: {
@@ -85,7 +125,7 @@ export default function SubmissionForm() {
 				},
 				body: JSON.stringify({
 					...data,
-					turnstileToken,
+					turnstileToken: token,
 				}),
 			});
 
@@ -121,7 +161,19 @@ export default function SubmissionForm() {
 
 				// Fraud detection / Rate limiting (429, 403)
 				if (response.status === 429) {
-					userFriendlyMessage = 'You have made too many submission attempts. Please wait before trying again.';
+					// Extract rate limit information from response
+					const retryAfter = result.retryAfter || 3600; // Default to 1 hour
+					const expiresAt = result.expiresAt || new Date(Date.now() + retryAfter * 1000).toISOString();
+
+					// Use server message if available, otherwise use default
+					userFriendlyMessage = result.message || 'You have made too many submission attempts. Please wait before trying again.';
+
+					// Set rate limit info for countdown timer
+					setRateLimitInfo({
+						retryAfter,
+						expiresAt,
+						timeRemaining: retryAfter,
+					});
 				} else if (response.status === 403) {
 					userFriendlyMessage = 'Your submission has been blocked for security reasons. If you believe this is an error, please contact support.';
 				} else if (response.status === 409) {
@@ -165,12 +217,29 @@ export default function SubmissionForm() {
 		}
 	};
 
-	const handleTurnstileValidated = (token: string) => {
-		console.log('Turnstile validated, token received');
+	const onSubmit = async (data: FormData) => {
+		setSubmitResult(null);
+		setFlowError(undefined);
+		setFlowStep('validating');
 
+		// Check if we already have a token
+		if (turnstileToken) {
+			// Already have token, submit directly
+			await submitWithToken(data, turnstileToken);
+			return;
+		}
+
+		// No token yet, trigger Turnstile
+		pendingFormDataRef.current = data;
+		if (turnstileRef.current) {
+			setFlowStep('turnstile-challenge');
+			turnstileRef.current.execute();
+		}
+	};
+
+	const handleTurnstileValidated = (token: string) => {
 		// Prevent duplicate submissions
 		if (hasSubmittedRef.current) {
-			console.log('Already submitted, ignoring duplicate validation');
 			return;
 		}
 
@@ -183,11 +252,13 @@ export default function SubmissionForm() {
 		setTurnstileToken(token);
 		hasSubmittedRef.current = true;
 
-		// Automatically submit form after Turnstile validation
+		// Automatically submit stored form data after Turnstile validation
+		// Pass token directly to avoid state update timing issues
 		submitTimeoutRef.current = setTimeout(() => {
-			const form = document.getElementById('submission-form') as HTMLFormElement;
-			if (form) {
-				form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+			const formData = pendingFormDataRef.current;
+			if (formData) {
+				pendingFormDataRef.current = null; // Clear after use
+				submitWithToken(formData, token); // Call submit with token directly
 			}
 		}, 100);
 	};
@@ -257,7 +328,11 @@ export default function SubmissionForm() {
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="pb-8">
-				<form id="submission-form" onSubmit={handleFormSubmit(onSubmit)} className="space-y-8">
+				<form
+					id="submission-form"
+					onSubmit={handleFormSubmit(onSubmit)}
+					className="space-y-8"
+				>
 					{/* Personal Information Section */}
 					<div className="space-y-5">
 						<h3 className="text-lg font-semibold text-foreground border-b pb-2">
@@ -415,6 +490,23 @@ export default function SubmissionForm() {
 						</div>
 					</div>
 
+					{/* Validation error summary */}
+					{Object.keys(errors).length > 0 && (
+						<Alert variant="destructive" className="animate-in fade-in slide-in-from-top-2">
+							<AlertTitle className="font-semibold">✗ Please fix the following errors:</AlertTitle>
+							<AlertDescription>
+								<ul className="list-disc list-inside space-y-1 mt-2">
+									{errors.firstName && <li>{errors.firstName.message}</li>}
+									{errors.lastName && <li>{errors.lastName.message}</li>}
+									{errors.email && <li>{errors.email.message}</li>}
+									{errors.phone && <li>{errors.phone.message}</li>}
+									{errors.address && <li>Address: {typeof errors.address.message === 'string' ? errors.address.message : 'Invalid address'}</li>}
+									{errors.dateOfBirth && <li>{errors.dateOfBirth.message}</li>}
+								</ul>
+							</AlertDescription>
+						</Alert>
+					)}
+
 					{submitResult && (
 						<Alert
 							variant={submitResult.type === 'success' ? 'success' : 'destructive'}
@@ -423,15 +515,30 @@ export default function SubmissionForm() {
 							<AlertTitle className="font-semibold">
 								{submitResult.type === 'success' ? '✓ Success!' : '✗ Error'}
 							</AlertTitle>
-							<AlertDescription>{submitResult.message}</AlertDescription>
+							<AlertDescription>
+								{submitResult.message}
+								{rateLimitInfo && submitResult.type === 'error' && (
+									<div className="mt-3 pt-3 border-t border-destructive/20">
+										<div className="flex items-center gap-2">
+											<svg className="w-5 h-5 text-destructive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+											</svg>
+											<span className="font-semibold">
+												Time remaining: {formatCountdown(rateLimitInfo.timeRemaining)}
+											</span>
+										</div>
+									</div>
+								)}
+							</AlertDescription>
 						</Alert>
 					)}
 
 					<div className="border-t pt-8 mt-8 space-y-4">
 						<Button
 							type="submit"
-							className="w-full h-12 text-base font-semibold shadow-md hover:shadow-lg active:shadow-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed bg-primary text-primary-foreground hover:bg-primary/90"
-							disabled={isSubmitting}
+							variant="default"
+							className="w-full h-12 text-base font-semibold hover:shadow-lg active:shadow-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+							disabled={isSubmitting || !!rateLimitInfo}
 						>
 							{isSubmitting ? (
 								<span className="flex items-center justify-center gap-2">

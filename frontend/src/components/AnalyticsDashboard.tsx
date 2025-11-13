@@ -26,6 +26,22 @@ interface ValidationStats {
 	unique_ephemeral_ids: number;
 }
 
+interface BlockedStats {
+	total_blocked: number;
+	unique_ephemeral_ids: number;
+	unique_ips: number;
+	avg_risk_score: number;
+	unique_block_reasons: number;
+}
+
+interface BlockReason {
+	block_reason: string;
+	count: number;
+	unique_ephemeral_ids: number;
+	unique_ips: number;
+	avg_risk_score: number;
+}
+
 interface Submission {
 	id: number;
 	first_name: string;
@@ -127,6 +143,8 @@ export default function AnalyticsDashboard() {
 	const [ja3Data, setJa3Data] = useState<Ja3Data[]>([]);
 	const [ja4Data, setJa4Data] = useState<Ja4Data[]>([]);
 	const [fraudPatterns, setFraudPatterns] = useState<any>(null);
+	const [blockedStats, setBlockedStats] = useState<BlockedStats | null>(null);
+	const [blockReasons, setBlockReasons] = useState<BlockReason[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
@@ -228,6 +246,8 @@ export default function AnalyticsDashboard() {
 				ja3Res,
 				ja4Res,
 				timeSeriesRes,
+				blockedStatsRes,
+				blockReasonsRes,
 			] = await Promise.all([
 				fetch('/api/analytics/stats', { headers }),
 				fetch('/api/analytics/countries', { headers }),
@@ -237,6 +257,8 @@ export default function AnalyticsDashboard() {
 				fetch('/api/analytics/ja3', { headers }),
 				fetch('/api/analytics/ja4', { headers }),
 				fetch('/api/analytics/time-series?metric=submissions&interval=day', { headers }),
+				fetch('/api/analytics/blocked-stats', { headers }),
+				fetch('/api/analytics/block-reasons', { headers }),
 			]);
 
 			// Check for 401 errors (unauthorized)
@@ -262,7 +284,7 @@ export default function AnalyticsDashboard() {
 				throw new Error('Failed to fetch analytics');
 			}
 
-			const [statsData, countriesData, botScoresData, asnData, tlsData, ja3DataRes, ja4DataRes, timeSeriesDataRes] =
+			const [statsData, countriesData, botScoresData, asnData, tlsData, ja3DataRes, ja4DataRes, timeSeriesDataRes, blockedStatsData, blockReasonsData] =
 				await Promise.all([
 					statsRes.json(),
 					countriesRes.json(),
@@ -272,6 +294,8 @@ export default function AnalyticsDashboard() {
 					ja3Res.json(),
 					ja4Res.json(),
 					timeSeriesRes.json(),
+					blockedStatsRes.json(),
+					blockReasonsRes.json(),
 				]);
 
 			setStats((statsData as any).data);
@@ -282,6 +306,8 @@ export default function AnalyticsDashboard() {
 			setJa3Data((ja3DataRes as any).data);
 			setJa4Data((ja4DataRes as any).data);
 			setTimeSeriesData((timeSeriesDataRes as any).data || []);
+			setBlockedStats((blockedStatsData as any).data);
+			setBlockReasons((blockReasonsData as any).data);
 
 			// Load fraud patterns separately - don't fail the whole page if this fails
 			try {
@@ -714,6 +740,116 @@ export default function AnalyticsDashboard() {
 
 			{/* Fraud Detection */}
 			<FraudAlert data={fraudPatterns} loading={loading} />
+
+			{/* Blocked/Mitigated Requests Section */}
+			{blockedStats && blockedStats.total_blocked > 0 && (
+				<>
+					<Card>
+						<CardHeader>
+							<CardTitle>Blocked & Mitigated Requests</CardTitle>
+							<CardDescription>Submissions blocked by fraud detection</CardDescription>
+						</CardHeader>
+						<CardContent>
+							<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+								<div className="space-y-1">
+									<p className="text-sm text-muted-foreground">Total Blocked</p>
+									<p className="text-2xl font-bold text-destructive">{blockedStats.total_blocked}</p>
+								</div>
+								<div className="space-y-1">
+									<p className="text-sm text-muted-foreground">Unique Ephemeral IDs</p>
+									<p className="text-2xl font-bold">{blockedStats.unique_ephemeral_ids}</p>
+								</div>
+								<div className="space-y-1">
+									<p className="text-sm text-muted-foreground">Unique IPs</p>
+									<p className="text-2xl font-bold">{blockedStats.unique_ips}</p>
+								</div>
+								<div className="space-y-1">
+									<p className="text-sm text-muted-foreground">Avg Risk Score</p>
+									<p className="text-2xl font-bold">{blockedStats.avg_risk_score.toFixed(1)}</p>
+								</div>
+							</div>
+						</CardContent>
+					</Card>
+
+					{/* Block Reason Distribution */}
+					{blockReasons.length > 0 && (
+						<Card>
+							<CardHeader>
+								<CardTitle>Block Reasons</CardTitle>
+								<CardDescription>Distribution of why submissions were blocked</CardDescription>
+							</CardHeader>
+							<CardContent>
+								<div className="space-y-3">
+									{blockReasons.map((reason, index) => {
+										// Calculate percentage of total blocked
+										const percentage = blockedStats
+											? ((reason.count / blockedStats.total_blocked) * 100).toFixed(1)
+											: '0';
+
+										// Color code based on frequency
+										const getFrequencyColor = (count: number) => {
+											if (count >= 10) return 'bg-red-500 dark:bg-red-600';
+											if (count >= 5) return 'bg-orange-500 dark:bg-orange-600';
+											return 'bg-yellow-500 dark:bg-yellow-600';
+										};
+
+										const getRiskColor = (score: number) => {
+											if (score >= 90) return 'text-red-600 dark:text-red-400';
+											if (score >= 70) return 'text-orange-600 dark:text-orange-400';
+											return 'text-yellow-600 dark:text-yellow-400';
+										};
+
+										return (
+											<div
+												key={index}
+												className="flex items-start gap-4 p-4 rounded-lg border border-border bg-card hover:bg-accent/50 transition-colors"
+											>
+												{/* Count Badge */}
+												<div className="flex flex-col items-center justify-center min-w-[80px]">
+													<div className={`${getFrequencyColor(reason.count)} text-white font-bold text-2xl rounded-lg px-4 py-2 shadow-md`}>
+														{reason.count}
+													</div>
+													<div className="text-xs text-muted-foreground mt-1">{percentage}%</div>
+												</div>
+
+												{/* Reason Details */}
+												<div className="flex-1 min-w-0">
+													{/* Block Reason */}
+													<div className="font-medium text-sm mb-2 leading-relaxed">
+														{reason.block_reason}
+													</div>
+
+													{/* Stats Grid */}
+													<div className="grid grid-cols-3 gap-3 text-xs">
+														<div className="flex flex-col">
+															<span className="text-muted-foreground">Ephemeral IDs</span>
+															<span className="font-semibold text-foreground mt-0.5">
+																{reason.unique_ephemeral_ids}
+															</span>
+														</div>
+														<div className="flex flex-col">
+															<span className="text-muted-foreground">Unique IPs</span>
+															<span className="font-semibold text-foreground mt-0.5">
+																{reason.unique_ips}
+															</span>
+														</div>
+														<div className="flex flex-col">
+															<span className="text-muted-foreground">Avg Risk Score</span>
+															<span className={`font-semibold mt-0.5 ${getRiskColor(reason.avg_risk_score)}`}>
+																{reason.avg_risk_score.toFixed(0)}
+															</span>
+														</div>
+													</div>
+												</div>
+											</div>
+										);
+									})}
+								</div>
+							</CardContent>
+						</Card>
+					)}
+				</>
+			)}
 
 			{/* Submissions Time Series */}
 			<Card>

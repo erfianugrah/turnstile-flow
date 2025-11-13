@@ -10,6 +10,8 @@ interface PreValidationResult {
 	confidence?: 'high' | 'medium' | 'low';
 	cacheFor?: number; // seconds to cache this result
 	blacklistEntry?: BlacklistEntry;
+	expiresAt?: string; // ISO timestamp when block expires
+	retryAfter?: number; // seconds until user can retry
 }
 
 interface BlacklistEntry {
@@ -75,11 +77,15 @@ export async function checkPreValidationBlock(
 				.bind(now, blacklistCheck.id)
 				.run();
 
+			const retryAfter = calculateCacheTime(blacklistCheck.expires_at);
+
 			return {
 				blocked: true,
 				reason: `Blacklisted ephemeral ID: ${blacklistCheck.block_reason}`,
 				confidence: blacklistCheck.detection_confidence,
-				cacheFor: calculateCacheTime(blacklistCheck.expires_at),
+				cacheFor: retryAfter,
+				expiresAt: blacklistCheck.expires_at,
+				retryAfter,
 				blacklistEntry: blacklistCheck,
 			};
 		}
@@ -113,11 +119,15 @@ export async function checkPreValidationBlock(
 			.bind(now, ipBlacklistCheck.id)
 			.run();
 
+		const retryAfter = calculateCacheTime(ipBlacklistCheck.expires_at);
+
 		return {
 			blocked: true,
 			reason: `Blacklisted IP: ${ipBlacklistCheck.block_reason}`,
 			confidence: ipBlacklistCheck.detection_confidence,
-			cacheFor: calculateCacheTime(ipBlacklistCheck.expires_at),
+			cacheFor: retryAfter,
+			expiresAt: ipBlacklistCheck.expires_at,
+			retryAfter,
 			blacklistEntry: ipBlacklistCheck,
 		};
 	}
