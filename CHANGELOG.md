@@ -2,6 +2,28 @@
 
 All notable changes to Forminator will be documented in this file.
 
+## [2024-11-13] - UI Fixes & SVG Flags
+
+### Fixed
+- Transparent dropdowns in analytics dashboard (MultiSelect country filter, DateRangePicker)
+- Bot score range slider values misaligned (now centered side-by-side)
+- GlobalControlsBar layout issues with poor responsive behavior
+- View and Export dropdown menus not closing on outside click
+- Dark mode submit button text visibility
+- Country flag emojis not rendering in Chrome on Windows
+
+### Changed
+- Replaced emoji flags with SVG flags using flag-icons library
+- GlobalControlsBar now uses responsive column/row layout (mobile-first)
+- Dropdown backgrounds changed from bg-popover to bg-card for consistency
+- Added click-outside event handlers to all dropdown menus
+- Button component ensures child elements inherit text colors in dark mode
+
+### Added
+- flag-icons@7.5.0 package for cross-browser compatible country flags
+- Click-outside handlers in GlobalControlsBar dropdowns
+- React refs for dropdown menu management
+
 ## [2024-11-13] - Visual Flow & Custom Phone Input
 
 ### Added

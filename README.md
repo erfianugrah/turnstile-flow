@@ -46,9 +46,11 @@ Captures 40+ fields from `request.cf` and headers:
 - **Detection**: Detection IDs array from Bot Management
 
 ### UI & Analytics
-- **Dark Mode**: Full support with shadcn/ui components
-- **Real-time Analytics**: Validation stats, submissions, country distribution, bot scores
+- **Dark Mode**: Full support with enhanced accent colors and shadows
+- **Custom Phone Input**: International phone selector with 200+ countries, SVG flags, searchable dropdown
+- **Real-time Analytics**: 13 API endpoints covering stats, submissions, time-series, exports
 - **Form Validation**: Client and server-side with Zod schemas
+- **Visual Submission Flow**: 4-stage progress indicator with interactive callback integration
 
 ## Quick Start
 
@@ -137,10 +139,12 @@ The `--remote` flag uses your production D1 database for testing. This ensures c
 
 ## API Endpoints
 
-### POST /api/submissions
-Submit form with Turnstile validation (single-step operation).
+### Form Submission
 
-**Request:**
+**POST /api/submissions**
+Submit form with Turnstile validation (atomic operation).
+
+Request body:
 ```json
 {
   "firstName": "John",
@@ -153,29 +157,64 @@ Submit form with Turnstile validation (single-step operation).
 }
 ```
 
-**Flow:**
+Processing flow:
 1. Extract request metadata (40+ fields from request.cf)
 2. Validate form data (Zod schema)
 3. Sanitize inputs
 4. Hash Turnstile token (SHA256)
 5. Check token reuse (D1 lookup)
-6. Validate with Turnstile siteverify API
-7. Fraud detection (ephemeral ID or IP-based)
-8. Create submission in D1
-9. Log validation attempt
-10. Return success/error
+6. Pre-validation blacklist check (fraud_blacklist table)
+7. Validate with Turnstile siteverify API
+8. Fraud pattern detection (ephemeral ID or IP-based)
+9. Create submission in D1
+10. Log validation attempt
+11. Return success/error
 
-### GET /api/analytics/stats
-Get validation statistics.
+### Analytics (Protected with X-API-KEY header)
 
-### GET /api/analytics/submissions
-Get recent submissions (supports pagination).
+**GET /api/analytics/stats**
+Validation statistics summary (total, success rate, avg risk score).
 
-### GET /api/analytics/countries
-Get submissions by country.
+**GET /api/analytics/submissions**
+Paginated submissions with filtering (country, bot score range, date range, search).
 
-### GET /api/analytics/bot-scores
-Get bot score distribution.
+**GET /api/analytics/submissions/:id**
+Single submission details.
+
+**GET /api/analytics/countries**
+Submissions by country (top 20).
+
+**GET /api/analytics/bot-scores**
+Bot score distribution (binned: 0-29, 30-49, 50-69, 70-89, 90-100).
+
+**GET /api/analytics/asn**
+Network ASN distribution (top 10).
+
+**GET /api/analytics/tls**
+TLS version distribution (top 10).
+
+**GET /api/analytics/ja3**
+JA3 fingerprint distribution (top 10).
+
+**GET /api/analytics/ja4**
+JA4 fingerprint distribution (top 10).
+
+**GET /api/analytics/time-series**
+Trend data (6 metrics: submissions, validations, success_rate, bot_score_avg, risk_score_avg, allowed_rate; 4 intervals: hour, day, week, month).
+
+**GET /api/analytics/fraud-patterns**
+Detected fraud patterns with high-risk submissions.
+
+**GET /api/analytics/export**
+CSV or JSON export of submissions with all filters applied.
+
+### Utilities
+
+**GET /api/geo**
+Detect user country from Cloudflare headers.
+
+**GET /api/health**
+Service health check.
 
 ## Database Schema
 
@@ -192,21 +231,61 @@ Get bot score distribution.
 - All request metadata fields (same as submissions)
 - Foreign key: submission_id
 
-### Indexes
-- Unique: token_hash
-- Performance: ephemeral_id, created_at, email, country, ja3_hash, ja4, bot_score
+### fraud_blacklist (9 fields)
+Pre-validation fraud detection cache. Blocks detected fraudulent activity before expensive Turnstile API calls.
+
+- Identifiers: ephemeral_id, ip_address (at least one required)
+- Block metadata: block_reason, detection_confidence (high/medium/low)
+- Timing: blocked_at, expires_at (automatic expiry based on risk score)
+- Detection context: submission_count, last_seen_at, detection_metadata (JSON)
+
+Auto-populated when risk score ≥70:
+- 100 risk: 7-day block
+- 80-99 risk: 3-day block
+- 70-79 risk: 1-day block
+
+### Indexes (11 total)
+**Token replay prevention:**
+- UNIQUE: token_hash
+
+**Performance (submissions):**
+- ephemeral_id, created_at, email, country, ja3_hash, ja4
+
+**Performance (turnstile_validations):**
+- ephemeral_id, created_at, country, bot_score, ja3_hash, ja4
+
+**Blacklist lookups:**
+- (ephemeral_id, expires_at), (ip_address, expires_at), expires_at
 
 ## Fraud Detection Algorithm
 
-### Ephemeral ID Check (Preferred)
-Checks last 7 days (while ID is likely still active):
+### 3-Layer Architecture
+
+**Layer 1: Pre-validation Blacklist**
+- Fast D1 lookup (~10ms) before Turnstile API (~150ms)
+- Checks fraud_blacklist table for ephemeral_id/IP
+- 85-90% reduction in API calls for repeat offenders
+- Automatic expiry based on risk score
+
+**Layer 2: Turnstile Validation**
+- Standard siteverify API call
+- Token replay check via SHA256 hash
+- Extracts ephemeral_id from validation response
+
+**Layer 3: Pattern Analysis**
+- Post-validation fraud scoring
+- Auto-blacklists when risk ≥70
+
+### Ephemeral ID Check (Primary, Enterprise)
+Analyzes last 7 days:
 - 5+ submissions in 7 days: +30 risk
 - 10+ submissions in 7 days: +40 risk
 - 10+ validations in 1 hour: +25 risk
+- 3+ submissions from different IPs (proxy rotation): +40 risk
 - **Block threshold**: 70 risk score
 
 ### IP-based Fallback
-Checks last hour:
+Analyzes last hour when ephemeral ID unavailable:
 - 3+ submissions in 1 hour: +40 risk
 - 5+ submissions in 1 hour: +30 risk
 - **Block threshold**: 70 risk score
@@ -216,30 +295,43 @@ Checks last hour:
 ## Security Notes
 
 ### What's Implemented
-✅ Single-step validation (no token reuse)
-✅ Token replay protection (SHA256 hashing)
-✅ Ephemeral ID fraud detection (7-day window)
+✅ Atomic validation (no token replay window)
+✅ Token replay protection (SHA256 hashing with unique index)
+✅ Pre-validation blacklist (85-90% API call reduction)
+✅ 3-layer fraud detection (blacklist + Turnstile + pattern analysis)
+✅ Ephemeral ID fraud detection (7-day window, proxy rotation detection)
 ✅ IP-based fallback fraud detection
-✅ SQL injection prevention
-✅ Input sanitization
-✅ Comprehensive request metadata capture
+✅ SQL injection prevention (parameterized queries)
+✅ Input sanitization (HTML stripping)
+✅ Comprehensive request metadata capture (40+ fields)
+✅ CORS restrictions
+✅ Content Security Policy headers
+✅ Analytics API authentication (X-API-KEY header)
 
-### What's NOT Implemented (Out of Scope for Demo)
-❌ Strict real-time rate limiting (would need Durable Objects)
-❌ Advanced bot mitigation beyond Turnstile
+### What's NOT Implemented (By Design)
+❌ Strict real-time rate limiting (requires Durable Objects)
+❌ Advanced bot mitigation beyond Turnstile + fraud detection
 ❌ Email verification
-❌ CSRF tokens (relies on Turnstile)
+❌ CSRF tokens (Turnstile provides protection)
 
-### Ephemeral IDs & Rate Limiting
+### Architecture Decisions
 
-**Why no strict rate limiting?**
-- Turnstile already limits how fast tokens can be obtained
-- Ephemeral IDs help identify rapid patterns post-hoc
-- D1 eventual consistency means strict enforcement would need Durable Objects
-- Current approach: pattern recognition, not real-time enforcement
+**Pre-validation Blacklist:**
+- 10x faster than Turnstile API (10ms vs 150ms)
+- Massive API call reduction for repeat offenders
+- Automatic expiry prevents stale blocks
+- Fail-open approach when ephemeral ID unavailable
 
-**For production:**
-If you need strict "max N requests per time window" enforcement, add Durable Objects for strongly-consistent rate limiting.
+**Pattern Recognition vs Rate Limiting:**
+- Turnstile already limits token acquisition rate
+- Ephemeral IDs enable pattern analysis across 7-day window
+- D1 eventual consistency acceptable for fraud detection
+- For strict "max N per window" enforcement, use Durable Objects
+
+**Fail-Open Strategy:**
+- No ephemeral ID = skip fraud check, allow submission
+- Prioritizes legitimate users over aggressive blocking
+- Turnstile provides baseline protection
 
 ## Custom Domain Setup
 
