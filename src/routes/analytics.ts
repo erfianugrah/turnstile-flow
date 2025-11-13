@@ -507,4 +507,181 @@ app.get('/time-series', async (c) => {
 	}
 });
 
+// GET /api/analytics/export - Export submissions data as CSV or JSON
+app.get('/export', async (c) => {
+	try {
+		const db = c.env.DB;
+
+		// Parse format parameter
+		const format = c.req.query('format') || 'csv';
+		if (!['csv', 'json'].includes(format)) {
+			return c.json(
+				{
+					success: false,
+					error: 'Invalid format',
+					message: 'Format must be either "csv" or "json"',
+				},
+				400
+			);
+		}
+
+		// Parse filter params (same as submissions endpoint)
+		const sortBy = c.req.query('sortBy');
+		const sortOrder = c.req.query('sortOrder') as 'asc' | 'desc' | undefined;
+
+		if (sortOrder && !['asc', 'desc'].includes(sortOrder)) {
+			return c.json(
+				{
+					success: false,
+					error: 'Invalid parameter',
+					message: 'sortOrder must be either "asc" or "desc"',
+				},
+				400
+			);
+		}
+
+		const countries = c.req.query('countries')?.split(',').filter(Boolean);
+		const botScoreMin = c.req.query('botScoreMin')
+			? parseInt(c.req.query('botScoreMin')!, 10)
+			: undefined;
+		const botScoreMax = c.req.query('botScoreMax')
+			? parseInt(c.req.query('botScoreMax')!, 10)
+			: undefined;
+		const startDate = c.req.query('startDate');
+		const endDate = c.req.query('endDate');
+		const verifiedBotStr = c.req.query('verifiedBot');
+		const verifiedBot =
+			verifiedBotStr !== undefined ? verifiedBotStr === 'true' : undefined;
+		const hasJa3Str = c.req.query('hasJa3');
+		const hasJa3 = hasJa3Str !== undefined ? hasJa3Str === 'true' : undefined;
+		const hasJa4Str = c.req.query('hasJa4');
+		const hasJa4 = hasJa4Str !== undefined ? hasJa4Str === 'true' : undefined;
+		const search = c.req.query('search');
+
+		// Validate bot score range
+		if (botScoreMin !== undefined && (botScoreMin < 0 || botScoreMin > 100)) {
+			return c.json(
+				{
+					success: false,
+					error: 'Invalid parameter',
+					message: 'botScoreMin must be between 0 and 100',
+				},
+				400
+			);
+		}
+		if (botScoreMax !== undefined && (botScoreMax < 0 || botScoreMax > 100)) {
+			return c.json(
+				{
+					success: false,
+					error: 'Invalid parameter',
+					message: 'botScoreMax must be between 0 and 100',
+				},
+				400
+			);
+		}
+
+		// Build filters object (no limit/offset - export all matching records)
+		const filters: SubmissionsFilters = {
+			sortBy,
+			sortOrder,
+			countries,
+			botScoreMin,
+			botScoreMax,
+			startDate,
+			endDate,
+			verifiedBot,
+			hasJa3,
+			hasJa4,
+			search,
+		};
+
+		// Fetch all submissions matching filters
+		const result = await getSubmissions(db, filters);
+
+		const timestamp = new Date().toISOString().split('T')[0];
+
+		if (format === 'csv') {
+			// Convert to CSV
+			const headers = [
+				'id',
+				'email',
+				'first_name',
+				'last_name',
+				'country',
+				'remote_ip',
+				'bot_score',
+				'asn',
+				'tls_version',
+				'ja3_fingerprint',
+				'ja4_fingerprint',
+				'verified_bot',
+				'created_at',
+			];
+
+			const rows = result.data.map((row: any) => {
+				return headers.map((header) => {
+					const value = row[header];
+					if (value === null || value === undefined) return '';
+					if (typeof value === 'string' && value.includes(',')) {
+						return `"${value.replace(/"/g, '""')}"`;
+					}
+					return value;
+				});
+			});
+
+			const csvContent = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
+
+			logger.info(
+				{ format, count: result.data.length, filters },
+				'Data exported'
+			);
+
+			return new Response(csvContent, {
+				headers: {
+					'Content-Type': 'text/csv',
+					'Content-Disposition': `attachment; filename="submissions-export-${timestamp}.csv"`,
+				},
+			});
+		} else {
+			// JSON format
+			const jsonContent = JSON.stringify(result.data, null, 2);
+
+			logger.info(
+				{ format, count: result.data.length, filters },
+				'Data exported'
+			);
+
+			return new Response(jsonContent, {
+				headers: {
+					'Content-Type': 'application/json',
+					'Content-Disposition': `attachment; filename="submissions-export-${timestamp}.json"`,
+				},
+			});
+		}
+	} catch (error: any) {
+		// Handle validation errors
+		if (error.message?.includes('Invalid sortBy')) {
+			return c.json(
+				{
+					success: false,
+					error: 'Invalid parameter',
+					message: error.message,
+				},
+				400
+			);
+		}
+
+		logger.error({ error }, 'Error exporting data');
+
+		return c.json(
+			{
+				success: false,
+				error: 'Internal server error',
+				message: 'Failed to export data',
+			},
+			500
+		);
+	}
+});
+
 export default app;

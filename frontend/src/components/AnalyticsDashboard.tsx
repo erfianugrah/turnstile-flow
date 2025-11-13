@@ -8,6 +8,7 @@ import { MultiSelect } from './analytics/filters/MultiSelect';
 import { TimeSeriesChart } from './analytics/charts/TimeSeriesChart';
 import { BarChart } from './analytics/charts/BarChart';
 import { DataTable } from './analytics/tables/DataTable';
+import { Download } from 'lucide-react';
 import { subDays } from 'date-fns';
 import type { ColumnDef, PaginationState, SortingState } from '@tanstack/react-table';
 
@@ -347,6 +348,72 @@ export default function AnalyticsDashboard() {
 		}
 	};
 
+	const handleExport = async (format: 'csv' | 'json') => {
+		if (!apiKey) return;
+
+		const headers = { 'X-API-KEY': apiKey };
+
+		try {
+			// Build query parameters (same as loadSubmissions but without limit/offset)
+			const params = new URLSearchParams();
+			params.append('format', format);
+
+			// Add sorting
+			if (sorting.length > 0) {
+				params.append('sortBy', sorting[0].id);
+				params.append('sortOrder', sorting[0].desc ? 'desc' : 'asc');
+			}
+
+			// Add search query
+			if (searchQuery.trim()) {
+				params.append('search', searchQuery.trim());
+			}
+
+			// Add countries filter
+			if (selectedCountries.length > 0) {
+				params.append('countries', selectedCountries.join(','));
+			}
+
+			// Add date range
+			params.append('startDate', dateRange.start.toISOString());
+			params.append('endDate', dateRange.end.toISOString());
+
+			const res = await fetch(`/api/analytics/export?${params.toString()}`, { headers });
+
+			if (res.status === 401) {
+				localStorage.removeItem('analytics-api-key');
+				setApiKey('');
+				setShowApiKeyDialog(true);
+				setApiKeyError('Invalid or missing API key. Please enter a valid key.');
+				return;
+			}
+
+			if (!res.ok) {
+				throw new Error('Failed to export data');
+			}
+
+			// Get the blob and trigger download
+			const blob = await res.blob();
+			const url = window.URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+
+			// Extract filename from Content-Disposition header or use default
+			const contentDisposition = res.headers.get('Content-Disposition');
+			const filenameMatch = contentDisposition?.match(/filename="?([^"]+)"?/);
+			const filename = filenameMatch ? filenameMatch[1] : `submissions-export-${new Date().toISOString().split('T')[0]}.${format}`;
+
+			a.download = filename;
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+			window.URL.revokeObjectURL(url);
+		} catch (err) {
+			console.error('Error exporting data:', err);
+			alert('Failed to export data');
+		}
+	};
+
 	const handleApiKeySubmit = () => {
 		if (!apiKeyInput.trim()) {
 			setApiKeyError('Please enter an API key');
@@ -601,6 +668,26 @@ export default function AnalyticsDashboard() {
 							label="Countries"
 						/>
 						<DateRangePicker value={dateRange} onChange={setDateRange} />
+					</div>
+
+					{/* Export Buttons */}
+					<div className="flex justify-end gap-2">
+						<button
+							onClick={() => handleExport('csv')}
+							className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-primary border border-primary rounded-md hover:bg-primary hover:text-primary-foreground transition-colors"
+							disabled={submissionsLoading}
+						>
+							<Download size={16} />
+							Export CSV
+						</button>
+						<button
+							onClick={() => handleExport('json')}
+							className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-primary border border-primary rounded-md hover:bg-primary hover:text-primary-foreground transition-colors"
+							disabled={submissionsLoading}
+						>
+							<Download size={16} />
+							Export JSON
+						</button>
 					</div>
 
 					{/* Data Table */}
