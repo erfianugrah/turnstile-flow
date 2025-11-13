@@ -8,7 +8,7 @@ import { TimeSeriesChart } from './analytics/charts/TimeSeriesChart';
 import { BarChart } from './analytics/charts/BarChart';
 import { DataTable } from './analytics/tables/DataTable';
 import { subDays } from 'date-fns';
-import type { ColumnDef } from '@tanstack/react-table';
+import type { ColumnDef, PaginationState, SortingState } from '@tanstack/react-table';
 
 interface ValidationStats {
 	total: number;
@@ -138,6 +138,15 @@ export default function AnalyticsDashboard() {
 		end: new Date(),
 	});
 
+	// Pagination and sorting states
+	const [pagination, setPagination] = useState<PaginationState>({
+		pageIndex: 0,
+		pageSize: 10,
+	});
+	const [sorting, setSorting] = useState<SortingState>([{ id: 'created_at', desc: true }]);
+	const [totalCount, setTotalCount] = useState(0);
+	const [submissionsLoading, setSubmissionsLoading] = useState(false);
+
 	// Time-series data
 	const [timeSeriesData, setTimeSeriesData] = useState<any[]>([]);
 
@@ -153,6 +162,22 @@ export default function AnalyticsDashboard() {
 		}
 	}, []);
 
+	// Reload submissions when filters, pagination, or sorting change
+	useEffect(() => {
+		if (apiKey) {
+			loadSubmissions(apiKey);
+		}
+	}, [
+		searchQuery,
+		dateRange.start.toISOString(),
+		dateRange.end.toISOString(),
+		pagination.pageIndex,
+		pagination.pageSize,
+		sorting.length > 0 ? sorting[0].id : '',
+		sorting.length > 0 ? sorting[0].desc : false,
+		apiKey,
+	]);
+
 	const loadAnalytics = async (key: string) => {
 		setLoading(true);
 		setError(null);
@@ -162,7 +187,6 @@ export default function AnalyticsDashboard() {
 		try {
 			const [
 				statsRes,
-				submissionsRes,
 				countriesRes,
 				botScoresRes,
 				asnRes,
@@ -172,7 +196,6 @@ export default function AnalyticsDashboard() {
 				timeSeriesRes,
 			] = await Promise.all([
 				fetch('/api/analytics/stats', { headers }),
-				fetch('/api/analytics/submissions?limit=50', { headers }),
 				fetch('/api/analytics/countries', { headers }),
 				fetch('/api/analytics/bot-scores', { headers }),
 				fetch('/api/analytics/asn', { headers }),
@@ -194,7 +217,6 @@ export default function AnalyticsDashboard() {
 
 			if (
 				!statsRes.ok ||
-				!submissionsRes.ok ||
 				!countriesRes.ok ||
 				!botScoresRes.ok ||
 				!asnRes.ok ||
@@ -206,10 +228,9 @@ export default function AnalyticsDashboard() {
 				throw new Error('Failed to fetch analytics');
 			}
 
-			const [statsData, submissionsData, countriesData, botScoresData, asnData, tlsData, ja3DataRes, ja4DataRes, timeSeriesDataRes] =
+			const [statsData, countriesData, botScoresData, asnData, tlsData, ja3DataRes, ja4DataRes, timeSeriesDataRes] =
 				await Promise.all([
 					statsRes.json(),
-					submissionsRes.json(),
 					countriesRes.json(),
 					botScoresRes.json(),
 					asnRes.json(),
@@ -220,7 +241,6 @@ export default function AnalyticsDashboard() {
 				]);
 
 			setStats(statsData.data);
-			setSubmissions(submissionsData.data);
 			setCountries(countriesData.data);
 			setBotScores(botScoresData.data);
 			setAsnData(asnData.data);
@@ -228,11 +248,64 @@ export default function AnalyticsDashboard() {
 			setJa3Data(ja3DataRes.data);
 			setJa4Data(ja4DataRes.data);
 			setTimeSeriesData(timeSeriesDataRes.data || []);
+
+			// Load submissions separately with filters
+			await loadSubmissions(key);
 		} catch (err) {
 			console.error('Error loading analytics:', err);
 			setError('Failed to load analytics data');
 		} finally {
 			setLoading(false);
+		}
+	};
+
+	const loadSubmissions = async (key: string) => {
+		setSubmissionsLoading(true);
+		const headers = key ? { 'X-API-KEY': key } : {};
+
+		try {
+			// Build query parameters
+			const params = new URLSearchParams();
+			params.append('limit', pagination.pageSize.toString());
+			params.append('offset', (pagination.pageIndex * pagination.pageSize).toString());
+
+			// Add sorting
+			if (sorting.length > 0) {
+				params.append('sortBy', sorting[0].id);
+				params.append('sortOrder', sorting[0].desc ? 'desc' : 'asc');
+			}
+
+			// Add search query
+			if (searchQuery.trim()) {
+				params.append('search', searchQuery.trim());
+			}
+
+			// Add date range
+			params.append('startDate', dateRange.start.toISOString());
+			params.append('endDate', dateRange.end.toISOString());
+
+			const res = await fetch(`/api/analytics/submissions?${params.toString()}`, { headers });
+
+			if (res.status === 401) {
+				localStorage.removeItem('analytics-api-key');
+				setApiKey('');
+				setShowApiKeyDialog(true);
+				setApiKeyError('Invalid or missing API key. Please enter a valid key.');
+				return;
+			}
+
+			if (!res.ok) {
+				throw new Error('Failed to fetch submissions');
+			}
+
+			const data = await res.json();
+			setSubmissions(data.data);
+			setTotalCount(data.total || 0);
+		} catch (err) {
+			console.error('Error loading submissions:', err);
+			// Don't set global error, just log it
+		} finally {
+			setSubmissionsLoading(false);
 		}
 	};
 
@@ -511,11 +584,29 @@ export default function AnalyticsDashboard() {
 					</div>
 
 					{/* Data Table */}
-					<DataTable
-						data={submissions}
-						columns={columns}
-						totalCount={submissions.length}
-					/>
+					{submissionsLoading ? (
+						<div className="flex items-center justify-center py-12">
+							<p className="text-muted-foreground">Loading submissions...</p>
+						</div>
+					) : (
+						<DataTable
+							data={submissions}
+							columns={columns}
+							totalCount={totalCount}
+							manualPagination={true}
+							manualSorting={true}
+							onPaginationChange={(updater) => {
+								const newPagination =
+									typeof updater === 'function' ? updater(pagination) : updater;
+								setPagination(newPagination);
+							}}
+							onSortingChange={(updater) => {
+								const newSorting =
+									typeof updater === 'function' ? updater(sorting) : updater;
+								setSorting(newSorting);
+							}}
+						/>
+					)}
 				</CardContent>
 			</Card>
 
