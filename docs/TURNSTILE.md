@@ -171,6 +171,282 @@ turnstile.ready(() => {
 
 ---
 
+## Advanced Configuration Options
+
+### Callback Configuration
+
+Turnstile provides several callbacks to handle widget events:
+
+**1. `callback` (Success Callback)**
+```typescript
+callback: (token: string) => {
+  console.log('Challenge completed:', token);
+  // Token is valid for 300 seconds (5 minutes)
+  // Send token to your backend for validation
+}
+```
+- Triggered when challenge successfully completes
+- Receives Turnstile token as parameter
+- Token must be validated server-side using Siteverify API
+- Tokens are single-use and expire after 5 minutes
+
+**2. `error-callback` (Error Callback)**
+```typescript
+'error-callback': (errorCode: string) => {
+  console.error('Turnstile error:', errorCode);
+  // Handle error based on error code
+  // See error code dictionary for user-friendly messages
+}
+```
+- Triggered when an error occurs during the challenge
+- Receives error code as parameter (e.g., "110420", "106010")
+- Use error code dictionary to display user-friendly messages
+- Common errors: network issues, token expiration, configuration problems
+
+**3. `expired-callback` (Token Expiration Callback)**
+```typescript
+'expired-callback': () => {
+  console.warn('Token expired');
+  // Token expired before submission
+  // Does NOT reset the widget automatically
+  // Consider calling turnstile.reset() to get new token
+}
+```
+- Triggered when token expires (5 minutes after generation)
+- Does not automatically reset widget
+- You must handle token refresh manually or call `turnstile.reset()`
+
+**4. `timeout-callback` (Interactive Challenge Timeout)**
+```typescript
+'timeout-callback': () => {
+  console.warn('Interactive challenge timed out');
+  // User took too long to complete interactive challenge
+  // Widget will reset automatically
+}
+```
+- Only relevant for interactive challenges (visible mode)
+- Triggered when user doesn't complete interactive challenge in time
+- Widget automatically resets after callback
+
+**5. `before-interactive-callback` & `after-interactive-callback`**
+```typescript
+'before-interactive-callback': () => {
+  console.log('Entering interactive mode');
+  // Show loading indicator, disable submit button, etc.
+},
+'after-interactive-callback': () => {
+  console.log('Exiting interactive mode');
+  // Hide loading indicator, re-enable submit button, etc.
+}
+```
+- Track when widget enters/exits interactive mode
+- Useful for UI updates and user feedback
+- Most users never see interactive mode (silent pass)
+
+**6. `unsupported-callback` (Browser Unsupported)**
+```typescript
+'unsupported-callback': () => {
+  console.error('Browser not supported');
+  // Handle unsupported browser
+  // Show message to upgrade browser or use fallback
+}
+```
+- Triggered when browser doesn't support Turnstile
+- Rare - most modern browsers supported
+- Consider fallback verification method
+
+### Retry & Refresh Behavior
+
+**Retry Configuration**
+
+Controls automatic retry on challenge failures:
+
+```typescript
+{
+  retry: 'auto',              // Auto-retry on failure (default)
+  'retry-interval': 8000,     // Wait 8 seconds between retries (default)
+}
+```
+
+Options:
+- `auto` (default): Automatically retries failed challenges
+  - Better user experience
+  - Recovers from temporary network issues
+  - Handles transient processing errors
+- `never`: Disables automatic retry
+  - Gives you full control over error handling
+  - Useful for custom retry logic
+  - Requires manual intervention
+
+**Refresh Configuration**
+
+Controls behavior when tokens expire or challenges timeout:
+
+```typescript
+{
+  'refresh-expired': 'auto',   // Auto-refresh expired tokens (default)
+  'refresh-timeout': 'auto',   // Auto-refresh timed out challenges (default)
+}
+```
+
+**`refresh-expired` Options:**
+- `auto` (default): Automatically generates new token when old one expires
+  - Seamless user experience
+  - No manual intervention needed
+  - Uses more resources (frequent refreshes)
+- `manual`: Prompts user to manually refresh
+  - User must click to get new token
+  - Gives users control
+  - More conservative resource usage
+- `never`: No automatic refresh
+  - Your application must handle all refresh logic
+  - Most control but most complexity
+
+**`refresh-timeout` Options:**
+- `auto` (default): Automatically refreshes when interactive challenge times out
+  - Only applies to Managed mode (visible widgets)
+  - Seamless retry for users
+- `manual`: Prompts user to manually refresh
+  - User must click to retry
+- `never`: Shows timeout error
+  - No automatic retry
+  - User sees error message
+
+### Custom Data (cData) and Action
+
+**Action Parameter**
+
+Custom identifier for analytics and differentiation:
+
+```typescript
+{
+  action: 'submit-form',  // Max 32 characters, alphanumeric + _ and -
+}
+```
+
+**Use cases:**
+- Differentiate between multiple forms: `'login'`, `'signup'`, `'contact'`
+- Track different workflows: `'checkout-step-1'`, `'checkout-step-2'`
+- A/B testing: `'form-variant-a'`, `'form-variant-b'`
+- Analytics segmentation: Group challenges by action in dashboard
+
+**Returned in validation response:**
+```json
+{
+  "success": true,
+  "action": "submit-form",
+  ...
+}
+```
+
+**cData Parameter**
+
+Custom payload data for contextual information:
+
+```typescript
+{
+  cdata: 'user-id-12345',  // Max 255 characters, alphanumeric + _ and -
+}
+```
+
+**Use cases:**
+- User context: `'user-id-12345'` or `'session-abc123'`
+- Fraud detection: Additional context for risk assessment
+- Request tracking: Link challenge to specific request
+- A/B testing: `'test-group-b'`
+
+**Returned in validation response:**
+```json
+{
+  "success": true,
+  "cdata": "user-id-12345",
+  ...
+}
+```
+
+**Important constraints:**
+- Both `action` and `cdata` only accept: letters, numbers, underscores (_), hyphens (-)
+- No spaces, special characters, or emojis
+- Invalid characters will cause error code `110420` (invalid action) or `110430` (invalid cData)
+
+### Form Integration
+
+**Automatic Form Integration (Implicit Rendering)**
+
+When using implicit rendering, Turnstile automatically creates hidden input field:
+
+```html
+<div class="cf-turnstile" data-sitekey="YOUR-SITE-KEY"></div>
+```
+
+Automatically creates:
+```html
+<input type="hidden" name="cf-turnstile-response" value="TURNSTILE-TOKEN">
+```
+
+Token is automatically included when form submits - no JavaScript needed!
+
+**Custom Form Integration (Explicit Rendering)**
+
+For more control, disable automatic field creation:
+
+```typescript
+{
+  'response-field': false,  // Disable automatic hidden field (default: true)
+  // Handle token manually via callback
+}
+```
+
+Or customize field name:
+
+```typescript
+{
+  'response-field': true,
+  'response-field-name': 'turnstile-token',  // Custom field name (default: cf-turnstile-response)
+}
+```
+
+**Manual Token Handling (Recommended for APIs)**
+
+```typescript
+let turnstileToken = null;
+
+turnstile.render('#widget', {
+  sitekey: 'YOUR-SITE-KEY',
+  'response-field': false,  // Manual handling
+  callback: (token) => {
+    turnstileToken = token;
+    // Token ready - enable submit button
+  },
+});
+
+// On form submit
+async function handleSubmit(formData) {
+  if (!turnstileToken) {
+    alert('Please complete verification');
+    return;
+  }
+
+  const response = await fetch('/api/submissions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ...formData,
+      turnstileToken,  // Include token in request
+    }),
+  });
+}
+```
+
+**Best Practices:**
+1. Always validate tokens server-side (never trust client-side)
+2. Tokens expire after 300 seconds (5 minutes)
+3. Tokens are single-use (cannot be validated twice)
+4. Check token age on server (warn if > 4 minutes old)
+5. Store tokens securely (never log actual tokens, use hashes)
+
+---
+
 ## Implementation Flow
 
 ### User Journey
