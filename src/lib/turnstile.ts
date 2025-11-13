@@ -147,9 +147,15 @@ export async function checkTokenReuse(
 
 /**
  * Check for fraud patterns based on ephemeral ID
- * Research-based thresholds: Legitimate users submit 1-2 times max, 3+ = abuse
- * Time window: 1 hour for registration forms
+ * Research-based thresholds: Legitimate users submit once, 2+ = abuse for registration forms
+ * Time window: 1 hour for validation attempts, 24 hours for submissions
  * Enhanced with IP diversity detection (rotating proxies/botnets)
+ *
+ * IMPORTANT: This check runs BEFORE the submission is created, so we add +1
+ * to account for the current attempt when checking thresholds.
+ *
+ * CRITICAL: Due to D1 eventual consistency, we check BOTH submissions AND validations
+ * to catch rapid-fire attempts before DB replication catches up.
  */
 export async function checkEphemeralIdFraud(
 	ephemeralId: string,
@@ -159,9 +165,11 @@ export async function checkEphemeralIdFraud(
 	let riskScore = 0;
 
 	try {
-		// Check submissions in last hour (research: 3-5 per hour is industry standard limit)
 		const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+		const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
+		// LAYER 1: Check successful submissions in last 24 hours
+		// For registration forms, legitimate users should only submit ONCE
 		const recentSubmissions = await db
 			.prepare(
 				`SELECT COUNT(*) as count
@@ -169,42 +177,26 @@ export async function checkEphemeralIdFraud(
 				 WHERE ephemeral_id = ?
 				 AND created_at > ?`
 			)
-			.bind(ephemeralId, oneHourAgo)
+			.bind(ephemeralId, oneDayAgo)
 			.first<{ count: number }>();
 
 		const submissionCount = recentSubmissions?.count || 0;
 
-		// Hard block: 3+ submissions in 1 hour (clear abuse)
-		if (submissionCount >= 3) {
-			warnings.push('Excessive submissions in last hour (3+)');
-			riskScore = 100;
-		}
-		// Warning: 2 submissions in 1 hour (possible duplicate/error)
-		else if (submissionCount >= 2) {
-			warnings.push('Multiple submissions detected (2)');
-			riskScore = 50;
-		}
+		// Add +1 to account for the current submission attempt (runs before creation)
+		const effectiveCount = submissionCount + 1;
 
-		// Check IP diversity (same ephemeral ID from multiple IPs = proxy rotation/botnet)
-		const uniqueIps = await db
-			.prepare(
-				`SELECT COUNT(DISTINCT remote_ip) as count
-				 FROM submissions
-				 WHERE ephemeral_id = ?
-				 AND created_at > ?`
-			)
-			.bind(ephemeralId, oneHourAgo)
-			.first<{ count: number }>();
-
-		const ipCount = uniqueIps?.count || 0;
-
-		// Same ephemeral ID from 3+ different IPs = suspicious (proxy rotation)
-		if (ipCount >= 3 && submissionCount > 0) {
-			warnings.push(`Multiple IPs for same ephemeral ID (${ipCount} IPs)`);
-			riskScore += 40;
+		// STRICTER THRESHOLD: Block on 2nd submission (1 existing + 1 current)
+		// Registration forms should only be submitted once per user
+		if (effectiveCount >= 2) {
+			warnings.push(
+				`Multiple submissions detected (${effectiveCount} total in 24h) - registration forms should only be submitted once`
+			);
+			riskScore = 100; // Immediate block
 		}
 
-		// Check validation attempts (high-frequency token generation = bot)
+		// LAYER 2: Check validation attempts in last hour
+		// CRITICAL: This catches rapid-fire attacks BEFORE D1 replication catches up
+		// turnstile_validations writes complete faster and show ALL attempts (even failed tokens)
 		const recentValidations = await db
 			.prepare(
 				`SELECT COUNT(*) as count
@@ -217,10 +209,39 @@ export async function checkEphemeralIdFraud(
 
 		const validationCount = recentValidations?.count || 0;
 
-		// 10+ validation attempts in an hour = suspicious
-		if (validationCount >= 10) {
-			warnings.push('High-frequency validation attempts (10+)');
-			riskScore += 30;
+		// Add +1 for current validation attempt (this runs before logging validation)
+		const effectiveValidationCount = validationCount + 1;
+
+		// Block on 3+ validation attempts in 1 hour (allows 1 retry for legitimate users)
+		if (effectiveValidationCount >= 3) {
+			warnings.push(
+				`Excessive validation attempts (${effectiveValidationCount} in 1h) - possible automated attack`
+			);
+			riskScore = Math.max(riskScore, 100); // Immediate block
+		}
+		// Warning on 2 validation attempts (1 existing + 1 current)
+		else if (effectiveValidationCount >= 2 && riskScore < 100) {
+			warnings.push(`Multiple validation attempts detected (${effectiveValidationCount} in 1h)`);
+			riskScore = Math.max(riskScore, 60); // High risk but allow one retry
+		}
+
+		// LAYER 3: Check IP diversity (same ephemeral ID from multiple IPs = proxy rotation/botnet)
+		const uniqueIps = await db
+			.prepare(
+				`SELECT COUNT(DISTINCT remote_ip) as count
+				 FROM submissions
+				 WHERE ephemeral_id = ?
+				 AND created_at > ?`
+			)
+			.bind(ephemeralId, oneDayAgo)
+			.first<{ count: number }>();
+
+		const ipCount = uniqueIps?.count || 0;
+
+		// Same ephemeral ID from 2+ different IPs = suspicious (proxy rotation)
+		if (ipCount >= 2 && submissionCount > 0) {
+			warnings.push(`Multiple IPs for same ephemeral ID (${ipCount} IPs)`);
+			riskScore = Math.max(riskScore, 100); // Immediate block on proxy rotation
 		}
 
 		const allowed = riskScore < 70;
@@ -233,15 +254,16 @@ export async function checkEphemeralIdFraud(
 
 			await addToBlacklist(db, {
 				ephemeralId,
-				blockReason: `Automated: ${submissionCount} submissions in 1 hour - ${warnings.join(', ')}`,
+				blockReason: `Automated: Multiple submissions detected (${effectiveCount} in 24h, ${effectiveValidationCount} validations in 1h) - ${warnings.join(', ')}`,
 				confidence,
 				expiresIn,
-				submissionCount: submissionCount,
+				submissionCount: effectiveCount,
 				detectionMetadata: {
 					risk_score: riskScore,
 					warnings,
-					submissions_1h: submissionCount,
-					validations_1h: validationCount,
+					submissions_24h: effectiveCount,
+					validations_1h: effectiveValidationCount,
+					unique_ips: ipCount,
 					detected_at: new Date().toISOString(),
 				},
 			});
@@ -252,8 +274,9 @@ export async function checkEphemeralIdFraud(
 					riskScore,
 					confidence,
 					expiresIn,
-					submissionCount,
-					validationCount,
+					submissions_24h: effectiveCount,
+					validations_1h: effectiveValidationCount,
+					unique_ips: ipCount,
 				},
 				'Ephemeral ID auto-blacklisted'
 			);
@@ -265,16 +288,16 @@ export async function checkEphemeralIdFraud(
 				riskScore,
 				allowed,
 				warnings,
-				submissions_1h: submissionCount,
+				submissions_24h: effectiveCount,
+				validations_1h: effectiveValidationCount,
 				unique_ips: ipCount,
-				validations_1h: validationCount,
 			},
 			'Fraud check completed'
 		);
 
 		return {
 			allowed,
-			reason: allowed ? undefined : 'High risk based on recent activity',
+			reason: allowed ? undefined : 'Multiple submissions detected - registration forms allow only one submission',
 			riskScore,
 			warnings,
 		};
