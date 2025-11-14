@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { subDays } from 'date-fns';
 import type { PaginationState, SortingState } from '@tanstack/react-table';
-import { Alert, AlertDescription } from './ui/card';
+import { Alert, AlertDescription } from './ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { GlobalControlsBar } from './analytics/controls/GlobalControlsBar';
 import { FraudAlert } from './analytics/cards/FraudAlert';
@@ -259,8 +259,9 @@ export default function AnalyticsDashboard() {
 			{/* Main Dashboard */}
 			<div className="space-y-6">
 				<GlobalControlsBar
-					onExport={handleExport}
-					onRefresh={handleRefresh}
+					onExportCSV={() => handleExport("csv")}
+				onExportJSON={() => handleExport("json")}
+					onManualRefresh={handleRefresh}
 					autoRefresh={autoRefresh}
 					onAutoRefreshChange={setAutoRefresh}
 					refreshInterval={refreshInterval}
