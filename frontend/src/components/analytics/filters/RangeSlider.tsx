@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Slider } from '../../ui/slider';
 import { Button } from '../../ui/button';
 import { RotateCcw } from 'lucide-react';
