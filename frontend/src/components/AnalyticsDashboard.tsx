@@ -301,12 +301,8 @@ export default function AnalyticsDashboard() {
 					blockReasons={analyticsData.blockReasons}
 				/>
 
-				{analyticsData.blockedStats && analyticsData.blockedStats.total_blocked > 0 && (
-					<>
-						<BlacklistSection entries={blacklistData.entries} />
-						<BlockedValidationsSection validations={blockedValidationsData.validations} />
-					</>
-				)}
+				<BlacklistSection entries={blacklistData.entries} />
+				<BlockedValidationsSection validations={blockedValidationsData.validations} />
 
 				<ChartsSection
 					timeSeriesData={analyticsData.timeSeriesData}
