@@ -281,14 +281,22 @@ export async function getSubmissions(
 			bindings.push(filters.botScoreMax);
 		}
 
-		// Date range
+		// Date range - convert ISO format dates from frontend to SQLite format
 		if (filters.startDate) {
 			whereClauses.push('created_at >= ?');
-			bindings.push(filters.startDate);
+			// Convert ISO date to SQLite format if it contains 'T'
+			const startDate = filters.startDate.includes('T')
+				? toSQLiteDateTime(new Date(filters.startDate))
+				: filters.startDate;
+			bindings.push(startDate);
 		}
 		if (filters.endDate) {
 			whereClauses.push('created_at <= ?');
-			bindings.push(filters.endDate);
+			// Convert ISO date to SQLite format if it contains 'T'
+			const endDate = filters.endDate.includes('T')
+				? toSQLiteDateTime(new Date(filters.endDate))
+				: filters.endDate;
+			bindings.push(endDate);
 		}
 
 		// Verified bot filter
@@ -955,13 +963,13 @@ export async function getRecentBlockedValidations(db: D1Database, limit: number 
 				`SELECT
 					id,
 					ephemeral_id,
-					remote_ip,
+					remote_ip AS ip_address,
 					country,
 					block_reason,
 					risk_score,
 					bot_score,
 					user_agent,
-					created_at
+					REPLACE(created_at, ' ', 'T') || 'Z' AS challenge_ts
 				 FROM turnstile_validations
 				 WHERE allowed = 0
 				 ORDER BY created_at DESC

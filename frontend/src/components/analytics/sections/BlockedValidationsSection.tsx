@@ -26,8 +26,8 @@ export function BlockedValidationsSection({ validations }: BlockedValidationsSec
 						<p className="text-muted-foreground text-sm">No blocked validation attempts</p>
 					</div>
 				) : (
-					<div className="space-y-3">
-						{validations.slice(0, 20).map((validation) => (
+					<div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
+						{validations.map((validation) => (
 							<div
 								key={validation.id}
 								className="flex items-center gap-4 p-4 rounded-lg border border-border bg-card hover:bg-accent/50 transition-colors"

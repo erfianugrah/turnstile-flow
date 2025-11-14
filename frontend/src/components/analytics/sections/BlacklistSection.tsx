@@ -26,7 +26,7 @@ export function BlacklistSection({ entries }: BlacklistSectionProps) {
 						<p className="text-muted-foreground text-sm">No active blacklist entries</p>
 					</div>
 				) : (
-					<div className="space-y-3">
+					<div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
 						{entries.map((entry) => {
 							const now = new Date().getTime();
 							const expiresAt = new Date(entry.expires_at).getTime();
