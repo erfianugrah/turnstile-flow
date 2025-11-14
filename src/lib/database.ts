@@ -864,19 +864,31 @@ export async function getActiveBlacklistEntries(db: D1Database) {
 		const result = await db
 			.prepare(
 				`SELECT
-					id,
-					ephemeral_id,
-					ip_address,
-					block_reason,
-					detection_confidence,
-					blocked_at,
-					expires_at,
-					submission_count,
-					last_seen_at,
-					detection_metadata
-				 FROM fraud_blacklist
-				 WHERE expires_at > datetime('now')
-				 ORDER BY blocked_at DESC
+					fb.id,
+					fb.ephemeral_id,
+					fb.ip_address,
+					fb.block_reason,
+					fb.detection_confidence,
+					fb.blocked_at,
+					fb.expires_at,
+					fb.submission_count,
+					fb.last_seen_at,
+					fb.detection_metadata,
+					-- Calculate offense count (how many times blocked in last 24h)
+					(SELECT COUNT(*)
+					 FROM fraud_blacklist
+					 WHERE (ephemeral_id = fb.ephemeral_id OR ip_address = fb.ip_address)
+					 AND blocked_at > datetime('now', '-24 hours')) as offense_count,
+					-- Map confidence to risk score
+					CASE fb.detection_confidence
+						WHEN 'high' THEN 100
+						WHEN 'medium' THEN 80
+						WHEN 'low' THEN 70
+						ELSE 50
+					END as risk_score
+				 FROM fraud_blacklist fb
+				 WHERE fb.expires_at > datetime('now')
+				 ORDER BY fb.blocked_at DESC
 				 LIMIT 100`
 			)
 			.all();

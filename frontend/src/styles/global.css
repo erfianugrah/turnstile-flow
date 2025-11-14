@@ -3,25 +3,25 @@
 
 @layer base {
 	:root {
-		--background: 0 0% 100%;
-		--foreground: 220 16% 22%;
-		--card: 0 0% 100%;
-		--card-foreground: 220 16% 22%;
-		--popover: 0 0% 100%;
-		--popover-foreground: 220 16% 22%;
-		--primary: 213 32% 52%;
+		--background: 220 18% 97%;
+		--foreground: 220 16% 20%;
+		--card: 220 20% 99%;
+		--card-foreground: 220 16% 20%;
+		--popover: 220 20% 99%;
+		--popover-foreground: 220 16% 20%;
+		--primary: 213 40% 48%;
 		--primary-foreground: 0 0% 100%;
-		--secondary: 220 16% 96%;
-		--secondary-foreground: 220 16% 22%;
-		--muted: 220 16% 96%;
-		--muted-foreground: 220 16% 45%;
-		--accent: 220 16% 92%;
-		--accent-foreground: 220 16% 22%;
+		--secondary: 220 16% 93%;
+		--secondary-foreground: 220 16% 20%;
+		--muted: 220 16% 93%;
+		--muted-foreground: 220 16% 42%;
+		--accent: 220 16% 89%;
+		--accent-foreground: 220 16% 20%;
 		--destructive: 354 42% 56%;
 		--destructive-foreground: 0 0% 100%;
-		--border: 220 13% 91%;
-		--input: 220 13% 91%;
-		--ring: 213 32% 52%;
+		--border: 220 13% 88%;
+		--input: 220 13% 88%;
+		--ring: 213 40% 48%;
 		--radius: 0.5rem;
 
 		/* Chart colors - Nord palette */
@@ -33,25 +33,25 @@
 	}
 
 	.dark {
-		--background: 220 16% 22%;
-		--foreground: 218 27% 92%;
-		--card: 220 17% 26%;
-		--card-foreground: 218 27% 92%;
-		--popover: 220 17% 26%;
-		--popover-foreground: 218 27% 92%;
-		--primary: 213 32% 52%;
+		--background: 220 18% 16%;
+		--foreground: 218 24% 88%;
+		--card: 220 18% 19%;
+		--card-foreground: 218 24% 88%;
+		--popover: 220 18% 19%;
+		--popover-foreground: 218 24% 88%;
+		--primary: 213 42% 55%;
 		--primary-foreground: 0 0% 100%;
-		--secondary: 220 17% 32%;
-		--secondary-foreground: 218 27% 92%;
-		--muted: 220 17% 32%;
-		--muted-foreground: 218 27% 65%;
-		--accent: 220 16% 36%;
-		--accent-foreground: 218 27% 92%;
+		--secondary: 220 17% 26%;
+		--secondary-foreground: 218 24% 88%;
+		--muted: 220 17% 26%;
+		--muted-foreground: 218 20% 60%;
+		--accent: 220 16% 30%;
+		--accent-foreground: 218 24% 88%;
 		--destructive: 354 42% 56%;
 		--destructive-foreground: 0 0% 100%;
-		--border: 220 16% 36%;
-		--input: 220 16% 36%;
-		--ring: 213 32% 52%;
+		--border: 220 16% 30%;
+		--input: 220 16% 30%;
+		--ring: 213 42% 55%;
 
 		/* Chart colors - Nord palette (brightened for dark mode) */
 		--chart-1: 213 32% 60%;

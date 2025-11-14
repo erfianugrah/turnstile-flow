@@ -75,6 +75,17 @@ export function DateRangePicker({ value, onChange, className = '' }: DateRangePi
 		setIsOpen(false);
 	};
 
+	const handleCustomDateChange = (type: 'start' | 'end', dateStr: string) => {
+		const newDate = new Date(dateStr);
+		if (isNaN(newDate.getTime())) return;
+
+		if (type === 'start') {
+			onChange({ start: startOfDay(newDate), end: value.end });
+		} else {
+			onChange({ start: value.start, end: endOfDay(newDate) });
+		}
+	};
+
 	const formatDateRange = (range: DateRange) => {
 		const startStr = format(range.start, 'MMM d');
 		const endStr = format(range.end, 'MMM d, yyyy');
@@ -111,8 +122,30 @@ export function DateRangePicker({ value, onChange, className = '' }: DateRangePi
 							</button>
 						))}
 						<div className="border-t border-border my-2" />
-						<div className="px-3 py-2 text-xs text-muted-foreground">
-							Custom range coming soon
+						<div className="px-3 py-2 space-y-3">
+							<div className="text-xs font-medium text-muted-foreground mb-2">
+								Custom Range
+							</div>
+							<div className="space-y-2">
+								<label className="block">
+									<span className="text-xs text-muted-foreground">Start Date</span>
+									<input
+										type="date"
+										value={format(value.start, 'yyyy-MM-dd')}
+										onChange={(e) => handleCustomDateChange('start', e.target.value)}
+										className="w-full mt-1 px-2 py-1.5 text-sm bg-background border border-border rounded text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+									/>
+								</label>
+								<label className="block">
+									<span className="text-xs text-muted-foreground">End Date</span>
+									<input
+										type="date"
+										value={format(value.end, 'yyyy-MM-dd')}
+										onChange={(e) => handleCustomDateChange('end', e.target.value)}
+										className="w-full mt-1 px-2 py-1.5 text-sm bg-background border border-border rounded text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+									/>
+								</label>
+							</div>
 						</div>
 					</div>
 				</div>

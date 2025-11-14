@@ -166,7 +166,7 @@ export function DataTable<TData>({
 						</>
 					) : (
 						<>
-							Page {pagination.pageIndex + 1} of {table.getPageCount()}
+							No results
 						</>
 					)}
 				</div>

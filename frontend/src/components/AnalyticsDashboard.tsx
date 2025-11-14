@@ -1,160 +1,29 @@
-import { useEffect, useState } from 'react';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from './ui/card';
-import { Alert, AlertDescription } from './ui/alert';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
-import { SearchBar } from './analytics/filters/SearchBar';
-import { DateRangePicker } from './analytics/filters/DateRangePicker';
-import { MultiSelect } from './analytics/filters/MultiSelect';
-import { RangeSlider } from './analytics/filters/RangeSlider';
-import { TimeSeriesChart } from './analytics/charts/TimeSeriesChart';
-import { BarChart } from './analytics/charts/BarChart';
-import { PieChart } from './analytics/charts/PieChart';
-import { DonutChart } from './analytics/charts/DonutChart';
-import { RadarChart } from './analytics/charts/RadarChart';
-import { DataTable } from './analytics/tables/DataTable';
-import { FraudAlert } from './analytics/cards/FraudAlert';
-import { GlobalControlsBar } from './analytics/controls/GlobalControlsBar';
-import { Download, RefreshCw } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { subDays } from 'date-fns';
-import type { ColumnDef, PaginationState, SortingState } from '@tanstack/react-table';
-
-interface ValidationStats {
-	total: number;
-	successful: number;
-	allowed: number;
-	avg_risk_score: number;
-	unique_ephemeral_ids: number;
-}
-
-interface BlockedStats {
-	total_blocked: number;
-	unique_ephemeral_ids: number;
-	unique_ips: number;
-	avg_risk_score: number;
-	unique_block_reasons: number;
-}
-
-interface BlockReason {
-	block_reason: string;
-	count: number;
-	unique_ephemeral_ids: number;
-	unique_ips: number;
-	avg_risk_score: number;
-}
-
-interface Submission {
-	id: number;
-	first_name: string;
-	last_name: string;
-	email: string;
-	country: string | null;
-	city: string | null;
-	bot_score: number | null;
-	created_at: string;
-	// Expanded fields for table
-	remote_ip?: string | null;
-	user_agent?: string | null;
-	tls_version?: string | null;
-	asn?: string | null;
-	ja3_hash?: string | null;
-	ephemeral_id?: string | null;
-}
-
-interface SubmissionDetail {
-	// Form data
-	id: number;
-	first_name: string;
-	last_name: string;
-	email: string;
-	phone: string;
-	address: string;
-	date_of_birth: string;
-	created_at: string;
-	// Geographic data
-	remote_ip: string;
-	country: string | null;
-	region: string | null;
-	city: string | null;
-	postal_code: string | null;
-	timezone: string | null;
-	latitude: number | null;
-	longitude: number | null;
-	continent: string | null;
-	is_eu_country: boolean | null;
-	// Network data
-	user_agent: string;
-	asn: string | null;
-	as_organization: string | null;
-	colo: string | null;
-	http_protocol: string | null;
-	tls_version: string | null;
-	tls_cipher: string | null;
-	// Bot detection
-	bot_score: number | null;
-	client_trust_score: number | null;
-	verified_bot: boolean;
-	detection_ids: string | null;
-	// Fingerprints
-	ephemeral_id: string | null;
-	ja3_hash: string | null;
-	ja4: string | null;
-	ja4_signals: string | null;
-}
-
-interface CountryData {
-	country: string;
-	count: number;
-}
-
-interface BotScoreData {
-	score_range: string;
-	count: number;
-}
-
-interface AsnData {
-	asn: string;
-	as_organization: string | null;
-	count: number;
-}
-
-interface TlsData {
-	tls_version: string;
-	tls_cipher: string | null;
-	count: number;
-}
-
-interface Ja3Data {
-	ja3_hash: string;
-	count: number;
-}
-
-interface Ja4Data {
-	ja4: string;
-	count: number;
-}
+import type { PaginationState, SortingState } from '@tanstack/react-table';
+import { Alert, AlertDescription } from './ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
+import { GlobalControlsBar } from './analytics/controls/GlobalControlsBar';
+import { FraudAlert } from './analytics/cards/FraudAlert';
+import { OverviewStats } from './analytics/sections/OverviewStats';
+import { BlacklistSection } from './analytics/sections/BlacklistSection';
+import { BlockedValidationsSection } from './analytics/sections/BlockedValidationsSection';
+import { RecentSubmissionsSection } from './analytics/sections/RecentSubmissionsSection';
+import { ChartsSection } from './analytics/sections/ChartsSection';
+import { SubmissionDetailDialog, type SubmissionDetail } from './analytics/sections/SubmissionDetailDialog';
+import { useAnalytics } from '../hooks/useAnalytics';
+import { useSubmissions, type UseSubmissionsFilters } from '../hooks/useSubmissions';
+import { useBlacklist } from '../hooks/useBlacklist';
+import { useBlockedValidations } from '../hooks/useBlockedValidations';
 
 export default function AnalyticsDashboard() {
-	const [stats, setStats] = useState<ValidationStats | null>(null);
-	const [submissions, setSubmissions] = useState<Submission[]>([]);
-	const [countries, setCountries] = useState<CountryData[]>([]);
-	const [botScores, setBotScores] = useState<BotScoreData[]>([]);
-	const [asnData, setAsnData] = useState<AsnData[]>([]);
-	const [tlsData, setTlsData] = useState<TlsData[]>([]);
-	const [ja3Data, setJa3Data] = useState<Ja3Data[]>([]);
-	const [ja4Data, setJa4Data] = useState<Ja4Data[]>([]);
-	const [fraudPatterns, setFraudPatterns] = useState<any>(null);
-	const [blockedStats, setBlockedStats] = useState<BlockedStats | null>(null);
-	const [blockReasons, setBlockReasons] = useState<BlockReason[]>([]);
-	const [loading, setLoading] = useState(true);
-	const [error, setError] = useState<string | null>(null);
-
 	// API Key state
 	const [apiKey, setApiKey] = useState<string>('');
 	const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
 	const [apiKeyInput, setApiKeyInput] = useState('');
 	const [apiKeyError, setApiKeyError] = useState<string | null>(null);
 
-	// Modal state
+	// Submission detail modal state
 	const [selectedSubmission, setSelectedSubmission] = useState<SubmissionDetail | null>(null);
 	const [modalLoading, setModalLoading] = useState(false);
 
@@ -173,25 +42,18 @@ export default function AnalyticsDashboard() {
 		pageSize: 10,
 	});
 	const [sorting, setSorting] = useState<SortingState>([{ id: 'created_at', desc: true }]);
-	const [totalCount, setTotalCount] = useState(0);
-	const [submissionsLoading, setSubmissionsLoading] = useState(false);
-
-	// Time-series data
-	const [timeSeriesData, setTimeSeriesData] = useState<any[]>([]);
 
 	// Auto-refresh state
 	const [autoRefresh, setAutoRefresh] = useState(false);
-	const [refreshInterval, setRefreshInterval] = useState(30); // seconds
+	const [refreshInterval, setRefreshInterval] = useState(30);
 
+	// Check for saved API key on mount
 	useEffect(() => {
-		// Check for saved API key in localStorage
 		const savedApiKey = localStorage.getItem('analytics-api-key');
 		if (savedApiKey) {
 			setApiKey(savedApiKey);
-			loadAnalytics(savedApiKey);
 		} else {
 			setShowApiKeyDialog(true);
-			setLoading(false);
 		}
 	}, []);
 
@@ -200,201 +62,32 @@ export default function AnalyticsDashboard() {
 		setPagination((prev) => ({ ...prev, pageIndex: 0 }));
 	}, [searchQuery, selectedCountries.join(','), botScoreRange.join(','), dateRange.start.toISOString(), dateRange.end.toISOString()]);
 
-	// Reload submissions when filters, pagination, or sorting change
-	useEffect(() => {
-		if (apiKey) {
-			loadSubmissions(apiKey);
-		}
-	}, [
+	// Use hooks for data fetching
+	const analyticsData = useAnalytics(apiKey, autoRefresh, refreshInterval);
+	const blacklistData = useBlacklist(apiKey);
+	const blockedValidationsData = useBlockedValidations(apiKey, 100);
+
+	const filters: UseSubmissionsFilters = {
 		searchQuery,
-		selectedCountries.join(','),
-		botScoreRange.join(','),
-		dateRange.start.toISOString(),
-		dateRange.end.toISOString(),
-		pagination.pageIndex,
-		pagination.pageSize,
-		sorting.length > 0 ? sorting[0].id : '',
-		sorting.length > 0 ? sorting[0].desc : false,
-		apiKey,
-	]);
+		selectedCountries,
+		botScoreRange,
+		dateRange,
+	};
+	const submissionsData = useSubmissions(apiKey, filters, pagination, sorting);
 
-	// Auto-refresh interval
-	useEffect(() => {
-		if (!autoRefresh || !apiKey) return;
-
-		const intervalId = setInterval(() => {
-			loadAnalytics(apiKey);
-			loadSubmissions(apiKey);
-		}, refreshInterval * 1000);
-
-		return () => clearInterval(intervalId);
-	}, [autoRefresh, refreshInterval, apiKey]);
-
-	const loadAnalytics = async (key: string) => {
-		setLoading(true);
-		setError(null);
-
-		const headers: HeadersInit = key ? { 'X-API-KEY': key } : {};
-
-		try {
-			const [
-				statsRes,
-				countriesRes,
-				botScoresRes,
-				asnRes,
-				tlsRes,
-				ja3Res,
-				ja4Res,
-				timeSeriesRes,
-				blockedStatsRes,
-				blockReasonsRes,
-			] = await Promise.all([
-				fetch('/api/analytics/stats', { headers }),
-				fetch('/api/analytics/countries', { headers }),
-				fetch('/api/analytics/bot-scores', { headers }),
-				fetch('/api/analytics/asn', { headers }),
-				fetch('/api/analytics/tls', { headers }),
-				fetch('/api/analytics/ja3', { headers }),
-				fetch('/api/analytics/ja4', { headers }),
-				fetch('/api/analytics/time-series?metric=submissions&interval=day', { headers }),
-				fetch('/api/analytics/blocked-stats', { headers }),
-				fetch('/api/analytics/block-reasons', { headers }),
-			]);
-
-			// Check for 401 errors (unauthorized)
-			if (statsRes.status === 401) {
-				localStorage.removeItem('analytics-api-key');
-				setApiKey('');
-				setShowApiKeyDialog(true);
-				setApiKeyError('Invalid or missing API key. Please enter a valid key.');
-				setLoading(false);
-				return;
-			}
-
-			if (
-				!statsRes.ok ||
-				!countriesRes.ok ||
-				!botScoresRes.ok ||
-				!asnRes.ok ||
-				!tlsRes.ok ||
-				!ja3Res.ok ||
-				!ja4Res.ok ||
-				!timeSeriesRes.ok
-			) {
-				throw new Error('Failed to fetch analytics');
-			}
-
-			const [statsData, countriesData, botScoresData, asnData, tlsData, ja3DataRes, ja4DataRes, timeSeriesDataRes, blockedStatsData, blockReasonsData] =
-				await Promise.all([
-					statsRes.json(),
-					countriesRes.json(),
-					botScoresRes.json(),
-					asnRes.json(),
-					tlsRes.json(),
-					ja3Res.json(),
-					ja4Res.json(),
-					timeSeriesRes.json(),
-					blockedStatsRes.json(),
-					blockReasonsRes.json(),
-				]);
-
-			setStats((statsData as any).data);
-			setCountries((countriesData as any).data);
-			setBotScores((botScoresData as any).data);
-			setAsnData((asnData as any).data);
-			setTlsData((tlsData as any).data);
-			setJa3Data((ja3DataRes as any).data);
-			setJa4Data((ja4DataRes as any).data);
-			setTimeSeriesData((timeSeriesDataRes as any).data || []);
-			setBlockedStats((blockedStatsData as any).data);
-			setBlockReasons((blockReasonsData as any).data);
-
-			// Load fraud patterns separately - don't fail the whole page if this fails
-			try {
-				const fraudRes = await fetch('/api/analytics/fraud-patterns', { headers });
-				if (fraudRes.ok) {
-					const fraudDataRes = await fraudRes.json();
-					setFraudPatterns((fraudDataRes as any).data);
-				} else {
-					console.warn('Failed to load fraud patterns:', await fraudRes.text());
-					setFraudPatterns(null);
-				}
-			} catch (err) {
-				console.error('Error loading fraud patterns:', err);
-				setFraudPatterns(null);
-			}
-
-			// Load submissions separately with filters
-			await loadSubmissions(key);
-		} catch (err) {
-			console.error('Error loading analytics:', err);
-			setError('Failed to load analytics data');
-		} finally {
-			setLoading(false);
+	// API key handlers
+	const handleApiKeySubmit = () => {
+		if (!apiKeyInput.trim()) {
+			setApiKeyError('Please enter an API key');
+			return;
 		}
+		localStorage.setItem('analytics-api-key', apiKeyInput);
+		setApiKey(apiKeyInput);
+		setShowApiKeyDialog(false);
+		setApiKeyError(null);
 	};
 
-	const loadSubmissions = async (key: string) => {
-		setSubmissionsLoading(true);
-		const headers: HeadersInit = key ? { 'X-API-KEY': key } : {};
-
-		try {
-			// Build query parameters
-			const params = new URLSearchParams();
-			params.append('limit', pagination.pageSize.toString());
-			params.append('offset', (pagination.pageIndex * pagination.pageSize).toString());
-
-			// Add sorting
-			if (sorting.length > 0) {
-				params.append('sortBy', sorting[0].id);
-				params.append('sortOrder', sorting[0].desc ? 'desc' : 'asc');
-			}
-
-			// Add search query
-			if (searchQuery.trim()) {
-				params.append('search', searchQuery.trim());
-			}
-
-			// Add countries filter
-			if (selectedCountries.length > 0) {
-				params.append('countries', selectedCountries.join(','));
-			}
-
-			// Add bot score range filter
-			if (botScoreRange[0] !== 0 || botScoreRange[1] !== 100) {
-				params.append('botScoreMin', botScoreRange[0].toString());
-				params.append('botScoreMax', botScoreRange[1].toString());
-			}
-
-			// Add date range
-			params.append('startDate', dateRange.start.toISOString());
-			params.append('endDate', dateRange.end.toISOString());
-
-			const res = await fetch(`/api/analytics/submissions?${params.toString()}`, { headers });
-
-			if (res.status === 401) {
-				localStorage.removeItem('analytics-api-key');
-				setApiKey('');
-				setShowApiKeyDialog(true);
-				setApiKeyError('Invalid or missing API key. Please enter a valid key.');
-				return;
-			}
-
-			if (!res.ok) {
-				throw new Error('Failed to fetch submissions');
-			}
-
-			const data = await res.json();
-			setSubmissions((data as any).data);
-			setTotalCount((data as any).total || 0);
-		} catch (err) {
-			console.error('Error loading submissions:', err);
-			// Don't set global error, just log it
-		} finally {
-			setSubmissionsLoading(false);
-		}
-	};
-
+	// Submission detail handler
 	const loadSubmissionDetail = async (id: number) => {
 		setModalLoading(true);
 		const headers: HeadersInit = apiKey ? { 'X-API-KEY': apiKey } : {};
@@ -420,13 +113,13 @@ export default function AnalyticsDashboard() {
 		}
 	};
 
+	// Export handler
 	const handleExport = async (format: 'csv' | 'json') => {
 		if (!apiKey) return;
 
 		const headers = { 'X-API-KEY': apiKey };
 
 		try {
-			// Build query parameters (same as loadSubmissions but without limit/offset)
 			const params = new URLSearchParams();
 			params.append('format', format);
 
@@ -436,23 +129,17 @@ export default function AnalyticsDashboard() {
 				params.append('sortOrder', sorting[0].desc ? 'desc' : 'asc');
 			}
 
-			// Add search query
+			// Add filters
 			if (searchQuery.trim()) {
 				params.append('search', searchQuery.trim());
 			}
-
-			// Add countries filter
 			if (selectedCountries.length > 0) {
 				params.append('countries', selectedCountries.join(','));
 			}
-
-			// Add bot score range filter
 			if (botScoreRange[0] !== 0 || botScoreRange[1] !== 100) {
 				params.append('botScoreMin', botScoreRange[0].toString());
 				params.append('botScoreMax', botScoreRange[1].toString());
 			}
-
-			// Add date range
 			params.append('startDate', dateRange.start.toISOString());
 			params.append('endDate', dateRange.end.toISOString());
 
@@ -470,50 +157,30 @@ export default function AnalyticsDashboard() {
 				throw new Error('Failed to export data');
 			}
 
-			// Get the blob and trigger download
 			const blob = await res.blob();
 			const url = window.URL.createObjectURL(blob);
 			const a = document.createElement('a');
 			a.href = url;
-
-			// Extract filename from Content-Disposition header or use default
-			const contentDisposition = res.headers.get('Content-Disposition');
-			const filenameMatch = contentDisposition?.match(/filename="?([^"]+)"?/);
-			const filename = filenameMatch ? filenameMatch[1] : `submissions-export-${new Date().toISOString().split('T')[0]}.${format}`;
-
-			a.download = filename;
+			a.download = `submissions-${new Date().toISOString().split('T')[0]}.${format}`;
 			document.body.appendChild(a);
 			a.click();
-			document.body.removeChild(a);
 			window.URL.revokeObjectURL(url);
+			document.body.removeChild(a);
 		} catch (err) {
 			console.error('Error exporting data:', err);
 			alert('Failed to export data');
 		}
 	};
 
-	const handleApiKeySubmit = () => {
-		if (!apiKeyInput.trim()) {
-			setApiKeyError('Please enter an API key');
-			return;
-		}
-
-		setApiKeyError(null);
-		const trimmedKey = apiKeyInput.trim();
-		localStorage.setItem('analytics-api-key', trimmedKey);
-		setApiKey(trimmedKey);
-		setShowApiKeyDialog(false);
-		setApiKeyInput('');
-		loadAnalytics(trimmedKey);
+	// Refresh handler
+	const handleRefresh = () => {
+		analyticsData.refresh();
+		submissionsData.refresh();
+		blacklistData.refresh();
+		blockedValidationsData.refresh();
 	};
 
-	const handleManualRefresh = () => {
-		if (apiKey) {
-			loadAnalytics(apiKey);
-			loadSubmissions(apiKey);
-		}
-	};
-
+	// Clear filters handler
 	const handleClearFilters = () => {
 		setSearchQuery('');
 		setSelectedCountries([]);
@@ -524,6 +191,7 @@ export default function AnalyticsDashboard() {
 		});
 	};
 
+	// Check if filters are active
 	const hasActiveFilters =
 		searchQuery.trim() !== '' ||
 		selectedCountries.length > 0 ||
@@ -532,81 +200,8 @@ export default function AnalyticsDashboard() {
 		dateRange.start.getTime() !== subDays(new Date(), 30).setHours(0, 0, 0, 0) ||
 		dateRange.end.getTime() !== new Date().setHours(23, 59, 59, 999);
 
-	// Define columns for DataTable
-	const columns: ColumnDef<Submission>[] = [
-		{
-			accessorKey: 'id',
-			header: 'ID',
-			cell: ({ row }) => <span className="font-mono text-xs">{row.original.id}</span>,
-		},
-		{
-			accessorKey: 'first_name',
-			header: 'Name',
-			cell: ({ row }) => (
-				<span>
-					{row.original.first_name} {row.original.last_name}
-				</span>
-			),
-		},
-		{
-			accessorKey: 'email',
-			header: 'Email',
-			cell: ({ row }) => <span className="text-xs">{row.original.email}</span>,
-		},
-		{
-			accessorKey: 'country',
-			header: 'Country',
-			cell: ({ row }) => <span>{row.original.country || 'N/A'}</span>,
-		},
-		{
-			accessorKey: 'remote_ip',
-			header: 'IP',
-			cell: ({ row }) => (
-				<span className="font-mono text-xs">{row.original.remote_ip || 'N/A'}</span>
-			),
-		},
-		{
-			accessorKey: 'bot_score',
-			header: 'Bot Score',
-			cell: ({ row }) => {
-				const score = row.original.bot_score;
-				return (
-					<span
-						className={`font-semibold ${
-							score && score < 30
-								? 'text-destructive'
-								: score && score >= 70
-								? 'text-green-600 dark:text-green-400'
-								: 'text-yellow-600 dark:text-yellow-400'
-						}`}
-					>
-						{score !== null ? score : 'N/A'}
-					</span>
-				);
-			},
-		},
-		{
-			accessorKey: 'created_at',
-			header: 'Date',
-			cell: ({ row }) => (
-				<span className="text-xs">{new Date(row.original.created_at).toLocaleString()}</span>
-			),
-		},
-		{
-			id: 'actions',
-			header: 'Actions',
-			cell: ({ row }) => (
-				<button
-					onClick={() => loadSubmissionDetail(row.original.id)}
-					className="text-xs text-primary hover:underline"
-				>
-					View Details
-				</button>
-			),
-		},
-	];
-
-	if (loading) {
+	// Loading and error states
+	if (analyticsData.loading) {
 		return (
 			<div className="flex items-center justify-center min-h-[400px]">
 				<p className="text-muted-foreground">Loading analytics...</p>
@@ -614,17 +209,17 @@ export default function AnalyticsDashboard() {
 		);
 	}
 
-	if (error) {
+	if (analyticsData.error) {
 		return (
 			<Alert variant="destructive">
-				<AlertDescription>{error}</AlertDescription>
+				<AlertDescription>{analyticsData.error}</AlertDescription>
 			</Alert>
 		);
 	}
 
 	return (
 		<>
-			{/* API Key Dialog - Required, cannot close without entering key */}
+			{/* API Key Dialog */}
 			<Dialog open={showApiKeyDialog}>
 				<DialogContent className="sm:max-w-md">
 					<DialogHeader>
@@ -645,814 +240,82 @@ export default function AnalyticsDashboard() {
 										handleApiKeySubmit();
 									}
 								}}
-								className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-								autoFocus
+								className="w-full px-4 py-2 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
 							/>
 							{apiKeyError && (
 								<p className="text-sm text-destructive">{apiKeyError}</p>
 							)}
 						</div>
-						<div className="flex justify-end gap-3">
-							<button
-								onClick={handleApiKeySubmit}
-								className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md h-10 px-4 py-2"
-							>
-								Submit
-							</button>
-						</div>
+						<button
+							onClick={handleApiKeySubmit}
+							className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+						>
+							Submit
+						</button>
 					</div>
 				</DialogContent>
 			</Dialog>
 
+			{/* Main Dashboard */}
 			<div className="space-y-6">
-				{/* Auto-refresh Controls */}
 				<GlobalControlsBar
+					onExport={handleExport}
+					onRefresh={handleRefresh}
 					autoRefresh={autoRefresh}
-					refreshInterval={refreshInterval}
 					onAutoRefreshChange={setAutoRefresh}
+					refreshInterval={refreshInterval}
 					onRefreshIntervalChange={setRefreshInterval}
-					onManualRefresh={handleManualRefresh}
-					onExportCSV={() => handleExport('csv')}
-					onExportJSON={() => handleExport('json')}
 					hasActiveFilters={hasActiveFilters}
 					onClearFilters={handleClearFilters}
-					isLoading={loading || submissionsLoading}
+					isLoading={analyticsData.loading || submissionsData.loading}
 				/>
 
-				{/* Stats Grid */}
-				<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-				<Card>
-					<CardHeader className="pb-2">
-						<CardTitle className="text-sm font-medium text-muted-foreground">
-							Total Validations
-						</CardTitle>
-					</CardHeader>
-					<CardContent>
-						<div className="text-3xl font-bold">{stats?.total || 0}</div>
-					</CardContent>
-				</Card>
+				<OverviewStats stats={analyticsData.stats} />
 
-				<Card>
-					<CardHeader className="pb-2">
-						<CardTitle className="text-sm font-medium text-muted-foreground">
-							Success Rate
-						</CardTitle>
-					</CardHeader>
-					<CardContent>
-						<div className="text-3xl font-bold">
-							{stats && stats.total > 0
-								? ((stats.successful / stats.total) * 100).toFixed(1)
-								: 0}
-							%
-						</div>
-					</CardContent>
-				</Card>
+				<FraudAlert data={analyticsData.fraudPatterns} loading={analyticsData.loading} />
 
-				<Card>
-					<CardHeader className="pb-2">
-						<CardTitle className="text-sm font-medium text-muted-foreground">
-							Allowed Rate
-						</CardTitle>
-					</CardHeader>
-					<CardContent>
-						<div className="text-3xl font-bold">
-							{stats && stats.total > 0
-								? ((stats.allowed / stats.total) * 100).toFixed(1)
-								: 0}
-							%
-						</div>
-					</CardContent>
-				</Card>
+				{analyticsData.blockedStats && analyticsData.blockedStats.total_blocked > 0 && (
+					<>
+						<BlacklistSection entries={blacklistData.entries} />
+						<BlockedValidationsSection validations={blockedValidationsData.validations} />
+					</>
+				)}
 
-				<Card>
-					<CardHeader className="pb-2">
-						<CardTitle className="text-sm font-medium text-muted-foreground">
-							Avg Risk Score
-						</CardTitle>
-					</CardHeader>
-					<CardContent>
-						<div className="text-3xl font-bold">
-							{stats?.avg_risk_score ? stats.avg_risk_score.toFixed(1) : '0.0'}
-						</div>
-					</CardContent>
-				</Card>
-			</div>
+				<ChartsSection
+					timeSeriesData={analyticsData.timeSeriesData}
+					countries={analyticsData.countries}
+					botScores={analyticsData.botScores}
+					asnData={analyticsData.asnData}
+					tlsData={analyticsData.tlsData}
+					ja3Data={analyticsData.ja3Data}
+					ja4Data={analyticsData.ja4Data}
+				/>
 
-			{/* Fraud Detection */}
-			<FraudAlert data={fraudPatterns} loading={loading} />
+				<RecentSubmissionsSection
+					submissions={submissionsData.submissions}
+					totalCount={submissionsData.totalCount}
+					countries={analyticsData.countries}
+					loading={submissionsData.loading}
+					onLoadDetail={loadSubmissionDetail}
+					searchQuery={searchQuery}
+					onSearchQueryChange={setSearchQuery}
+					selectedCountries={selectedCountries}
+					onSelectedCountriesChange={setSelectedCountries}
+					botScoreRange={botScoreRange}
+					onBotScoreRangeChange={setBotScoreRange}
+					dateRange={dateRange}
+					onDateRangeChange={setDateRange}
+					pagination={pagination}
+					onPaginationChange={setPagination}
+					sorting={sorting}
+					onSortingChange={setSorting}
+				/>
 
-			{/* Blocked/Mitigated Requests Section */}
-			{blockedStats && blockedStats.total_blocked > 0 && (
-				<>
-					<Card>
-						<CardHeader>
-							<CardTitle>Blocked & Mitigated Requests</CardTitle>
-							<CardDescription>Submissions blocked by fraud detection</CardDescription>
-						</CardHeader>
-						<CardContent>
-							<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-								<div className="space-y-1">
-									<p className="text-sm text-muted-foreground">Total Blocked</p>
-									<p className="text-2xl font-bold text-destructive">{blockedStats.total_blocked}</p>
-								</div>
-								<div className="space-y-1">
-									<p className="text-sm text-muted-foreground">Unique Ephemeral IDs</p>
-									<p className="text-2xl font-bold">{blockedStats.unique_ephemeral_ids}</p>
-								</div>
-								<div className="space-y-1">
-									<p className="text-sm text-muted-foreground">Unique IPs</p>
-									<p className="text-2xl font-bold">{blockedStats.unique_ips}</p>
-								</div>
-								<div className="space-y-1">
-									<p className="text-sm text-muted-foreground">Avg Risk Score</p>
-									<p className="text-2xl font-bold">{blockedStats.avg_risk_score.toFixed(1)}</p>
-								</div>
-							</div>
-						</CardContent>
-					</Card>
-
-					{/* Block Reason Distribution */}
-					{blockReasons.length > 0 && (
-						<Card>
-							<CardHeader>
-								<CardTitle>Block Reasons</CardTitle>
-								<CardDescription>Distribution of why submissions were blocked</CardDescription>
-							</CardHeader>
-							<CardContent>
-								<div className="space-y-3">
-									{blockReasons.map((reason, index) => {
-										// Calculate percentage of total blocked
-										const percentage = blockedStats
-											? ((reason.count / blockedStats.total_blocked) * 100).toFixed(1)
-											: '0';
-
-										// Color code based on frequency
-										const getFrequencyColor = (count: number) => {
-											if (count >= 10) return 'bg-red-500 dark:bg-red-600';
-											if (count >= 5) return 'bg-orange-500 dark:bg-orange-600';
-											return 'bg-yellow-500 dark:bg-yellow-600';
-										};
-
-										const getRiskColor = (score: number) => {
-											if (score >= 90) return 'text-red-600 dark:text-red-400';
-											if (score >= 70) return 'text-orange-600 dark:text-orange-400';
-											return 'text-yellow-600 dark:text-yellow-400';
-										};
-
-										return (
-											<div
-												key={index}
-												className="flex items-start gap-4 p-4 rounded-lg border border-border bg-card hover:bg-accent/50 transition-colors"
-											>
-												{/* Count Badge */}
-												<div className="flex flex-col items-center justify-center min-w-[80px]">
-													<div className={`${getFrequencyColor(reason.count)} text-white font-bold text-2xl rounded-lg px-4 py-2 shadow-md`}>
-														{reason.count}
-													</div>
-													<div className="text-xs text-muted-foreground mt-1">{percentage}%</div>
-												</div>
-
-												{/* Reason Details */}
-												<div className="flex-1 min-w-0">
-													{/* Block Reason */}
-													<div className="font-medium text-sm mb-2 leading-relaxed">
-														{reason.block_reason}
-													</div>
-
-													{/* Stats Grid */}
-													<div className="grid grid-cols-3 gap-3 text-xs">
-														<div className="flex flex-col">
-															<span className="text-muted-foreground">Ephemeral IDs</span>
-															<span className="font-semibold text-foreground mt-0.5">
-																{reason.unique_ephemeral_ids}
-															</span>
-														</div>
-														<div className="flex flex-col">
-															<span className="text-muted-foreground">Unique IPs</span>
-															<span className="font-semibold text-foreground mt-0.5">
-																{reason.unique_ips}
-															</span>
-														</div>
-														<div className="flex flex-col">
-															<span className="text-muted-foreground">Avg Risk Score</span>
-															<span className={`font-semibold mt-0.5 ${getRiskColor(reason.avg_risk_score)}`}>
-																{reason.avg_risk_score.toFixed(0)}
-															</span>
-														</div>
-													</div>
-												</div>
-											</div>
-										);
-									})}
-								</div>
-							</CardContent>
-						</Card>
-					)}
-				</>
-			)}
-
-			{/* Submissions Time Series */}
-			<Card>
-				<CardHeader>
-					<CardTitle>Submissions Over Time</CardTitle>
-					<CardDescription>Daily submission volume (last 30 days)</CardDescription>
-				</CardHeader>
-				<CardContent>
-					{timeSeriesData.length > 0 ? (
-						<TimeSeriesChart
-							data={timeSeriesData}
-							type="area"
-							height={250}
-							yAxisLabel="Submissions"
-							formatTooltip={(value) => `${value.toFixed(0)} submissions`}
-						/>
-					) : (
-						<div className="flex items-center justify-center h-[250px]">
-							<p className="text-muted-foreground text-sm">No time-series data available</p>
-						</div>
-					)}
-				</CardContent>
-			</Card>
-
-			{/* Recent Submissions with Filters */}
-			<Card>
-				<CardHeader>
-					<CardTitle>Recent Submissions</CardTitle>
-					<CardDescription>
-						Search and filter form submissions (click row for full details)
-					</CardDescription>
-				</CardHeader>
-				<CardContent className="space-y-4">
-					{/* Filters Row 1 */}
-					<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-						<SearchBar
-							value={searchQuery}
-							onChange={setSearchQuery}
-							placeholder="Search by email, name, or IP..."
-						/>
-						<MultiSelect
-							options={countries.map((c) => ({ value: c.country, label: c.country }))}
-							value={selectedCountries}
-							onChange={setSelectedCountries}
-							placeholder="Filter by countries..."
-						/>
-						<DateRangePicker value={dateRange} onChange={setDateRange} />
-					</div>
-
-					{/* Filters Row 2 */}
-					<div className="w-full">
-						<RangeSlider
-							min={0}
-							max={100}
-							value={botScoreRange}
-							onChange={setBotScoreRange}
-							label="Bot Score Range"
-							step={1}
-						/>
-					</div>
-
-					{/* Data Table */}
-					{submissionsLoading ? (
-						<div className="flex items-center justify-center py-12">
-							<p className="text-muted-foreground">Loading submissions...</p>
-						</div>
-					) : (
-						<DataTable
-							data={submissions}
-							columns={columns}
-							totalCount={totalCount}
-							manualPagination={true}
-							manualSorting={true}
-							onPaginationChange={(updater: PaginationState | ((old: PaginationState) => PaginationState)) => {
-								const newPagination =
-									typeof updater === 'function' ? updater(pagination) : updater;
-								setPagination(newPagination);
-							}}
-							onSortingChange={(updater: SortingState | ((old: SortingState) => SortingState)) => {
-								const newSorting =
-									typeof updater === 'function' ? updater(sorting) : updater;
-								setSorting(newSorting);
-							}}
-						/>
-					)}
-				</CardContent>
-			</Card>
-
-			{/* Country Distribution and Bot Scores */}
-			<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-				<Card>
-					<CardHeader>
-						<CardTitle>Submissions by Country</CardTitle>
-						<CardDescription>Top countries</CardDescription>
-					</CardHeader>
-					<CardContent>
-						{countries.length === 0 ? (
-							<div className="flex items-center justify-center h-[300px]">
-								<p className="text-muted-foreground text-sm">No data available</p>
-							</div>
-						) : (
-							<BarChart
-								data={countries.slice(0, 10)}
-								xAxisKey="country"
-								yAxisKey="count"
-								layout="vertical"
-								height={300}
-								formatTooltip={(value) => `${value} submissions`}
-							/>
-						)}
-					</CardContent>
-				</Card>
-
-				<Card>
-					<CardHeader>
-						<CardTitle>Bot Score Distribution</CardTitle>
-						<CardDescription>Score ranges</CardDescription>
-					</CardHeader>
-					<CardContent>
-						{botScores.length === 0 ? (
-							<div className="flex items-center justify-center h-[300px]">
-								<p className="text-muted-foreground text-sm">No data available</p>
-							</div>
-						) : (
-							<DonutChart
-								data={botScores.map((item) => ({
-									name: item.score_range,
-									value: item.count,
-								}))}
-								height={300}
-								centerLabel="Total"
-								centerValue={botScores.reduce((sum, item) => sum + item.count, 0).toString()}
-								formatTooltip={(value) => `${value} submissions`}
-							/>
-						)}
-					</CardContent>
-				</Card>
-			</div>
-
-			{/* Network & Fingerprint Analytics */}
-			<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-				<Card>
-					<CardHeader>
-						<CardTitle>ASN Distribution</CardTitle>
-						<CardDescription>Top autonomous systems</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<div className="space-y-2">
-							{asnData.length === 0 ? (
-								<p className="text-muted-foreground text-sm">No data available</p>
-							) : (
-								asnData.map((item) => (
-									<div
-										key={item.asn}
-										className="flex flex-col py-2 border-b last:border-0"
-									>
-										<div className="flex items-center justify-between">
-											<span className="font-mono text-sm font-medium">
-												AS{item.asn}
-											</span>
-											<span className="text-muted-foreground text-sm">
-												{item.count}
-											</span>
-										</div>
-										{item.as_organization && (
-											<span className="text-xs text-muted-foreground truncate">
-												{item.as_organization}
-											</span>
-										)}
-									</div>
-								))
-							)}
-						</div>
-					</CardContent>
-				</Card>
-
-				<Card>
-					<CardHeader>
-						<CardTitle>TLS Versions</CardTitle>
-						<CardDescription>TLS versions & ciphers</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<div className="space-y-2">
-							{tlsData.length === 0 ? (
-								<p className="text-muted-foreground text-sm">No data available</p>
-							) : (
-								tlsData.map((item, idx) => (
-									<div
-										key={`${item.tls_version}-${item.tls_cipher}-${idx}`}
-										className="flex flex-col py-2 border-b last:border-0"
-									>
-										<div className="flex items-center justify-between">
-											<span className="font-mono text-sm font-medium">
-												{item.tls_version}
-											</span>
-											<span className="text-muted-foreground text-sm">
-												{item.count}
-											</span>
-										</div>
-										{item.tls_cipher && (
-											<span className="text-xs text-muted-foreground font-mono truncate">
-												{item.tls_cipher}
-											</span>
-										)}
-									</div>
-								))
-							)}
-						</div>
-					</CardContent>
-				</Card>
-
-				<Card>
-					<CardHeader>
-						<CardTitle>JA3 Fingerprints</CardTitle>
-						<CardDescription>Top JA3 hashes</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<div className="space-y-2">
-							{ja3Data.length === 0 ? (
-								<p className="text-muted-foreground text-sm">No data available</p>
-							) : (
-								ja3Data.map((item) => (
-									<div
-										key={item.ja3_hash}
-										className="flex items-center justify-between py-2 border-b last:border-0"
-									>
-										<span className="font-mono text-xs truncate flex-1 mr-2">
-											{item.ja3_hash}
-										</span>
-										<span className="text-muted-foreground text-sm">
-											{item.count}
-										</span>
-									</div>
-								))
-							)}
-						</div>
-					</CardContent>
-				</Card>
-
-				<Card>
-					<CardHeader>
-						<CardTitle>JA4 Fingerprints</CardTitle>
-						<CardDescription>Top JA4 hashes</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<div className="space-y-2">
-							{ja4Data.length === 0 ? (
-								<p className="text-muted-foreground text-sm">No data available</p>
-							) : (
-								ja4Data.map((item) => (
-									<div
-										key={item.ja4}
-										className="flex items-center justify-between py-2 border-b last:border-0"
-									>
-										<span className="font-mono text-xs truncate flex-1 mr-2">
-											{item.ja4}
-										</span>
-										<span className="text-muted-foreground text-sm">
-											{item.count}
-										</span>
-									</div>
-								))
-							)}
-						</div>
-					</CardContent>
-				</Card>
-			</div>
-
-			{/* Advanced Analytics Visualizations */}
-			<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-				<Card>
-					<CardHeader>
-						<CardTitle>Performance Metrics</CardTitle>
-						<CardDescription>Multi-dimensional analysis</CardDescription>
-					</CardHeader>
-					<CardContent>
-						{stats ? (
-							<RadarChart
-								data={[
-									{
-										metric: 'Success Rate',
-										value: stats.total > 0 ? (stats.successful / stats.total) * 100 : 0,
-										fullMark: 100,
-									},
-									{
-										metric: 'Allowed Rate',
-										value: stats.total > 0 ? (stats.allowed / stats.total) * 100 : 0,
-										fullMark: 100,
-									},
-									{
-										metric: 'Avg Bot Score',
-										value: stats.avg_risk_score || 0,
-										fullMark: 100,
-									},
-									{
-										metric: 'Total Volume',
-										value: Math.min((stats.total / 1000) * 100, 100),
-										fullMark: 100,
-									},
-									{
-										metric: 'Unique IDs',
-										value: Math.min((stats.unique_ephemeral_ids / 500) * 100, 100),
-										fullMark: 100,
-									},
-								]}
-								height={300}
-								formatTooltip={(value) => `${value.toFixed(1)}%`}
-							/>
-						) : (
-							<div className="flex items-center justify-center h-[300px]">
-								<p className="text-muted-foreground text-sm">No data available</p>
-							</div>
-						)}
-					</CardContent>
-				</Card>
-
-				<Card>
-					<CardHeader>
-						<CardTitle>TLS Version Distribution</CardTitle>
-						<CardDescription>TLS versions breakdown</CardDescription>
-					</CardHeader>
-					<CardContent>
-						{tlsData.length === 0 ? (
-							<div className="flex items-center justify-center h-[300px]">
-								<p className="text-muted-foreground text-sm">No data available</p>
-							</div>
-						) : (
-							<PieChart
-								data={tlsData.map((item) => ({
-									name: item.tls_version || 'Unknown',
-									value: item.count,
-								}))}
-								height={300}
-								formatTooltip={(value) => `${value} connections`}
-							/>
-						)}
-					</CardContent>
-				</Card>
-			</div>
-
-			{/* Submission Detail Modal */}
-			<Dialog
-				open={selectedSubmission !== null}
-				onClose={() => setSelectedSubmission(null)}
-			>
-				<DialogContent className="p-0">
-					{modalLoading ? (
-						<div className="flex items-center justify-center py-12">
-							<p className="text-muted-foreground">Loading details...</p>
-						</div>
-					) : selectedSubmission ? (
-						<>
-							<DialogHeader>
-								<DialogTitle>
-									Submission Details - ID #{selectedSubmission.id}
-								</DialogTitle>
-								<DialogDescription>
-									Complete information for this submission
-								</DialogDescription>
-							</DialogHeader>
-
-							<div className="p-6 space-y-6">
-								{/* Form Data */}
-								<div>
-									<h3 className="text-lg font-semibold mb-3">Form Data</h3>
-									<div className="grid grid-cols-2 gap-4 text-sm">
-										<div>
-											<span className="text-muted-foreground">Name:</span>
-											<p className="font-medium">
-												{selectedSubmission.first_name}{' '}
-												{selectedSubmission.last_name}
-											</p>
-										</div>
-										<div>
-											<span className="text-muted-foreground">Email:</span>
-											<p className="font-medium">{selectedSubmission.email}</p>
-										</div>
-										<div>
-											<span className="text-muted-foreground">Phone:</span>
-											<p className="font-medium">{selectedSubmission.phone}</p>
-										</div>
-										<div>
-											<span className="text-muted-foreground">Date of Birth:</span>
-											<p className="font-medium">
-												{selectedSubmission.date_of_birth}
-											</p>
-										</div>
-										<div className="col-span-2">
-											<span className="text-muted-foreground">Address:</span>
-											<p className="font-medium">{selectedSubmission.address}</p>
-										</div>
-										<div>
-											<span className="text-muted-foreground">Submitted:</span>
-											<p className="font-medium">
-												{new Date(
-													selectedSubmission.created_at
-												).toLocaleString()}
-											</p>
-										</div>
-									</div>
-								</div>
-
-								{/* Geographic Data */}
-								<div>
-									<h3 className="text-lg font-semibold mb-3">Geographic Data</h3>
-									<div className="grid grid-cols-2 gap-4 text-sm">
-										<div>
-											<span className="text-muted-foreground">IP Address:</span>
-											<p className="font-mono text-xs">
-												{selectedSubmission.remote_ip}
-											</p>
-										</div>
-										<div>
-											<span className="text-muted-foreground">Country:</span>
-											<p className="font-medium">
-												{selectedSubmission.country || 'N/A'}
-											</p>
-										</div>
-										<div>
-											<span className="text-muted-foreground">Region:</span>
-											<p className="font-medium">
-												{selectedSubmission.region || 'N/A'}
-											</p>
-										</div>
-										<div>
-											<span className="text-muted-foreground">City:</span>
-											<p className="font-medium">
-												{selectedSubmission.city || 'N/A'}
-											</p>
-										</div>
-										<div>
-											<span className="text-muted-foreground">Postal Code:</span>
-											<p className="font-medium">
-												{selectedSubmission.postal_code || 'N/A'}
-											</p>
-										</div>
-										<div>
-											<span className="text-muted-foreground">Timezone:</span>
-											<p className="font-medium">
-												{selectedSubmission.timezone || 'N/A'}
-											</p>
-										</div>
-										<div>
-											<span className="text-muted-foreground">Coordinates:</span>
-											<p className="font-mono text-xs">
-												{selectedSubmission.latitude &&
-												selectedSubmission.longitude
-													? `${selectedSubmission.latitude}, ${selectedSubmission.longitude}`
-													: 'N/A'}
-											</p>
-										</div>
-										<div>
-											<span className="text-muted-foreground">Continent:</span>
-											<p className="font-medium">
-												{selectedSubmission.continent || 'N/A'}
-											</p>
-										</div>
-										<div>
-											<span className="text-muted-foreground">EU Country:</span>
-											<p className="font-medium">
-												{selectedSubmission.is_eu_country ? 'Yes' : 'No'}
-											</p>
-										</div>
-									</div>
-								</div>
-
-								{/* Network Data */}
-								<div>
-									<h3 className="text-lg font-semibold mb-3">Network Data</h3>
-									<div className="grid grid-cols-2 gap-4 text-sm">
-										<div className="col-span-2">
-											<span className="text-muted-foreground">User Agent:</span>
-											<p className="font-mono text-xs break-all">
-												{selectedSubmission.user_agent}
-											</p>
-										</div>
-										<div>
-											<span className="text-muted-foreground">ASN:</span>
-											<p className="font-mono text-xs">
-												{selectedSubmission.asn
-													? `AS${selectedSubmission.asn}`
-													: 'N/A'}
-											</p>
-										</div>
-										<div>
-											<span className="text-muted-foreground">
-												AS Organization:
-											</span>
-											<p className="font-medium text-xs">
-												{selectedSubmission.as_organization || 'N/A'}
-											</p>
-										</div>
-										<div>
-											<span className="text-muted-foreground">Colo:</span>
-											<p className="font-mono text-xs">
-												{selectedSubmission.colo || 'N/A'}
-											</p>
-										</div>
-										<div>
-											<span className="text-muted-foreground">HTTP Protocol:</span>
-											<p className="font-mono text-xs">
-												{selectedSubmission.http_protocol || 'N/A'}
-											</p>
-										</div>
-										<div>
-											<span className="text-muted-foreground">TLS Version:</span>
-											<p className="font-mono text-xs">
-												{selectedSubmission.tls_version || 'N/A'}
-											</p>
-										</div>
-										<div className="col-span-2">
-											<span className="text-muted-foreground">TLS Cipher:</span>
-											<p className="font-mono text-xs">
-												{selectedSubmission.tls_cipher || 'N/A'}
-											</p>
-										</div>
-									</div>
-								</div>
-
-								{/* Bot Detection */}
-								<div>
-									<h3 className="text-lg font-semibold mb-3">Bot Detection</h3>
-									<div className="grid grid-cols-2 gap-4 text-sm">
-										<div>
-											<span className="text-muted-foreground">Bot Score:</span>
-											<p
-												className={`font-bold ${
-													selectedSubmission.bot_score &&
-													selectedSubmission.bot_score < 30
-														? 'text-destructive'
-														: selectedSubmission.bot_score &&
-														  selectedSubmission.bot_score >= 70
-														? 'text-green-600 dark:text-green-400'
-														: 'text-yellow-600 dark:text-yellow-400'
-												}`}
-											>
-												{selectedSubmission.bot_score !== null
-													? selectedSubmission.bot_score
-													: 'N/A'}
-											</p>
-										</div>
-										<div>
-											<span className="text-muted-foreground">
-												Client Trust Score:
-											</span>
-											<p className="font-medium">
-												{selectedSubmission.client_trust_score !== null
-													? selectedSubmission.client_trust_score
-													: 'N/A'}
-											</p>
-										</div>
-										<div>
-											<span className="text-muted-foreground">Verified Bot:</span>
-											<p className="font-medium">
-												{selectedSubmission.verified_bot ? 'Yes' : 'No'}
-											</p>
-										</div>
-										<div>
-											<span className="text-muted-foreground">Detection IDs:</span>
-											<p className="font-mono text-xs">
-												{selectedSubmission.detection_ids || 'N/A'}
-											</p>
-										</div>
-									</div>
-								</div>
-
-								{/* Fingerprints */}
-								<div>
-									<h3 className="text-lg font-semibold mb-3">Fingerprints</h3>
-									<div className="grid grid-cols-1 gap-4 text-sm">
-										<div>
-											<span className="text-muted-foreground">
-												Ephemeral ID:
-											</span>
-											<p className="font-mono text-xs break-all">
-												{selectedSubmission.ephemeral_id || 'N/A'}
-											</p>
-										</div>
-										<div>
-											<span className="text-muted-foreground">JA3 Hash:</span>
-											<p className="font-mono text-xs break-all">
-												{selectedSubmission.ja3_hash || 'N/A'}
-											</p>
-										</div>
-										<div>
-											<span className="text-muted-foreground">JA4:</span>
-											<p className="font-mono text-xs break-all">
-												{selectedSubmission.ja4 || 'N/A'}
-											</p>
-										</div>
-										<div>
-											<span className="text-muted-foreground">JA4 Signals:</span>
-											<p className="font-mono text-xs break-all">
-												{selectedSubmission.ja4_signals || 'N/A'}
-											</p>
-										</div>
-									</div>
-								</div>
-							</div>
-						</>
-					) : null}
-				</DialogContent>
-			</Dialog>
+				<SubmissionDetailDialog
+					submission={selectedSubmission}
+					loading={modalLoading}
+					onClose={() => setSelectedSubmission(null)}
+				/>
 			</div>
 		</>
 	);

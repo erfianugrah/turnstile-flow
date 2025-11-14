@@ -10,7 +10,7 @@ const { title, description = 'Forminator - I\'m collecting all your data' } = As
 ---
 
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="description" content={description} />
@@ -21,7 +21,10 @@ const { title, description = 'Forminator - I\'m collecting all your data' } = As
 		<title>{title}</title>
 		<script is:inline>
 			// Dark mode initialization (runs before page render to prevent flash)
-			const theme = localStorage.getItem('theme') || 'dark';
+			const savedTheme = localStorage.getItem('theme');
+			const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+			const theme = savedTheme || systemTheme;
+
 			if (theme === 'dark') {
 				document.documentElement.classList.add('dark');
 			} else {
@@ -42,7 +45,7 @@ const { title, description = 'Forminator - I\'m collecting all your data' } = As
 			};
 		</script>
 	</head>
-	<body class="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-50">
+	<body class="min-h-screen">
 		<slot />
 	</body>
 </html>
