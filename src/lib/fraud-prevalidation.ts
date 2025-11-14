@@ -42,6 +42,7 @@ interface BlacklistEntry {
 interface AddToBlacklistParams {
 	ephemeralId?: string | null;
 	ipAddress?: string | null;
+	ja4?: string | null;
 	blockReason: string;
 	confidence: 'high' | 'medium' | 'low';
 	expiresIn: number; // seconds
@@ -157,11 +158,11 @@ export async function addToBlacklist(
 	db: D1Database,
 	params: AddToBlacklistParams
 ): Promise<boolean> {
-	const { ephemeralId, ipAddress, blockReason, confidence, expiresIn, submissionCount = 1, detectionMetadata } = params;
+	const { ephemeralId, ipAddress, ja4, blockReason, confidence, expiresIn, submissionCount = 1, detectionMetadata } = params;
 
 	// Validate at least one identifier
-	if (!ephemeralId && !ipAddress) {
-		throw new Error('At least one identifier (ephemeralId or ipAddress) must be provided');
+	if (!ephemeralId && !ipAddress && !ja4) {
+		throw new Error('At least one identifier (ephemeralId, ipAddress, or ja4) must be provided');
 	}
 
 	const now = new Date();
@@ -175,16 +176,27 @@ export async function addToBlacklist(
 			INSERT INTO fraud_blacklist (
 				ephemeral_id,
 				ip_address,
+				ja4,
 				block_reason,
 				detection_confidence,
 				expires_at,
 				submission_count,
 				last_seen_at,
 				detection_metadata
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`
 			)
-			.bind(ephemeralId || null, ipAddress || null, blockReason, confidence, toSQLiteDateTime(expiresAt), submissionCount, toSQLiteDateTime(now), metadata)
+			.bind(
+				ephemeralId || null,
+				ipAddress || null,
+				ja4 || null,
+				blockReason,
+				confidence,
+				toSQLiteDateTime(expiresAt),
+				submissionCount,
+				toSQLiteDateTime(now),
+				metadata
+			)
 			.run();
 
 		return true;
