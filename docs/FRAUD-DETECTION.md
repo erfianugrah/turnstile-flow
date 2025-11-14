@@ -108,8 +108,14 @@ This layer catches attackers who:
 
 **Signal 3: Global Anomaly (+50/+40 points)**
 - High IP diversity globally for this JA4 fingerprint (+50)
+  - Triggered when `ips_quantile_1h > 0.95` (top 5% of JA4s by IP diversity)
 - High request volume globally for this JA4 fingerprint (+40)
-- Uses Cloudflare Bot Management intelligence signals
+  - Triggered when `reqs_quantile_1h > 0.99` (top 1% of JA4s by request volume)
+- Uses Cloudflare Bot Management intelligence signals from `request.cf.ja4Signals`:
+  - `ips_quantile_1h`: Percentile rank of unique IPs in last hour
+  - `reqs_quantile_1h`: Percentile rank of request count in last hour
+  - `browser_ratio_1h`: Browser-like vs bot-like behavior ratio (stored but not used for scoring)
+  - `h2h3_ratio_1h`: HTTP/2 vs HTTP/3 ratio (stored but not used for scoring)
 
 **Detection Query** (single optimized SQL):
 ```sql
@@ -117,7 +123,9 @@ SELECT
   ja4,
   COUNT(DISTINCT ephemeral_id) as ephemeral_count,
   COUNT(*) as submission_count,
-  (julianday(MAX(created_at)) - julianday(MIN(created_at))) * 24 * 60 as time_span_minutes
+  (julianday(MAX(created_at)) - julianday(MIN(created_at))) * 24 * 60 as time_span_minutes,
+  AVG(CAST(json_extract(ja4_signals, '$.ips_quantile_1h') AS REAL)) as avg_ips_quantile,
+  AVG(CAST(json_extract(ja4_signals, '$.reqs_quantile_1h') AS REAL)) as avg_reqs_quantile
 FROM submissions
 WHERE remote_ip = ? AND ja4 = ? AND created_at > datetime('now', '-24 hours')
 GROUP BY ja4
