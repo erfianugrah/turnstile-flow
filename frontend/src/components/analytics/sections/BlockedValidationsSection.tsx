@@ -26,41 +26,51 @@ export function BlockedValidationsSection({ validations }: BlockedValidationsSec
 						<p className="text-muted-foreground text-sm">No blocked validation attempts</p>
 					</div>
 				) : (
-					<div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
-						{validations.map((validation) => (
-							<div
-								key={validation.id}
-								className="flex items-center gap-4 p-4 rounded-lg border border-border bg-card hover:bg-accent/50 transition-colors"
-							>
-								<div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
-									<div>
-										<span className="text-muted-foreground block text-xs">IP Address</span>
-										<p className="font-mono text-xs mt-1">
-											{validation.ip_address}
-										</p>
-									</div>
-									<div>
-										<span className="text-muted-foreground block text-xs">Block Reason</span>
-										<p className="font-medium mt-1 truncate" title={validation.block_reason}>
-											{validation.block_reason}
-										</p>
-									</div>
-									<div>
-										<span className="text-muted-foreground block text-xs">Risk Score</span>
-										<p className={`font-bold mt-1 ${getRiskColor(validation.risk_score)}`}>
-											{validation.risk_score}
-										</p>
-									</div>
-									<div>
-										<span className="text-muted-foreground block text-xs">Timestamp</span>
-										<p className="font-medium mt-1 text-xs">
-											{new Date(validation.challenge_ts).toLocaleString()}
-										</p>
+					<>
+						<div className="mb-4 text-sm text-muted-foreground">
+							Showing {Math.min(validations.length, 20)} of {validations.length} attempts
+						</div>
+						<div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+							{validations.slice(0, 20).map((validation) => (
+								<div
+									key={validation.id}
+									className="flex items-center gap-4 p-4 rounded-lg border border-border bg-card hover:bg-accent/50 transition-colors"
+								>
+									<div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-4 text-sm min-w-0">
+										<div className="min-w-0">
+											<span className="text-muted-foreground block text-xs">IP Address</span>
+											<p className="font-mono text-xs mt-1">
+												{validation.ip_address}
+											</p>
+										</div>
+										<div className="min-w-0">
+											<span className="text-muted-foreground block text-xs">Block Reason</span>
+											<p className="font-medium mt-1 truncate" title={validation.block_reason}>
+												{validation.block_reason}
+											</p>
+										</div>
+										<div>
+											<span className="text-muted-foreground block text-xs">Risk Score</span>
+											<p className={`font-bold mt-1 ${getRiskColor(validation.risk_score)}`}>
+												{validation.risk_score}
+											</p>
+										</div>
+										<div>
+											<span className="text-muted-foreground block text-xs">Timestamp</span>
+											<p className="font-medium mt-1 text-xs">
+												{new Date(validation.challenge_ts).toLocaleString()}
+											</p>
+										</div>
 									</div>
 								</div>
+							))}
+						</div>
+						{validations.length > 20 && (
+							<div className="mt-4 text-center text-sm text-muted-foreground">
+								Showing first 20 attempts. Total: {validations.length}
 							</div>
-						))}
-					</div>
+						)}
+					</>
 				)}
 			</CardContent>
 		</Card>

@@ -67,7 +67,11 @@ export function BarChart({
 	return (
 		<div className={className}>
 			<ResponsiveContainer width="100%" height={height}>
-				<RechartsBarChart data={data} layout={layout}>
+				<RechartsBarChart
+					data={data}
+					layout={layout}
+					margin={{ top: 5, right: 5, left: 5, bottom: 5 }}
+				>
 					{showGrid && (
 						<CartesianGrid
 							strokeDasharray="3 3"
@@ -109,13 +113,16 @@ export function BarChart({
 								fontSize={12}
 								tickLine={false}
 								axisLine={false}
-								width={100}
+								width={120}
 							/>
 						</>
 					)}
-					<Tooltip content={<CustomTooltip />} />
+					<Tooltip content={<CustomTooltip />} cursor={{ fill: 'hsl(var(--accent))' }} />
 					{showLegend && <Legend />}
-					<Bar dataKey={yAxisKey} radius={[4, 4, 0, 0]}>
+					<Bar
+						dataKey={yAxisKey}
+						radius={layout === 'vertical' ? [0, 4, 4, 0] : [4, 4, 0, 0]}
+					>
 						{data.map((entry, index) => (
 							<Cell
 								key={`cell-${index}`}

@@ -107,25 +107,30 @@ export function ChartsSection({
 						<CardDescription>Top autonomous systems</CardDescription>
 					</CardHeader>
 					<CardContent>
-						<div className="space-y-2">
+						<div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
 							{asnData.length === 0 ? (
 								<div className="flex items-center justify-center h-[200px]">
 									<p className="text-muted-foreground text-sm">No data available</p>
 								</div>
 							) : (
-								asnData.slice(0, 10).map((item, index) => (
-									<div key={index} className="flex justify-between items-center">
-										<div className="flex-1 min-w-0">
-											<p className="text-sm font-mono truncate">{item.asn}</p>
-											<p className="text-xs text-muted-foreground truncate">
+								asnData.slice(0, 20).map((item, index) => (
+									<div key={index} className="flex justify-between items-center py-2 border-b border-border last:border-0">
+										<div className="flex-1 min-w-0 pr-4">
+											<p className="text-sm font-mono truncate" title={item.asn}>AS{item.asn}</p>
+											<p className="text-xs text-muted-foreground truncate" title={item.as_organization || 'Unknown'}>
 												{item.as_organization || 'Unknown'}
 											</p>
 										</div>
-										<span className="ml-2 text-sm font-semibold">{item.count}</span>
+										<span className="text-sm font-semibold flex-shrink-0">{item.count}</span>
 									</div>
 								))
 							)}
 						</div>
+						{asnData.length > 20 && (
+							<div className="mt-3 text-center text-xs text-muted-foreground">
+								+{asnData.length - 20} more
+							</div>
+						)}
 					</CardContent>
 				</Card>
 
@@ -135,27 +140,32 @@ export function ChartsSection({
 						<CardDescription>Encryption protocols</CardDescription>
 					</CardHeader>
 					<CardContent>
-						<div className="space-y-2">
+						<div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
 							{tlsData.length === 0 ? (
 								<div className="flex items-center justify-center h-[200px]">
 									<p className="text-muted-foreground text-sm">No data available</p>
 								</div>
 							) : (
-								tlsData.slice(0, 10).map((item, index) => (
-									<div key={index} className="flex justify-between items-center">
-										<div className="flex-1">
+								tlsData.slice(0, 20).map((item, index) => (
+									<div key={index} className="flex justify-between items-center py-2 border-b border-border last:border-0">
+										<div className="flex-1 min-w-0 pr-4">
 											<p className="text-sm font-medium">{item.tls_version}</p>
 											{item.tls_cipher && (
-												<p className="text-xs text-muted-foreground truncate">
+												<p className="text-xs text-muted-foreground truncate" title={item.tls_cipher}>
 													{item.tls_cipher}
 												</p>
 											)}
 										</div>
-										<span className="ml-2 text-sm font-semibold">{item.count}</span>
+										<span className="text-sm font-semibold flex-shrink-0">{item.count}</span>
 									</div>
 								))
 							)}
 						</div>
+						{tlsData.length > 20 && (
+							<div className="mt-3 text-center text-xs text-muted-foreground">
+								+{tlsData.length - 20} more
+							</div>
+						)}
 					</CardContent>
 				</Card>
 
@@ -165,20 +175,27 @@ export function ChartsSection({
 						<CardDescription>Client fingerprints</CardDescription>
 					</CardHeader>
 					<CardContent>
-						<div className="space-y-2">
+						<div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
 							{ja3Data.length === 0 ? (
 								<div className="flex items-center justify-center h-[200px]">
 									<p className="text-muted-foreground text-sm">No data available</p>
 								</div>
 							) : (
-								ja3Data.slice(0, 10).map((item, index) => (
-									<div key={index} className="flex justify-between items-center">
-										<p className="text-xs font-mono truncate flex-1">{item.ja3_hash}</p>
-										<span className="ml-2 text-sm font-semibold">{item.count}</span>
+								ja3Data.slice(0, 20).map((item, index) => (
+									<div key={index} className="flex justify-between items-center py-2 border-b border-border last:border-0">
+										<p className="text-xs font-mono truncate flex-1 pr-4" title={item.ja3_hash}>
+											{item.ja3_hash}
+										</p>
+										<span className="text-sm font-semibold flex-shrink-0">{item.count}</span>
 									</div>
 								))
 							)}
 						</div>
+						{ja3Data.length > 20 && (
+							<div className="mt-3 text-center text-xs text-muted-foreground">
+								+{ja3Data.length - 20} more
+							</div>
+						)}
 					</CardContent>
 				</Card>
 			</div>
@@ -190,20 +207,27 @@ export function ChartsSection({
 					<CardDescription>Advanced client fingerprints</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<div className="space-y-2">
+					<div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
 						{ja4Data.length === 0 ? (
 							<div className="flex items-center justify-center h-[200px]">
 								<p className="text-muted-foreground text-sm">No data available</p>
 							</div>
 						) : (
-							ja4Data.slice(0, 10).map((item, index) => (
-								<div key={index} className="flex justify-between items-center">
-									<p className="text-xs font-mono truncate flex-1">{item.ja4}</p>
-									<span className="ml-2 text-sm font-semibold">{item.count}</span>
+							ja4Data.slice(0, 20).map((item, index) => (
+								<div key={index} className="flex justify-between items-center py-2 border-b border-border last:border-0">
+									<p className="text-xs font-mono truncate flex-1 pr-4" title={item.ja4}>
+										{item.ja4}
+									</p>
+									<span className="text-sm font-semibold flex-shrink-0">{item.count}</span>
 								</div>
 							))
 						)}
 					</div>
+					{ja4Data.length > 20 && (
+						<div className="mt-3 text-center text-xs text-muted-foreground">
+							+{ja4Data.length - 20} more
+						</div>
+					)}
 				</CardContent>
 			</Card>
 		</>

@@ -155,20 +155,21 @@ export function DataTable<TData>({
 			{/* Pagination Controls */}
 			<div className="flex items-center justify-between">
 				<div className="text-sm text-muted-foreground">
-					{totalCount ? (
-						<>
-							Showing {pagination.pageIndex * pagination.pageSize + 1} to{' '}
-							{Math.min(
-								(pagination.pageIndex + 1) * pagination.pageSize,
-								totalCount
-							)}{' '}
-							of {totalCount} results
-						</>
-					) : (
-						<>
-							No results
-						</>
-					)}
+					{(() => {
+						const total = totalCount || data.length;
+						const start = Math.min(
+							pagination.pageIndex * pagination.pageSize + 1,
+							total
+						);
+						const end = Math.min(
+							(pagination.pageIndex + 1) * pagination.pageSize,
+							total
+						);
+
+						if (total === 0) return 'No results';
+						if (total === 1) return 'Showing 1 result';
+						return `Showing ${start} to ${end} of ${total} results`;
+					})()}
 				</div>
 				<div className="flex items-center gap-2">
 					<button

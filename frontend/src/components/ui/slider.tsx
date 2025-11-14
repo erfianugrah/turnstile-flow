@@ -18,7 +18,7 @@ const Slider = React.forwardRef<
     {/* Track - uses actual contrast: 85% in light, 40% in dark */}
     <SliderPrimitive.Track className="relative h-2 w-full grow overflow-hidden rounded-full bg-[hsl(220_16%_85%)] dark:bg-[hsl(220_16%_40%)] border border-border">
       {/* Range - uses primary at full opacity for visibility, only between thumbs */}
-      <SliderPrimitive.Range className="absolute h-full bg-primary" />
+      <SliderPrimitive.Range className="absolute h-full bg-primary rounded-full" />
     </SliderPrimitive.Track>
     {/* First thumb - sits on top of track */}
     <SliderPrimitive.Thumb className="block h-5 w-5 rounded-full border-2 border-primary bg-white dark:bg-[hsl(220_16%_60%)] shadow-md ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-grab active:cursor-grabbing hover:scale-110 active:scale-95" />
