@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../../ui/card';
 import type { BlacklistEntry } from '../../../hooks/useBlacklist';
 import type { BlockedValidation } from '../../../hooks/useBlockedValidations';
@@ -27,6 +28,11 @@ type SecurityEvent = {
 };
 
 export function SecurityEvents({ activeBlocks, recentDetections }: SecurityEventsProps) {
+	// Filter states
+	const [detectionTypeFilter, setDetectionTypeFilter] = useState<string>('all');
+	const [statusFilter, setStatusFilter] = useState<string>('all');
+	const [riskLevelFilter, setRiskLevelFilter] = useState<string>('all');
+
 	// Convert active blocks to unified format
 	const activeBlockEvents: SecurityEvent[] = activeBlocks.map((entry) => ({
 		id: `block-${entry.id}`,
@@ -63,8 +69,40 @@ export function SecurityEvents({ activeBlocks, recentDetections }: SecurityEvent
 		(a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
 	);
 
+	// Apply filters
+	const filteredEvents = allEvents.filter((event) => {
+		// Detection type filter
+		if (detectionTypeFilter !== 'all' && event.detectionType !== detectionTypeFilter) {
+			return false;
+		}
+
+		// Status filter
+		if (statusFilter === 'active' && event.type !== 'active_block') {
+			return false;
+		}
+		if (statusFilter === 'detection' && event.type !== 'detection') {
+			return false;
+		}
+
+		// Risk level filter
+		if (riskLevelFilter === 'critical' && event.riskScore < 90) {
+			return false;
+		}
+		if (riskLevelFilter === 'high' && (event.riskScore < 70 || event.riskScore >= 90)) {
+			return false;
+		}
+		if (riskLevelFilter === 'medium' && (event.riskScore < 50 || event.riskScore >= 70)) {
+			return false;
+		}
+		if (riskLevelFilter === 'low' && event.riskScore >= 50) {
+			return false;
+		}
+
+		return true;
+	});
+
 	// Limit to 50 events
-	const displayEvents = allEvents.slice(0, 50);
+	const displayEvents = filteredEvents.slice(0, 50);
 
 	const getRiskColor = (score: number) => {
 		if (score >= 90) return 'text-red-600 dark:text-red-400';
@@ -147,6 +185,7 @@ export function SecurityEvents({ activeBlocks, recentDetections }: SecurityEvent
 
 	const totalActiveBlocks = activeBlocks.length;
 	const totalDetections = recentDetections.length;
+	const hasActiveFilters = detectionTypeFilter !== 'all' || statusFilter !== 'all' || riskLevelFilter !== 'all';
 
 	return (
 		<Card>
@@ -160,14 +199,78 @@ export function SecurityEvents({ activeBlocks, recentDetections }: SecurityEvent
 				</CardDescription>
 			</CardHeader>
 			<CardContent>
+				{/* Filters */}
+				<div className="flex flex-wrap gap-3 mb-4 pb-4 border-b border-border">
+					<div className="flex flex-col gap-1">
+						<label className="text-xs text-muted-foreground">Detection Type</label>
+						<select
+							value={detectionTypeFilter}
+							onChange={(e) => setDetectionTypeFilter(e.target.value)}
+							className="px-3 py-1.5 text-sm border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+						>
+							<option value="all">All Types</option>
+							<option value="ja4_fraud">JA4 Session Hopping</option>
+							<option value="ephemeral_fraud">Ephemeral ID</option>
+							<option value="ip_fraud">IP Fraud</option>
+							<option value="other">Other</option>
+						</select>
+					</div>
+
+					<div className="flex flex-col gap-1">
+						<label className="text-xs text-muted-foreground">Status</label>
+						<select
+							value={statusFilter}
+							onChange={(e) => setStatusFilter(e.target.value)}
+							className="px-3 py-1.5 text-sm border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+						>
+							<option value="all">All Status</option>
+							<option value="active">Actively Blocked</option>
+							<option value="detection">Detections Only</option>
+						</select>
+					</div>
+
+					<div className="flex flex-col gap-1">
+						<label className="text-xs text-muted-foreground">Risk Level</label>
+						<select
+							value={riskLevelFilter}
+							onChange={(e) => setRiskLevelFilter(e.target.value)}
+							className="px-3 py-1.5 text-sm border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+						>
+							<option value="all">All Levels</option>
+							<option value="critical">Critical (≥90)</option>
+							<option value="high">High (70-89)</option>
+							<option value="medium">Medium (50-69)</option>
+							<option value="low">Low (&lt;50)</option>
+						</select>
+					</div>
+
+					{hasActiveFilters && (
+						<div className="flex items-end">
+							<button
+								onClick={() => {
+									setDetectionTypeFilter('all');
+									setStatusFilter('all');
+									setRiskLevelFilter('all');
+								}}
+								className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+							>
+								Clear Filters
+							</button>
+						</div>
+					)}
+				</div>
+
 				{displayEvents.length === 0 ? (
 					<div className="flex items-center justify-center py-12">
-						<p className="text-muted-foreground text-sm">No security events</p>
+						<p className="text-muted-foreground text-sm">
+							{hasActiveFilters ? 'No events match the selected filters' : 'No security events'}
+						</p>
 					</div>
 				) : (
 					<>
 						<div className="mb-4 text-sm text-muted-foreground">
-							Showing {displayEvents.length} of {allEvents.length} events
+							Showing {displayEvents.length} of {filteredEvents.length} events
+							{hasActiveFilters && ` (${allEvents.length} total)`}
 						</div>
 						<div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
 							{displayEvents.map((event) => {
@@ -241,9 +344,10 @@ export function SecurityEvents({ activeBlocks, recentDetections }: SecurityEvent
 								);
 							})}
 						</div>
-						{allEvents.length > 50 && (
+						{filteredEvents.length > 50 && (
 							<div className="mt-4 text-center text-sm text-muted-foreground">
-								Showing first 50 events. Total: {allEvents.length}
+								Showing first 50 events. Total: {filteredEvents.length}
+								{hasActiveFilters && ` (${allEvents.length} unfiltered)`}
 							</div>
 						)}
 					</>
