@@ -89,12 +89,13 @@ CREATE TABLE IF NOT EXISTS turnstile_validations (
 );
 
 -- Fraud detection blacklist table
--- Stores blocked ephemeral IDs and IPs for pre-validation blocking
+-- Stores blocked ephemeral IDs, IPs, and JA4 fingerprints for pre-validation blocking
 CREATE TABLE IF NOT EXISTS fraud_blacklist (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	-- Identifier (ephemeral_id or IP address)
+	-- Identifiers (at least one must be present)
 	ephemeral_id TEXT,
 	ip_address TEXT,
+	ja4 TEXT,
 	-- Block metadata
 	block_reason TEXT NOT NULL,
 	detection_confidence TEXT NOT NULL CHECK(detection_confidence IN ('high', 'medium', 'low')),
@@ -107,7 +108,7 @@ CREATE TABLE IF NOT EXISTS fraud_blacklist (
 	-- Pattern metadata (JSON)
 	detection_metadata TEXT,
 	-- Constraints: at least one identifier must be present
-	CHECK((ephemeral_id IS NOT NULL) OR (ip_address IS NOT NULL))
+	CHECK((ephemeral_id IS NOT NULL) OR (ip_address IS NOT NULL) OR (ja4 IS NOT NULL))
 );
 
 -- Indexes for performance
@@ -126,4 +127,5 @@ CREATE INDEX IF NOT EXISTS idx_validations_ja3 ON turnstile_validations(ja3_hash
 CREATE INDEX IF NOT EXISTS idx_validations_ja4 ON turnstile_validations(ja4);
 CREATE INDEX IF NOT EXISTS idx_blacklist_ephemeral_id ON fraud_blacklist(ephemeral_id, expires_at);
 CREATE INDEX IF NOT EXISTS idx_blacklist_ip ON fraud_blacklist(ip_address, expires_at);
+CREATE INDEX IF NOT EXISTS idx_blacklist_ja4 ON fraud_blacklist(ja4, expires_at);
 CREATE INDEX IF NOT EXISTS idx_blacklist_expires ON fraud_blacklist(expires_at);
