@@ -180,11 +180,11 @@ export default function SubmissionForm() {
 					// Duplicate email
 					userFriendlyMessage = result.message || 'This email address has already been registered.';
 				} else if (response.status === 400) {
-					// Validation error - use server message
-					userFriendlyMessage = result.message || 'Please check your information and try again.';
+					// Validation error or fraud detection - always use server message
+					userFriendlyMessage = result.message || result.error || 'Please check your information and try again.';
 				} else if (response.status >= 500) {
 					// Server error - use server message if available
-					userFriendlyMessage = result.message || 'A server error occurred. Please try again in a few moments.';
+					userFriendlyMessage = result.message || result.error || 'A server error occurred. Please try again in a few moments.';
 				}
 
 				setFlowStep('error');

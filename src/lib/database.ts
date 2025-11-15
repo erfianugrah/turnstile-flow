@@ -1055,6 +1055,7 @@ export async function getRecentBlockedValidations(db: D1Database, limit: number 
 					country,
 					city,
 					block_reason,
+				detection_type,
 					risk_score,
 					bot_score,
 					user_agent,

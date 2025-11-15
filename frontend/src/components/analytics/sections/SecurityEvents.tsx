@@ -394,9 +394,9 @@ export function SecurityEvents({ activeBlocks, recentDetections }: SecurityEvent
 
 											{/* Block Reason */}
 											<div className="min-w-0 pt-1 border-t border-border/50">
-												<span className="text-muted-foreground block text-xs">Block Reason:</span>
-												<p className="font-medium mt-1 text-xs" title={event.blockReason}>
-													{event.blockReason}
+												<span className="text-muted-foreground block text-xs">Detection Details:</span>
+												<p className="font-medium mt-1 text-xs" title={getDetailedReason(event.detectionType, event.blockReason)}>
+													{getDetailedReason(event.detectionType, event.blockReason)}
 												</p>
 											</div>
 										</div>
@@ -482,4 +482,41 @@ function inferDetectionType(blockReason: string): 'token_replay' | 'ephemeral_id
 		return 'duplicate_email';
 	}
 	return 'other';
+}
+
+/**
+ * Generate detailed detection reason based on detection type
+ */
+function getDetailedReason(
+	detectionType: SecurityEvent['detectionType'],
+	fallbackReason: string
+): string {
+	if (!detectionType || detectionType === 'other') {
+		return fallbackReason;
+	}
+
+	switch (detectionType) {
+		case 'token_replay':
+			return 'Token replay attack detected - submission used a previously validated CAPTCHA token';
+		case 'ephemeral_id_fraud':
+			return 'Multiple submissions detected from same device within fraud detection window';
+		case 'ja4_ip_clustering':
+			return 'JA4 fingerprint clustering detected - same subnet + same TLS fingerprint + multiple device IDs (likely incognito/browser hopping)';
+		case 'ja4_rapid_global':
+			return 'Rapid JA4 session hopping detected - same TLS fingerprint with 3+ device IDs in 5 minutes (fast distributed attack)';
+		case 'ja4_extended_global':
+			return 'Extended JA4 session hopping detected - same TLS fingerprint with 5+ device IDs in 1 hour (slower distributed attack)';
+		case 'ja4_session_hopping':
+			return 'Legacy JA4 session hopping detected - browser/session switching behavior identified';
+		case 'ip_diversity':
+			return 'IP diversity fraud detected - same device ID used from multiple IP addresses (proxy rotation)';
+		case 'validation_frequency':
+			return 'Excessive validation attempts detected - too many CAPTCHA validation requests in short time period';
+		case 'turnstile_failed':
+			return 'Cloudflare Turnstile validation failed - CAPTCHA challenge not passed';
+		case 'duplicate_email':
+			return 'Duplicate email address detected - this email has already been used for registration';
+		default:
+			return fallbackReason;
+	}
 }
