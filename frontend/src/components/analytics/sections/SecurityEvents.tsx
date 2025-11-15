@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { subDays } from 'date-fns';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../../ui/card';
 import type { BlacklistEntry } from '../../../hooks/useBlacklist';
 import type { BlockedValidation } from '../../../hooks/useBlockedValidations';
 import { getRelativeTime, getTimeAgo, getTimeUrgency, getUrgencyClasses } from '../../../lib/time-utils';
 import { SingleSelect } from '../filters/SingleSelect';
+import { DateRangePicker } from '../filters/DateRangePicker';
 
 interface SecurityEventsProps {
 	activeBlocks: BlacklistEntry[];
@@ -34,10 +36,14 @@ export function SecurityEvents({ activeBlocks, recentDetections }: SecurityEvent
 	const [detectionTypeFilter, setDetectionTypeFilter] = useState<string>('all');
 	const [statusFilter, setStatusFilter] = useState<string>('all');
 	const [riskLevelFilter, setRiskLevelFilter] = useState<string>('all');
+	const [dateRange, setDateRange] = useState({
+		start: subDays(new Date(), 7),
+		end: new Date(),
+	});
 
 	// Pagination state
 	const [pageIndex, setPageIndex] = useState(0);
-	const [pageSize] = useState(10);
+	const [pageSize] = useState(15);
 
 	// Convert active blocks to unified format
 	const activeBlockEvents: SecurityEvent[] = activeBlocks.map((entry) => ({
@@ -58,21 +64,32 @@ export function SecurityEvents({ activeBlocks, recentDetections }: SecurityEvent
 		ja4: entry.ja4,
 	}));
 
-	// Convert recent detections to unified format
-	const detectionEvents: SecurityEvent[] = recentDetections.map((validation) => ({
-		id: `detection-${validation.id}`,
-		type: 'detection' as const,
-		timestamp: validation.challenge_ts,
-		ephemeralId: validation.ephemeral_id,
-		ipAddress: validation.ip_address,
-		identifierType: validation.ephemeral_id ? 'ephemeral' : 'ip',
-		blockReason: validation.block_reason,
-		riskScore: validation.risk_score,
-		detectionType: validation.detection_type,
-		country: validation.country,
-		city: validation.city,
-		ja4: validation.ja4,
-	}));
+	// Convert recent detections to unified format, but exclude detections that have active blocks
+	// Deduplicate by checking if ephemeral_id or ip_address matches an active block
+	const activeIdentifiers = new Set(
+		activeBlocks.map(block => block.ephemeral_id || block.ip_address).filter(Boolean)
+	);
+
+	const detectionEvents: SecurityEvent[] = recentDetections
+		.filter((validation) => {
+			const identifier = validation.ephemeral_id || validation.ip_address;
+			// Only include detections that don't have a corresponding active block
+			return identifier && !activeIdentifiers.has(identifier);
+		})
+		.map((validation) => ({
+			id: `detection-${validation.id}`,
+			type: 'detection' as const,
+			timestamp: validation.challenge_ts,
+			ephemeralId: validation.ephemeral_id,
+			ipAddress: validation.ip_address,
+			identifierType: validation.ephemeral_id ? 'ephemeral' : 'ip',
+			blockReason: validation.block_reason,
+			riskScore: validation.risk_score,
+			detectionType: validation.detection_type,
+			country: validation.country,
+			city: validation.city,
+			ja4: validation.ja4,
+		}));
 
 	// Merge and sort by timestamp (most recent first)
 	const allEvents = [...activeBlockEvents, ...detectionEvents].sort(
@@ -108,13 +125,19 @@ export function SecurityEvents({ activeBlocks, recentDetections }: SecurityEvent
 			return false;
 		}
 
+		// Date range filter
+		const eventDate = new Date(event.timestamp);
+		if (eventDate < dateRange.start || eventDate > dateRange.end) {
+			return false;
+		}
+
 		return true;
 	});
 
 	// Reset pagination when filters change
 	useEffect(() => {
 		setPageIndex(0);
-	}, [detectionTypeFilter, statusFilter, riskLevelFilter]);
+	}, [detectionTypeFilter, statusFilter, riskLevelFilter, dateRange.start, dateRange.end]);
 
 	// Apply pagination
 	const totalPages = Math.ceil(filteredEvents.length / pageSize);
@@ -215,13 +238,13 @@ export function SecurityEvents({ activeBlocks, recentDetections }: SecurityEvent
 			return (
 				<div className="flex items-center gap-2">
 					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-bold bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
-						🚫 Actively Blocked
+						🚫 Blocked
 					</span>
 					<span
 						className={`inline-flex items-center px-2 py-1 rounded-md border text-xs font-medium ${urgencyClasses.text} ${urgencyClasses.bg} ${urgencyClasses.border}`}
 						title={`Expires at: ${new Date(event.expiresAt).toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}`}
 					>
-						Expires: {relativeTime}
+						Expires {relativeTime}
 					</span>
 					{event.offenseCount && event.offenseCount > 1 && (
 						<span className="text-xs text-muted-foreground">
@@ -234,8 +257,8 @@ export function SecurityEvents({ activeBlocks, recentDetections }: SecurityEvent
 			const timeAgo = getTimeAgo(event.timestamp);
 			return (
 				<div className="flex items-center gap-2">
-					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300">
-						⚠️ Detected
+					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+						🕒 Blocked (Expired)
 					</span>
 					<span className="text-xs text-muted-foreground">{timeAgo}</span>
 				</div>
@@ -245,7 +268,12 @@ export function SecurityEvents({ activeBlocks, recentDetections }: SecurityEvent
 
 	const totalActiveBlocks = activeBlocks.length;
 	const totalDetections = recentDetections.length;
-	const hasActiveFilters = detectionTypeFilter !== 'all' || statusFilter !== 'all' || riskLevelFilter !== 'all';
+	const hasActiveFilters =
+		detectionTypeFilter !== 'all' ||
+		statusFilter !== 'all' ||
+		riskLevelFilter !== 'all' ||
+		dateRange.start.getTime() !== subDays(new Date(), 7).setHours(0, 0, 0, 0) ||
+		dateRange.end.getTime() !== new Date().setHours(23, 59, 59, 999);
 
 	return (
 		<Card>
@@ -260,68 +288,79 @@ export function SecurityEvents({ activeBlocks, recentDetections }: SecurityEvent
 			</CardHeader>
 			<CardContent>
 				{/* Filters */}
-				<div className="flex flex-wrap gap-3 mb-4 pb-4 border-b border-border">
-					<SingleSelect
-						label="Detection Type"
-						options={[
-							{ value: 'all', label: 'All Types' },
-							{ value: 'token_replay', label: 'Token Replay' },
-							{ value: 'ephemeral_id_fraud', label: 'Ephemeral ID' },
-							{ value: 'ja4_ip_clustering', label: 'JA4 IP Clustering' },
-							{ value: 'ja4_rapid_global', label: 'JA4 Rapid Global' },
-							{ value: 'ja4_extended_global', label: 'JA4 Extended Global' },
-							{ value: 'ja4_session_hopping', label: 'JA4 Session Hopping (Legacy)' },
-							{ value: 'ip_diversity', label: 'IP Diversity' },
-							{ value: 'validation_frequency', label: 'Validation Frequency' },
-							{ value: 'turnstile_failed', label: 'Turnstile Failed' },
-							{ value: 'duplicate_email', label: 'Duplicate Email' },
-							{ value: 'other', label: 'Other' }
-						]}
-						value={detectionTypeFilter}
-						onChange={setDetectionTypeFilter}
-						className="min-w-[200px]"
-					/>
+				<div className="mb-4 pb-4 border-b border-border">
+					<div className="flex flex-wrap items-end gap-3">
+						<SingleSelect
+							label="Detection Type"
+							options={[
+								{ value: 'all', label: 'All Types' },
+								{ value: 'token_replay', label: 'Token Replay' },
+								{ value: 'ephemeral_id_fraud', label: 'Ephemeral ID' },
+								{ value: 'ja4_ip_clustering', label: 'JA4 IP Clustering' },
+								{ value: 'ja4_rapid_global', label: 'JA4 Rapid Global' },
+								{ value: 'ja4_extended_global', label: 'JA4 Extended Global' },
+								{ value: 'ja4_session_hopping', label: 'JA4 Session Hopping (Legacy)' },
+								{ value: 'ip_diversity', label: 'IP Diversity' },
+								{ value: 'validation_frequency', label: 'Validation Frequency' },
+								{ value: 'turnstile_failed', label: 'Turnstile Failed' },
+								{ value: 'duplicate_email', label: 'Duplicate Email' },
+								{ value: 'other', label: 'Other' }
+							]}
+							value={detectionTypeFilter}
+							onChange={setDetectionTypeFilter}
+							className="min-w-[200px]"
+						/>
 
-					<SingleSelect
-						label="Status"
-						options={[
-							{ value: 'all', label: 'All Status' },
-							{ value: 'active', label: 'Actively Blocked' },
-							{ value: 'detection', label: 'Detections Only' }
-						]}
-						value={statusFilter}
-						onChange={setStatusFilter}
-						className="min-w-[200px]"
-					/>
+						<SingleSelect
+							label="Status"
+							options={[
+								{ value: 'all', label: 'All' },
+								{ value: 'active', label: 'Blocked (Active)' },
+								{ value: 'detection', label: 'Blocked (Expired)' }
+							]}
+							value={statusFilter}
+							onChange={setStatusFilter}
+							className="min-w-[200px]"
+						/>
 
-					<SingleSelect
-						label="Risk Level"
-						options={[
-							{ value: 'all', label: 'All Levels' },
-							{ value: 'critical', label: 'Critical (≥90)' },
-							{ value: 'high', label: 'High (70-89)' },
-							{ value: 'medium', label: 'Medium (50-69)' },
-							{ value: 'low', label: 'Low (<50)' }
-						]}
-						value={riskLevelFilter}
-						onChange={setRiskLevelFilter}
-						className="min-w-[200px]"
-					/>
+						<SingleSelect
+							label="Risk Level"
+							options={[
+								{ value: 'all', label: 'All Levels' },
+								{ value: 'critical', label: 'Critical (≥90)' },
+								{ value: 'high', label: 'High (70-89)' },
+								{ value: 'medium', label: 'Medium (50-69)' },
+								{ value: 'low', label: 'Low (<50)' }
+							]}
+							value={riskLevelFilter}
+							onChange={setRiskLevelFilter}
+							className="min-w-[200px]"
+						/>
 
-					{hasActiveFilters && (
-						<div className="flex items-end">
-							<button
-								onClick={() => {
-									setDetectionTypeFilter('all');
-									setStatusFilter('all');
-									setRiskLevelFilter('all');
-								}}
-								className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-							>
-								Clear Filters
-							</button>
+						<div className="flex flex-col gap-1">
+							<span className="text-sm text-muted-foreground whitespace-nowrap">Time Range:</span>
+							<DateRangePicker value={dateRange} onChange={setDateRange} />
 						</div>
-					)}
+
+						{hasActiveFilters && (
+							<div className="flex items-end">
+								<button
+									onClick={() => {
+										setDetectionTypeFilter('all');
+										setStatusFilter('all');
+										setRiskLevelFilter('all');
+										setDateRange({
+											start: subDays(new Date(), 7),
+											end: new Date(),
+										});
+									}}
+									className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+								>
+									Clear Filters
+								</button>
+							</div>
+						)}
+					</div>
 				</div>
 
 				{displayEvents.length === 0 ? (
@@ -341,61 +380,75 @@ export function SecurityEvents({ activeBlocks, recentDetections }: SecurityEvent
 										key={event.id}
 										className="flex items-center gap-4 p-4 rounded-lg border border-border bg-card hover:bg-accent/50 transition-colors"
 									>
-										<div className="flex-1 space-y-3 min-w-0">
-											{/* Header Row: Status + Detection Type */}
-											<div className="flex items-center justify-between gap-2 flex-wrap">
-												{getStatusBadge(event)}
-												{getDetectionTypeBadge(event.detectionType)}
+										<div className="flex-1 space-y-4 min-w-0">
+											{/* Header Row: Status + Risk Score + Detection Type */}
+											<div className="flex items-center justify-between gap-4 flex-wrap">
+												<div className="flex items-center gap-2 flex-wrap">
+													{getStatusBadge(event)}
+												</div>
+												<div className="flex items-center gap-2">
+													<span className="inline-flex px-2 py-0.5 rounded-md bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300 text-xs font-medium flex-shrink-0" title="Risk assessment score (0-100)">
+														Risk Score:
+													</span>
+													<span className={`text-xs font-semibold ${getRiskColor(event.riskScore)}`}>
+														{event.riskScore}
+														<span className="text-xs font-normal ml-1 text-muted-foreground">({riskLevel})</span>
+													</span>
+												</div>
+												<div className="flex items-center gap-2">
+													{getDetectionTypeBadge(event.detectionType)}
+												</div>
 											</div>
 
 											{/* Main Info Grid */}
-											<div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-												<div className="min-w-0">
-													<span className="text-muted-foreground block">
-														{event.identifierType === 'ephemeral' ? 'Ephemeral ID:' : 'IP Address:'}
-													</span>
-													<p className="font-mono text-xs mt-1 truncate select-all" title={event.ephemeralId || event.ipAddress || 'N/A'}>
-														{event.ephemeralId || event.ipAddress}
-													</p>
+											<div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-1.5 text-xs">
+												<div className="min-w-0 space-y-1.5">
 													{event.ipAddress && event.identifierType === 'ephemeral' && (
-														<p className="font-mono text-xs mt-0.5 text-muted-foreground truncate select-all" title={event.ipAddress || 'N/A'}>
-															IP: {event.ipAddress}
+														<p className="flex items-center gap-2">
+															<span className="inline-flex px-2 py-0.5 rounded-md bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 text-xs font-medium flex-shrink-0">IP:</span>
+															<span className="font-mono text-xs text-foreground truncate select-all">{event.ipAddress}</span>
 														</p>
 													)}
 													{event.country && (
-														<p className="text-xs mt-0.5 text-muted-foreground">
-															<span className="font-medium">Country:</span> {event.country}
+														<p className="flex items-center gap-2">
+															<span className="inline-flex px-2 py-0.5 rounded-md bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 text-xs font-medium flex-shrink-0">Country:</span>
+															<span className="text-xs text-foreground">{event.country}</span>
 														</p>
 													)}
 													{event.city && (
-														<p className="text-xs mt-0.5 text-muted-foreground">
-															<span className="font-medium">City:</span> {event.city}
+														<p className="flex items-center gap-2">
+															<span className="inline-flex px-2 py-0.5 rounded-md bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 text-xs font-medium flex-shrink-0">City:</span>
+															<span className="text-xs text-foreground">{event.city}</span>
 														</p>
 													)}
 												</div>
-												<div className="min-w-0">
-													<span className="text-muted-foreground block" title="Risk assessment score (0-100)">
-														Risk Score:
-													</span>
-													<p className={`font-bold mt-1 text-base ${getRiskColor(event.riskScore)}`}>
-														{event.riskScore}
-														<span className="text-xs font-normal ml-1">({riskLevel})</span>
+												<div className="min-w-0 space-y-1.5">
+													<p className="flex items-center gap-2 min-w-0">
+														<span className="inline-flex px-2 py-0.5 rounded-md bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs font-medium flex-shrink-0">
+															{event.identifierType === 'ephemeral' ? 'Ephemeral ID:' : 'IP Address:'}
+														</span>
+														<span className="font-mono text-xs font-medium text-foreground select-all overflow-hidden text-ellipsis whitespace-nowrap" title={event.ephemeralId || event.ipAddress || 'N/A'}>
+															{event.ephemeralId || event.ipAddress}
+														</span>
+													</p>
+													<p className="flex items-center gap-2 min-w-0">
+														<span className="inline-flex px-2 py-0.5 rounded-md bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300 text-xs font-medium flex-shrink-0" title="TLS fingerprint">
+															JA4:
+														</span>
+														<span className="font-mono text-xs font-medium text-foreground select-all overflow-hidden text-ellipsis whitespace-nowrap" title={event.ja4 || 'N/A'}>
+															{event.ja4 || 'N/A'}
+														</span>
 													</p>
 												</div>
 												<div className="min-w-0">
-													<span className="text-muted-foreground block" title="TLS fingerprint">
-														JA4 Fingerprint:
-													</span>
-													<p className="font-mono text-xs mt-1 truncate select-all" title={event.ja4 || 'N/A'}>
-														{event.ja4 || 'N/A'}
-													</p>
+													{/* Empty column for spacing */}
 												</div>
 											</div>
 
 											{/* Block Reason */}
-											<div className="min-w-0 pt-1 border-t border-border/50">
-												<span className="text-muted-foreground block text-xs">Detection Details:</span>
-												<p className="font-medium mt-1 text-xs" title={getDetailedReason(event.detectionType, event.blockReason)}>
+											<div className="min-w-0 pt-3 mt-3 border-t border-border/50">
+												<span className="inline-flex px-2 py-0.5 rounded-md bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 text-xs font-medium mb-2">Detection Details</span>
+												<p className="text-xs text-foreground leading-relaxed mt-2" title={getDetailedReason(event.detectionType, event.blockReason)}>
 													{getDetailedReason(event.detectionType, event.blockReason)}
 												</p>
 											</div>

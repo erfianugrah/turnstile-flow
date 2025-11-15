@@ -254,6 +254,7 @@ export interface SubmissionsFilters {
 	hasJa3?: boolean;
 	hasJa4?: boolean;
 	search?: string;
+	allowed?: boolean | 'all'; // Filter by allowed status: true = allowed only, false = blocked only, 'all' = show all
 }
 
 /**
@@ -334,6 +335,12 @@ export async function getSubmissions(
 		// JA4 hash presence
 		if (filters.hasJa4 !== undefined) {
 			whereClauses.push(filters.hasJa4 ? 'ja4 IS NOT NULL' : 'ja4 IS NULL');
+		}
+
+		// Allowed status filter (show blocked, allowed, or all)
+		if (filters.allowed !== undefined && filters.allowed !== 'all') {
+			whereClauses.push('allowed = ?');
+			bindings.push(filters.allowed ? 1 : 0);
 		}
 
 		// Search across multiple fields

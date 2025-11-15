@@ -30,6 +30,7 @@ export default function AnalyticsDashboard() {
 	const [searchQuery, setSearchQuery] = useState('');
 	const [selectedCountries, setSelectedCountries] = useState<string[]>([]);
 	const [botScoreRange, setBotScoreRange] = useState<[number, number]>([0, 100]);
+	const [allowedStatus, setAllowedStatus] = useState<'all' | 'allowed' | 'blocked'>('all');
 	const [dateRange, setDateRange] = useState({
 		start: subDays(new Date(), 30),
 		end: new Date(),
@@ -59,7 +60,7 @@ export default function AnalyticsDashboard() {
 	// Reset pagination when filters change
 	useEffect(() => {
 		setPagination((prev) => ({ ...prev, pageIndex: 0 }));
-	}, [searchQuery, selectedCountries.join(','), botScoreRange.join(','), dateRange.start.toISOString(), dateRange.end.toISOString()]);
+	}, [searchQuery, selectedCountries.join(','), botScoreRange.join(','), allowedStatus, dateRange.start.toISOString(), dateRange.end.toISOString()]);
 
 	// Use hooks for data fetching
 	const analyticsData = useAnalytics(apiKey, autoRefresh, refreshInterval);
@@ -71,6 +72,7 @@ export default function AnalyticsDashboard() {
 		selectedCountries,
 		botScoreRange,
 		dateRange,
+		allowedStatus,
 	};
 	const submissionsData = useSubmissions(apiKey, filters, pagination, sorting);
 
@@ -184,6 +186,7 @@ export default function AnalyticsDashboard() {
 		setSearchQuery('');
 		setSelectedCountries([]);
 		setBotScoreRange([0, 100]);
+		setAllowedStatus('all');
 		setDateRange({
 			start: subDays(new Date(), 30),
 			end: new Date(),
@@ -196,6 +199,7 @@ export default function AnalyticsDashboard() {
 		selectedCountries.length > 0 ||
 		botScoreRange[0] !== 0 ||
 		botScoreRange[1] !== 100 ||
+		allowedStatus !== 'all' ||
 		dateRange.start.getTime() !== subDays(new Date(), 30).setHours(0, 0, 0, 0) ||
 		dateRange.end.getTime() !== new Date().setHours(23, 59, 59, 999);
 
@@ -286,6 +290,8 @@ export default function AnalyticsDashboard() {
 					onSelectedCountriesChange={setSelectedCountries}
 					botScoreRange={botScoreRange}
 					onBotScoreRangeChange={setBotScoreRange}
+					allowedStatus={allowedStatus}
+					onAllowedStatusChange={setAllowedStatus}
 					dateRange={dateRange}
 					onDateRangeChange={setDateRange}
 					pagination={pagination}

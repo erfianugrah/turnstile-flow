@@ -30,14 +30,15 @@ export function OverviewStats({ stats }: OverviewStatsProps) {
 	const allowedRate = stats && stats.total > 0 ? (stats.allowed / stats.total) * 100 : 0;
 	const avgRiskScore = stats?.avg_risk_score || 0;
 	const markovDetected = stats?.email_fraud?.markov_detected || 0;
+	const ja4FraudBlocks = stats?.ja4_fraud_blocks || 0;
 
 	const successStatus = getSuccessRateStatus(successRate);
 	const allowedStatus = getAllowedRateStatus(allowedRate);
 	const riskStatus = getRiskScoreStatus(avgRiskScore);
 
 	return (
-		<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-			<Card>
+		<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 w-full">
+			<Card className="min-w-0">
 				<CardHeader className="pb-2">
 					<CardTitle className="text-sm font-medium text-muted-foreground">
 						Total Validations
@@ -48,67 +49,80 @@ export function OverviewStats({ stats }: OverviewStatsProps) {
 				</CardContent>
 			</Card>
 
-			<Card>
+			<Card className="min-w-0">
 				<CardHeader className="pb-2">
 					<CardTitle className="text-sm font-medium text-muted-foreground">
 						Success Rate
 					</CardTitle>
 				</CardHeader>
 				<CardContent>
-					<div className="flex items-baseline justify-between">
-						<div className="text-3xl font-bold">{successRate.toFixed(1)}%</div>
-						<div className={`flex items-center gap-1 text-sm font-medium ${successStatus.color}`}>
-							{successRate >= 90 ? <TrendingUp size={16} /> : successRate < 80 ? <TrendingDown size={16} /> : null}
-							<span>{successStatus.status}</span>
-						</div>
+					<div className="text-3xl font-bold">{successRate.toFixed(1)}%</div>
+					<div className={`flex items-center gap-1 text-xs font-medium mt-1 ${successStatus.color}`}>
+						{successRate >= 90 ? <TrendingUp size={14} /> : successRate < 80 ? <TrendingDown size={14} /> : null}
+						<span className="truncate">{successStatus.status}</span>
 					</div>
 				</CardContent>
 			</Card>
 
-			<Card>
+			<Card className="min-w-0">
 				<CardHeader className="pb-2">
 					<CardTitle className="text-sm font-medium text-muted-foreground">
 						Allowed Rate
 					</CardTitle>
 				</CardHeader>
 				<CardContent>
-					<div className="flex items-baseline justify-between">
-						<div className="text-3xl font-bold">{allowedRate.toFixed(1)}%</div>
-						<div className={`flex items-center gap-1 text-sm font-medium ${allowedStatus.color}`}>
-							{allowedRate >= 85 ? <TrendingUp size={16} /> : allowedRate < 70 ? <TrendingDown size={16} /> : null}
-							<span>{allowedStatus.status}</span>
-						</div>
+					<div className="text-3xl font-bold">{allowedRate.toFixed(1)}%</div>
+					<div className={`flex items-center gap-1 text-xs font-medium mt-1 ${allowedStatus.color}`}>
+						{allowedRate >= 85 ? <TrendingUp size={14} /> : allowedRate < 70 ? <TrendingDown size={14} /> : null}
+						<span className="truncate">{allowedStatus.status}</span>
 					</div>
 				</CardContent>
 			</Card>
 
-			<Card>
+			<Card className="min-w-0">
 				<CardHeader className="pb-2">
 					<CardTitle className="text-sm font-medium text-muted-foreground">
 						Avg Risk Score
 					</CardTitle>
 				</CardHeader>
 				<CardContent>
-					<div className="flex items-baseline justify-between">
-						<div className="text-3xl font-bold">{avgRiskScore.toFixed(1)}</div>
-						<div className={`flex items-center gap-1 text-sm font-medium ${riskStatus.color}`}>
-							{avgRiskScore < 40 ? <TrendingDown size={16} /> : avgRiskScore > 60 ? <TrendingUp size={16} /> : null}
-							<span>{riskStatus.status}</span>
-						</div>
+					<div className="text-3xl font-bold">{avgRiskScore.toFixed(1)}</div>
+					<div className={`flex items-center gap-1 text-xs font-medium mt-1 ${riskStatus.color}`}>
+						{avgRiskScore < 40 ? <TrendingDown size={14} /> : avgRiskScore > 60 ? <TrendingUp size={14} /> : null}
+						<span className="truncate">{riskStatus.status}</span>
 					</div>
 				</CardContent>
 			</Card>
 
-			<Card>
+			<Card className="min-w-0">
 				<CardHeader className="pb-2">
-					<CardTitle className="text-sm font-medium text-muted-foreground">
-						JA4 Fraud Blocks
+					<CardTitle className="text-sm font-medium text-muted-foreground break-words" title="Session Hopping Blocks">
+						Session Hopping Blocks
 					</CardTitle>
 				</CardHeader>
 				<CardContent>
 					<div className="text-3xl font-bold text-destructive">
-						{stats?.ja4_fraud_blocks || 0}
+						{ja4FraudBlocks}
 					</div>
+					<p className="text-xs text-muted-foreground mt-1 break-words">
+						JA4 fingerprint attacks
+					</p>
+				</CardContent>
+			</Card>
+
+			<Card className="min-w-0">
+				<CardHeader className="pb-2">
+					<CardTitle className="text-sm font-medium text-muted-foreground break-words" title="Email Fraud Blocks">
+						Email Fraud Blocks
+					</CardTitle>
+				</CardHeader>
+				<CardContent>
+					<div className="text-3xl font-bold text-destructive">
+						{markovDetected}
+					</div>
+					<p className="text-xs text-muted-foreground mt-1 break-words">
+						Markov Chain detections
+					</p>
 				</CardContent>
 			</Card>
 		</div>

@@ -23,6 +23,7 @@ export interface UseSubmissionsFilters {
 	selectedCountries: string[];
 	botScoreRange: [number, number];
 	dateRange: { start: Date; end: Date };
+	allowedStatus: 'all' | 'allowed' | 'blocked';
 }
 
 export interface UseSubmissionsReturn {
@@ -84,6 +85,14 @@ export function useSubmissions(
 			params.append('startDate', filters.dateRange.start.toISOString());
 			params.append('endDate', filters.dateRange.end.toISOString());
 
+			// Add allowed status filter
+			if (filters.allowedStatus === 'allowed') {
+				params.append('allowed', 'true');
+			} else if (filters.allowedStatus === 'blocked') {
+				params.append('allowed', 'false');
+			}
+			// 'all' means no filter
+
 			const res = await fetch(`/api/analytics/submissions?${params.toString()}`, { headers });
 
 			if (!res.ok) {
@@ -110,6 +119,7 @@ export function useSubmissions(
 		filters.botScoreRange.join(','),
 		filters.dateRange.start.toISOString(),
 		filters.dateRange.end.toISOString(),
+		filters.allowedStatus,
 		pagination.pageIndex,
 		pagination.pageSize,
 		sorting.length > 0 ? sorting[0].id : '',

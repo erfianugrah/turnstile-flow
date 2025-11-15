@@ -3,6 +3,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../..
 import { SearchBar } from '../filters/SearchBar';
 import { DateRangePicker } from '../filters/DateRangePicker';
 import { MultiSelect } from '../filters/MultiSelect';
+import { SingleSelect } from '../filters/SingleSelect';
 import { RangeSlider } from '../filters/RangeSlider';
 import { DataTable } from '../tables/DataTable';
 import { createSubmissionColumns } from '../tables/columns';
@@ -24,6 +25,8 @@ interface RecentSubmissionsSectionProps {
 	onSelectedCountriesChange: (countries: string[]) => void;
 	botScoreRange: [number, number];
 	onBotScoreRangeChange: (range: [number, number]) => void;
+	allowedStatus: 'all' | 'allowed' | 'blocked';
+	onAllowedStatusChange: (status: 'all' | 'allowed' | 'blocked') => void;
 	dateRange: { start: Date; end: Date };
 	onDateRangeChange: (range: { start: Date; end: Date }) => void;
 	// Pagination/sorting states
@@ -45,6 +48,8 @@ export function RecentSubmissionsSection({
 	onSelectedCountriesChange,
 	botScoreRange,
 	onBotScoreRangeChange,
+	allowedStatus,
+	onAllowedStatusChange,
 	dateRange,
 	onDateRangeChange,
 	pagination,
@@ -65,11 +70,21 @@ export function RecentSubmissionsSection({
 			<CardContent className="space-y-4">
 				{/* Filters */}
 				<div className="space-y-4">
-					<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
 						<SearchBar
 							value={searchQuery}
 							onChange={onSearchQueryChange}
 							placeholder="Search by email, name, or IP..."
+						/>
+						<SingleSelect
+							options={[
+								{ value: 'all', label: 'All Submissions' },
+							{ value: 'allowed', label: 'Allowed Only' },
+							{ value: 'blocked', label: 'Blocked Only' },
+							]}
+							value={allowedStatus}
+							onChange={(value) => onAllowedStatusChange(value as 'all' | 'allowed' | 'blocked')}
+							placeholder="Filter by status..."
 						/>
 						<MultiSelect
 							options={countries.map((c) => ({ value: c.country, label: c.country }))}

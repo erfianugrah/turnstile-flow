@@ -50,58 +50,88 @@ export function ChartsSection({
 
 			{/* Country Distribution and Bot Scores */}
 			<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-				<Card>
+				<Card className="min-w-0">
 					<CardHeader>
 						<CardTitle>Submissions by Country</CardTitle>
-						<CardDescription>Top countries</CardDescription>
+						<CardDescription>Top 10 countries</CardDescription>
 					</CardHeader>
 					<CardContent>
-						{countries.length === 0 ? (
-							<div className="flex items-center justify-center h-[300px]">
-								<p className="text-muted-foreground text-sm">No data available</p>
+						<div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+							{countries.length === 0 ? (
+								<div className="flex items-center justify-center h-[200px]">
+									<p className="text-muted-foreground text-sm">No data available</p>
+								</div>
+							) : (
+								countries.slice(0, 10).map((item, index) => {
+									const maxCount = countries[0]?.count || 1;
+									const percentage = (item.count / maxCount) * 100;
+									return (
+										<div key={index} className="space-y-1">
+											<div className="flex justify-between items-center text-sm">
+												<span className="font-medium truncate" title={item.country}>{item.country}</span>
+												<span className="font-semibold text-foreground ml-2">{item.count}</span>
+											</div>
+											<div className="h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+												<div
+													className="h-full bg-[hsl(213,32%,52%)] dark:bg-[hsl(213,32%,65%)] rounded-full transition-all"
+													style={{ width: `${percentage}%` }}
+												/>
+											</div>
+										</div>
+									);
+								})
+							)}
+						</div>
+						{countries.length > 10 && (
+							<div className="mt-3 text-center text-xs text-muted-foreground">
+								+{countries.length - 10} more countries
 							</div>
-						) : (
-							<BarChart
-								data={countries.slice(0, 10)}
-								xAxisKey="country"
-								yAxisKey="count"
-								layout="vertical"
-								height={300}
-								formatTooltip={(value) => `${value} submissions`}
-							/>
 						)}
 					</CardContent>
 				</Card>
 
-				<Card>
+				<Card className="min-w-0">
 					<CardHeader>
 						<CardTitle>Bot Score Distribution</CardTitle>
 						<CardDescription>Score ranges</CardDescription>
 					</CardHeader>
 					<CardContent>
-						{botScores.length === 0 ? (
-							<div className="flex items-center justify-center h-[300px]">
-								<p className="text-muted-foreground text-sm">No data available</p>
-							</div>
-						) : (
-							<DonutChart
-								data={botScores.map((item) => ({
-									name: item.score_range,
-									value: item.count,
-								}))}
-								height={300}
-								centerLabel="Total"
-								centerValue={botScores.reduce((sum, item) => sum + item.count, 0).toString()}
-								formatTooltip={(value) => `${value} submissions`}
-							/>
-						)}
+						<div className="space-y-3">
+							{botScores.length === 0 ? (
+								<div className="flex items-center justify-center h-[200px]">
+									<p className="text-muted-foreground text-sm">No data available</p>
+								</div>
+							) : (
+								botScores.map((item, index) => {
+									const total = botScores.reduce((sum, s) => sum + s.count, 0);
+									const percentage = (item.count / total) * 100;
+									return (
+										<div key={index} className="space-y-1">
+											<div className="flex justify-between items-center text-sm">
+												<span className="font-medium">{item.score_range}</span>
+												<div className="flex items-center gap-2">
+													<span className="text-xs text-muted-foreground">{percentage.toFixed(1)}%</span>
+													<span className="font-semibold text-foreground">{item.count}</span>
+												</div>
+											</div>
+											<div className="h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+												<div
+													className="h-full bg-[hsl(213,32%,52%)] dark:bg-[hsl(213,32%,65%)] rounded-full transition-all"
+													style={{ width: `${percentage}%` }}
+												/>
+											</div>
+										</div>
+									);
+								})
+							)}
+						</div>
 					</CardContent>
 				</Card>
 			</div>
 
 			{/* Network & Fingerprint Analytics */}
 			<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-				<Card>
+				<Card className="min-w-0">
 					<CardHeader>
 						<CardTitle>ASN Distribution</CardTitle>
 						<CardDescription>Top autonomous systems</CardDescription>
@@ -134,7 +164,7 @@ export function ChartsSection({
 					</CardContent>
 				</Card>
 
-				<Card>
+				<Card className="min-w-0">
 					<CardHeader>
 						<CardTitle>TLS Versions</CardTitle>
 						<CardDescription>Encryption protocols</CardDescription>
@@ -169,7 +199,7 @@ export function ChartsSection({
 					</CardContent>
 				</Card>
 
-				<Card>
+				<Card className="min-w-0">
 					<CardHeader>
 						<CardTitle>JA3 Fingerprints</CardTitle>
 						<CardDescription>Client fingerprints</CardDescription>
