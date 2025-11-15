@@ -3,13 +3,15 @@
  *
  * Implements weighted component system to normalize risk scores to 0-100 scale
  *
- * Component Weights:
- * - Token Replay: 40% (instant block)
- * - Email Fraud: 20% (pattern detection)
- * - Ephemeral ID: 20% (device tracking)
- * - Validation Frequency: 15% (attempt rate)
- * - IP Diversity: 10% (proxy detection)
- * - JA4 Session Hopping: 10% (browser hopping)
+ * Component Weights (normalized to 100%):
+ * - Token Replay: 35% (instant block, highest priority)
+ * - Email Fraud: 17% (pattern detection via markov-mail)
+ * - Ephemeral ID: 18% (device tracking, core fraud signal)
+ * - Validation Frequency: 13% (attempt rate monitoring)
+ * - IP Diversity: 9% (proxy rotation detection)
+ * - JA4 Session Hopping: 8% (browser hopping detection)
+ *
+ * Total: 100% (proportionally normalized from previous 115%)
  *
  * Block Threshold: 70/100
  */
@@ -48,8 +50,8 @@ export function calculateNormalizedRiskScore(checks: {
 	// Token Replay (instant block)
 	components.tokenReplay = {
 		score: checks.tokenReplay ? 100 : 0,
-		weight: 0.4,
-		contribution: checks.tokenReplay ? 40 : 0,
+		weight: 0.35,
+		contribution: checks.tokenReplay ? 35 : 0,
 		reason: checks.tokenReplay ? 'Token already used' : 'Token valid',
 	};
 
@@ -57,8 +59,8 @@ export function calculateNormalizedRiskScore(checks: {
 	const emailScore = checks.emailRiskScore || 0;
 	components.emailFraud = {
 		score: emailScore,
-		weight: 0.2,
-		contribution: emailScore * 0.2,
+		weight: 0.17,
+		contribution: emailScore * 0.17,
 		reason:
 			emailScore >= 70
 				? 'Fraudulent email pattern'
@@ -71,8 +73,8 @@ export function calculateNormalizedRiskScore(checks: {
 	const ephemeralScore = normalizeEphemeralIdScore(checks.ephemeralIdCount);
 	components.ephemeralId = {
 		score: ephemeralScore,
-		weight: 0.2,
-		contribution: ephemeralScore * 0.2,
+		weight: 0.18,
+		contribution: ephemeralScore * 0.18,
 		rawScore: checks.ephemeralIdCount,
 		reason:
 			checks.ephemeralIdCount >= 3
@@ -86,8 +88,8 @@ export function calculateNormalizedRiskScore(checks: {
 	const validationScore = normalizeValidationScore(checks.validationCount);
 	components.validationFrequency = {
 		score: validationScore,
-		weight: 0.15,
-		contribution: validationScore * 0.15,
+		weight: 0.13,
+		contribution: validationScore * 0.13,
 		rawScore: checks.validationCount,
 		reason:
 			checks.validationCount >= 3
@@ -101,8 +103,8 @@ export function calculateNormalizedRiskScore(checks: {
 	const ipScore = normalizeIPScore(checks.uniqueIPCount);
 	components.ipDiversity = {
 		score: ipScore,
-		weight: 0.1,
-		contribution: ipScore * 0.1,
+		weight: 0.09,
+		contribution: ipScore * 0.09,
 		rawScore: checks.uniqueIPCount,
 		reason:
 			checks.uniqueIPCount >= 3
@@ -116,8 +118,8 @@ export function calculateNormalizedRiskScore(checks: {
 	const ja4Score = normalizeJA4Score(checks.ja4RawScore);
 	components.ja4SessionHopping = {
 		score: ja4Score,
-		weight: 0.1,
-		contribution: ja4Score * 0.1,
+		weight: 0.08,
+		contribution: ja4Score * 0.08,
 		rawScore: checks.ja4RawScore,
 		reason:
 			checks.ja4RawScore >= 140
