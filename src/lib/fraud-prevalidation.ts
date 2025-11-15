@@ -48,6 +48,7 @@ interface AddToBlacklistParams {
 	expiresIn: number; // seconds
 	submissionCount?: number;
 	detectionMetadata?: Record<string, any>;
+	detectionType?: string;  // Phase 1.5: Detection type (ephemeral_id_fraud, ja4_session_hopping, etc.)
 }
 
 /**
@@ -202,7 +203,7 @@ export async function addToBlacklist(
 	db: D1Database,
 	params: AddToBlacklistParams
 ): Promise<boolean> {
-	const { ephemeralId, ipAddress, ja4, blockReason, confidence, expiresIn, submissionCount = 1, detectionMetadata } = params;
+	const { ephemeralId, ipAddress, ja4, blockReason, confidence, expiresIn, submissionCount = 1, detectionMetadata, detectionType } = params;
 
 	// Validate at least one identifier
 	if (!ephemeralId && !ipAddress && !ja4) {
@@ -226,8 +227,9 @@ export async function addToBlacklist(
 				expires_at,
 				submission_count,
 				last_seen_at,
-				detection_metadata
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+				detection_metadata,
+				detection_type
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`
 			)
 			.bind(
@@ -239,7 +241,8 @@ export async function addToBlacklist(
 				toSQLiteDateTime(expiresAt),
 				submissionCount,
 				toSQLiteDateTime(now),
-				metadata
+				metadata,
+				detectionType || null
 			)
 			.run();
 

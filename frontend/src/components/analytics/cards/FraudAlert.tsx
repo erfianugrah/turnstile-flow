@@ -103,7 +103,7 @@ export function FraudAlert({ data, loading }: FraudAlertProps) {
 											{item.block_reason}
 										</div>
 										<div className="text-xs text-muted-foreground mt-1">
-											Submissions: {item.submission_count} • Expires: {new Date(item.expires_at).toLocaleString()}
+											Submissions: {item.submission_count} • Expires: {new Date(item.expires_at).toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
 										</div>
 									</div>
 								))}

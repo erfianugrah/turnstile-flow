@@ -107,6 +107,8 @@ CREATE TABLE IF NOT EXISTS fraud_blacklist (
 	last_seen_at DATETIME,
 	-- Pattern metadata (JSON)
 	detection_metadata TEXT,
+	-- Detection type (Phase 1.5+: layer-specific fraud detection types)
+	detection_type TEXT,
 	-- Constraints: at least one identifier must be present
 	CHECK((ephemeral_id IS NOT NULL) OR (ip_address IS NOT NULL) OR (ja4 IS NOT NULL))
 );

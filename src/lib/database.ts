@@ -1,4 +1,5 @@
 import type { RequestMetadata, TurnstileValidationResult, FormSubmission } from './types';
+import type { RiskScoreBreakdown } from './scoring';
 import logger from './logger';
 
 /**
@@ -26,6 +27,8 @@ export async function logValidation(
 		allowed: boolean;
 		blockReason?: string;
 		submissionId?: number;
+		detectionType?: string;  // Phase 1.5: Which fraud check triggered
+		riskScoreBreakdown?: RiskScoreBreakdown;  // Phase 1.5: Normalized breakdown
 	}
 ): Promise<void> {
 	try {
@@ -37,11 +40,13 @@ export async function logValidation(
 					remote_ip, user_agent, country, region, city, postal_code, timezone,
 					continent, is_eu_country, asn, as_organization, colo, http_protocol,
 					tls_version, bot_score, client_trust_score, verified_bot, js_detection_passed,
-					detection_ids, ja3_hash, ja4, ja4_signals
+					detection_ids, ja3_hash, ja4, ja4_signals,
+					detection_type, risk_score_breakdown
 				) VALUES (
 					?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
 					?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-					?, ?, ?, ?, ?, ?, ?, ?, ?
+					?, ?, ?, ?, ?, ?, ?, ?, ?,
+					?, ?
 				)`
 			)
 			.bind(
@@ -78,7 +83,10 @@ export async function logValidation(
 				data.metadata.detectionIds ? JSON.stringify(data.metadata.detectionIds) : null,
 				data.metadata.ja3Hash || null,
 				data.metadata.ja4 || null,
-				data.metadata.ja4Signals ? JSON.stringify(data.metadata.ja4Signals) : null
+				data.metadata.ja4Signals ? JSON.stringify(data.metadata.ja4Signals) : null,
+				// Phase 1.5: Detection type and risk score breakdown
+				data.detectionType || null,
+				data.riskScoreBreakdown ? JSON.stringify(data.riskScoreBreakdown) : null
 			)
 			.run();
 
@@ -890,14 +898,18 @@ export async function getActiveBlacklistEntries(db: D1Database) {
 				`SELECT
 					fb.id,
 					fb.ephemeral_id,
-					fb.ip_address,
+					COALESCE(fb.ip_address, tv.remote_ip) as ip_address,
+					COALESCE(fb.ja4, tv.ja4) as ja4,
 					fb.block_reason,
 					fb.detection_confidence,
-					fb.blocked_at,
-					fb.expires_at,
+					REPLACE(fb.blocked_at, ' ', 'T') || 'Z' AS blocked_at,
+					REPLACE(fb.expires_at, ' ', 'T') || 'Z' AS expires_at,
 					fb.submission_count,
-					fb.last_seen_at,
+					REPLACE(fb.last_seen_at, ' ', 'T') || 'Z' AS last_seen_at,
 					fb.detection_metadata,
+					-- Enrich with metadata from most recent validation
+					tv.country,
+					tv.city,
 					-- Calculate offense count (how many times blocked in last 24h)
 					(SELECT COUNT(*)
 					 FROM fraud_blacklist
@@ -911,6 +923,14 @@ export async function getActiveBlacklistEntries(db: D1Database) {
 						ELSE 50
 					END as risk_score
 				 FROM fraud_blacklist fb
+				 -- LEFT JOIN to get metadata from most recent validation
+				 LEFT JOIN turnstile_validations tv ON tv.id = (
+					SELECT id FROM turnstile_validations
+					WHERE (fb.ephemeral_id IS NOT NULL AND ephemeral_id = fb.ephemeral_id)
+					   OR (fb.ip_address IS NOT NULL AND remote_ip = fb.ip_address)
+					ORDER BY created_at DESC
+					LIMIT 1
+				 )
 				 WHERE fb.expires_at > datetime('now')
 				 ORDER BY fb.blocked_at DESC
 				 LIMIT 100`
@@ -972,23 +992,11 @@ export async function getRecentBlockedValidations(db: D1Database, limit: number 
 					city,
 					block_reason,
 					risk_score,
+					risk_score_breakdown,
 					bot_score,
 					user_agent,
 					ja4,
-					CASE
-						-- JA4 fraud: explicit JA4 keyword (from blacklist) or session hopping pattern
-						WHEN block_reason LIKE '%JA4%' OR block_reason LIKE '%ja4%' THEN 'ja4_fraud'
-						WHEN block_reason LIKE '%session hopping%' OR block_reason LIKE '%Session Hopping%' THEN 'ja4_fraud'
-						-- Ephemeral ID fraud: explicit ephemeral keyword or automated/multiple submissions
-						WHEN block_reason LIKE '%ephemeral%' OR block_reason LIKE '%Ephemeral%' THEN 'ephemeral_fraud'
-						WHEN block_reason LIKE '%Automated:%' THEN 'ephemeral_fraud'
-						WHEN block_reason LIKE '%Multiple submissions%' THEN 'ephemeral_fraud'
-						-- Generic high-risk blocks: if neither JA4 nor ephemeral specific, default to ephemeral (runs first in detection flow)
-						WHEN risk_score >= 70 AND (block_reason LIKE '%too many%' OR block_reason LIKE '%submission%') THEN 'ephemeral_fraud'
-						-- IP-based fraud
-						WHEN block_reason LIKE '%IP%' OR block_reason LIKE '%ip%' THEN 'ip_fraud'
-						ELSE 'other'
-					END as detection_type,
+					detection_type,
 					REPLACE(created_at, ' ', 'T') || 'Z' AS challenge_ts
 				 FROM turnstile_validations
 				 WHERE allowed = 0

@@ -320,6 +320,7 @@ export async function checkEphemeralIdFraud(
 				confidence,
 				expiresIn,
 				submissionCount: effectiveCount,
+				detectionType: 'ephemeral_id_fraud',
 				detectionMetadata: {
 					warnings,
 					submissions_1h: effectiveCount,
@@ -361,6 +362,7 @@ export async function checkEphemeralIdFraud(
 		return {
 			allowed,
 			reason: allowed ? undefined : 'You have made too many submission attempts',
+			riskScore: 0, // Legacy field, actual scoring done by scoring.ts
 			warnings,
 			retryAfter,
 			expiresAt,
@@ -375,6 +377,7 @@ export async function checkEphemeralIdFraud(
 		return {
 			allowed: true,
 			reason: 'Fraud check failed (allowing)',
+			riskScore: 0, // Legacy field
 			warnings: ['Fraud check error'],
 			ephemeralIdCount: 1,
 			validationCount: 1,

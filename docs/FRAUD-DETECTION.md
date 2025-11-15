@@ -1,12 +1,169 @@
 # Fraud Detection System
 
-## Current Implementation (4-Layer Architecture)
+## Current Implementation (Multi-Layer Architecture)
 
-**Status**: ✅ Production-ready with JA4 session-hopping detection
+**Status**: ✅ Production-ready with JA4 multi-layer detection (Phase 1-1.8 complete)
 
-This system uses a 4-layer approach for fraud detection with automatic blacklisting:
+This system uses a multi-layer approach for fraud detection with automatic blacklisting:
 
-### Layer 1: Pre-Validation Blacklist (10ms)
+## Complete Fraud Detection Flow
+
+The following diagram shows the complete fraud detection and mitigation flow, including all detection layers and decision points:
+
+```mermaid
+flowchart TD
+    Start([POST /api/submissions]) --> ParseBody[Parse Request Body]
+    ParseBody --> ValidateSchema{Schema Valid?}
+    ValidateSchema -->|No| ReturnValidationError[❌ 400 Validation Error]
+    ValidateSchema -->|Yes| ExtractMetadata[Extract CF Metadata<br/>IP, Country, JA4, etc.]
+
+    ExtractMetadata --> SanitizeData[Sanitize Form Data<br/>HTML stripping]
+    SanitizeData --> HashToken[Hash Turnstile Token<br/>SHA256]
+
+    HashToken --> CheckTokenReuse{Token Already<br/>Used?}
+    CheckTokenReuse -->|Yes| LogTokenReplay[Log: risk_score=100<br/>detection_type=token_replay]
+    LogTokenReplay --> BlockTokenReplay[❌ 400 Token Replay Attack<br/>retry_after=N/A]
+
+    CheckTokenReuse -->|No| ValidateTurnstile[Validate with<br/>Turnstile API]
+    ValidateTurnstile --> ExtractEphemeralId[Extract Ephemeral ID<br/>~7 day lifespan]
+
+    %% PRE-VALIDATION BLACKLIST CHECK (Layer 0)
+    ExtractEphemeralId --> CheckBlacklist{Pre-Validation<br/>Blacklist?}
+    CheckBlacklist -->|Ephemeral ID Hit| LogBlacklistHit[Log: ephemeral_id_fraud]
+    CheckBlacklist -->|IP Hit| LogBlacklistHitIP[Log: ip_blacklisted]
+    CheckBlacklist -->|JA4 Hit| LogBlacklistHitJA4[Log: ja4_blacklisted]
+    LogBlacklistHit --> BlockBlacklist[❌ 429 Rate Limit<br/>Wait X hours]
+    LogBlacklistHitIP --> BlockBlacklist
+    LogBlacklistHitJA4 --> BlockBlacklist
+
+    %% FRAUD DETECTION LAYERS
+    CheckBlacklist -->|Not in Blacklist| FraudLayer1[LAYER 1: Submission Check<br/>24h window]
+
+    FraudLayer1 --> CheckSubmissions{Ephemeral ID<br/>≥2 submissions?}
+    CheckSubmissions -->|Yes| LogSubmissionFraud[Log: risk_score=100<br/>detection_type=ephemeral_id_fraud]
+    LogSubmissionFraud --> AddToBlacklist1[Add to Blacklist<br/>ephemeral_id + IP<br/>24h max]
+    AddToBlacklist1 --> BlockSubmissionFraud[❌ 429 Rate Limit<br/>Wait X hours]
+
+    CheckSubmissions -->|No| FraudLayer2[LAYER 2: Validation Attempt Check<br/>1h window]
+
+    FraudLayer2 --> CheckValidations{Ephemeral ID<br/>≥3 validation<br/>attempts?}
+    CheckValidations -->|Yes| LogValidationFraud[Log: risk_score=100<br/>detection_type=validation_frequency]
+    LogValidationFraud --> AddToBlacklist2[Add to Blacklist<br/>ephemeral_id + IP<br/>24h max]
+    AddToBlacklist2 --> BlockValidationFraud[❌ 429 Rate Limit<br/>Wait X hours]
+
+    CheckValidations -->|No| FraudLayer3[LAYER 3: IP Diversity Check<br/>24h window]
+
+    FraudLayer3 --> CheckIPDiversity{Ephemeral ID<br/>≥2 unique IPs?}
+    CheckIPDiversity -->|Yes| LogIPDiversityFraud[Log: risk_score=100<br/>detection_type=ip_diversity]
+    LogIPDiversityFraud --> AddToBlacklist3[Add to Blacklist<br/>ephemeral_id + IP<br/>24h max]
+    AddToBlacklist3 --> BlockIPDiversityFraud[❌ 429 Rate Limit<br/>Wait X hours]
+
+    %% LAYER 4: JA4 FRAUD DETECTION (Multi-Layer)
+    CheckIPDiversity -->|No| FraudLayer4a[LAYER 4a: JA4 + IP Clustering<br/>1h window, same subnet]
+
+    FraudLayer4a --> CheckJA4IP{Same IP/subnet +<br/>Same JA4 +<br/>≥2 ephemeral IDs?}
+    CheckJA4IP -->|Yes| LogJA4IPFraud[Log: risk_score=75-190<br/>detection_type=ja4_ip_clustering]
+    LogJA4IPFraud --> AddToBlacklist4a[Add to Blacklist<br/>ephemeral_id + JA4 + IP<br/>24h max]
+    AddToBlacklist4a --> BlockJA4IPFraud[❌ 429 Rate Limit<br/>Wait X hours]
+
+    CheckJA4IP -->|No| FraudLayer4b[LAYER 4b: JA4 + Rapid Global<br/>5 min window, NO IP filter]
+
+    FraudLayer4b --> CheckJA4Rapid{Same JA4 +<br/>≥3 ephemeral IDs<br/>globally?}
+    CheckJA4Rapid -->|Yes| LogJA4RapidFraud[Log: risk_score=75-190<br/>detection_type=ja4_rapid_global]
+    LogJA4RapidFraud --> AddToBlacklist4b[Add to Blacklist<br/>ephemeral_id + JA4 + IP<br/>24h max]
+    AddToBlacklist4b --> BlockJA4RapidFraud[❌ 429 Rate Limit<br/>Wait X hours]
+
+    CheckJA4Rapid -->|No| FraudLayer4c[LAYER 4c: JA4 + Extended Global<br/>1h window, NO IP filter]
+
+    FraudLayer4c --> CheckJA4Extended{Same JA4 +<br/>≥5 ephemeral IDs<br/>globally?}
+    CheckJA4Extended -->|Yes| LogJA4ExtendedFraud[Log: risk_score=75-190<br/>detection_type=ja4_extended_global]
+    LogJA4ExtendedFraud --> AddToBlacklist4c[Add to Blacklist<br/>ephemeral_id + JA4 + IP<br/>24h max]
+    AddToBlacklist4c --> BlockJA4ExtendedFraud[❌ 429 Rate Limit<br/>Wait X hours]
+
+    %% CALCULATE RISK SCORE
+    CheckJA4Extended -->|No| CalculateRiskScore[Calculate Normalized<br/>Risk Score 0-100]
+
+    CalculateRiskScore --> CheckTurnstileValid{Turnstile<br/>Valid?}
+    CheckTurnstileValid -->|No| LogTurnstileFailed[Log: risk_score=65<br/>detection_type=turnstile_failed]
+    LogTurnstileFailed --> BlockTurnstileFailed[❌ 403 Turnstile Failed]
+
+    CheckTurnstileValid -->|Yes| CheckDuplicateEmail{Email Already<br/>Exists?}
+    CheckDuplicateEmail -->|Yes| LogDuplicateEmail[Log: risk_score=60<br/>detection_type=duplicate_email]
+    LogDuplicateEmail --> BlockDuplicateEmail[❌ 409 Duplicate Email]
+
+    %% SUCCESS PATH
+    CheckDuplicateEmail -->|No| CreateSubmission[Create Submission in D1<br/>Store metadata + risk score]
+    CreateSubmission --> LogSuccess[Log: allowed=true<br/>risk_score=0-69]
+    LogSuccess --> ReturnSuccess[✅ 201 Success<br/>submission_id]
+
+    %% STYLING
+    classDef errorClass fill:#ff6b6b,stroke:#c92a2a,stroke-width:2px,color:#fff
+    classDef successClass fill:#51cf66,stroke:#2f9e44,stroke-width:2px,color:#fff
+    classDef warningClass fill:#ffd43b,stroke:#f59f00,stroke-width:2px,color:#000
+    classDef processClass fill:#4dabf7,stroke:#1971c2,stroke-width:2px,color:#fff
+    classDef decisionClass fill:#845ef7,stroke:#5f3dc4,stroke-width:2px,color:#fff
+
+    class ReturnValidationError,BlockTokenReplay,BlockBlacklist,BlockSubmissionFraud,BlockValidationFraud,BlockIPDiversityFraud,BlockJA4IPFraud,BlockJA4RapidFraud,BlockJA4ExtendedFraud,BlockTurnstileFailed,BlockDuplicateEmail errorClass
+    class ReturnSuccess successClass
+    class LogTokenReplay,LogBlacklistHit,LogBlacklistHitIP,LogBlacklistHitJA4,LogSubmissionFraud,LogValidationFraud,LogIPDiversityFraud,LogJA4IPFraud,LogJA4RapidFraud,LogJA4ExtendedFraud,LogTurnstileFailed,LogDuplicateEmail warningClass
+    class ParseBody,ExtractMetadata,SanitizeData,HashToken,ValidateTurnstile,ExtractEphemeralId,FraudLayer1,FraudLayer2,FraudLayer3,FraudLayer4a,FraudLayer4b,FraudLayer4c,CalculateRiskScore,CreateSubmission processClass
+    class ValidateSchema,CheckTokenReuse,CheckBlacklist,CheckSubmissions,CheckValidations,CheckIPDiversity,CheckJA4IP,CheckJA4Rapid,CheckJA4Extended,CheckTurnstileValid,CheckDuplicateEmail decisionClass
+```
+
+## System Overview
+
+### Risk Score Normalization
+
+All detections are normalized to a 0-100 scale for consistency:
+
+- **Blocked attempts**: 60-100 (depends on trigger)
+  - Token replay: 100
+  - Ephemeral ID fraud: 100
+  - Validation frequency: 100
+  - IP diversity: 100
+  - JA4 session hopping: 75-190 (composite scoring)
+  - Turnstile failed: 65
+  - Duplicate email: 60
+- **Allowed submissions**: 0-69
+- **Component breakdown**: Stored in `detection_metadata` JSON for transparency
+
+### Progressive Timeout System
+
+**Purpose**: Progressive escalation prevents permanent bans while deterring repeat offenders
+
+**Timeout Schedule**:
+- 1st offense: 1 hour
+- 2nd offense: 4 hours
+- 3rd offense: 8 hours
+- 4th offense: 12 hours
+- 5th+ offense: 24 hours (maximum for ephemeral IDs)
+
+**Rationale**:
+- Ephemeral IDs have ~7 day lifespan
+- 24h max respects rotation period
+- Progressive approach balances security vs user experience
+- Offense count tracked over last 24h
+
+### Multi-Layer Detection Strategy
+
+**Why multiple layers?**
+- D1 eventual consistency requires redundancy
+- Each layer catches different attack patterns
+- Composite approach minimizes false positives
+- Fast pre-validation path (Layer 0) reduces API costs by 85-90%
+
+**Detection order:**
+1. **Layer 0**: Pre-validation blacklist (10ms)
+2. **Layer 1**: Submission check (2+ in 24h)
+3. **Layer 2**: Validation attempt check (3+ in 1h)
+4. **Layer 3**: IP diversity check (2+ unique IPs)
+5. **Layer 4a**: JA4 + IP clustering (2+ ephemeral IDs, same subnet)
+6. **Layer 4b**: JA4 + rapid global (3+ ephemeral IDs, 5 min)
+7. **Layer 4c**: JA4 + extended global (5+ ephemeral IDs, 1h)
+
+## Detection Layers (In Order)
+
+### Layer 0 (Layer 1 in docs): Pre-Validation Blacklist (10ms)
 
 **Fast D1 lookup before expensive Turnstile API call (~150ms)**
 
@@ -85,63 +242,105 @@ If risk ≥ 70 → Add to fraud_blacklist, block submission (429 Too Many Reques
 If risk < 70 → Allow submission, log validation attempt
 ```
 
-### Layer 4: JA4 Session Hopping Detection (~5-10ms)
+### Layer 4: JA4 Multi-Layer Detection (~5-10ms)
 
-**Detects same-device attacks using TLS fingerprinting**
+**Detects device-based and network-switching attacks using TLS fingerprinting**
 
-**Attack Pattern**: Same IP + Same JA4 fingerprint + Multiple Ephemeral IDs
+This layer uses three detection strategies to catch different attack patterns:
 
-This layer catches attackers who:
-- Open incognito/private browsing windows to generate new ephemeral IDs
+#### Layer 4a: JA4 + IP Clustering (Phase 1.7)
+
+**Attack Pattern**: Same IP/subnet + Same JA4 + Multiple Ephemeral IDs
+
+Catches attackers who:
+- Open incognito/private browsing windows from same connection
 - Switch between browsers on the same device
 - Clear cookies to bypass ephemeral ID tracking
 
-**Composite Risk Scoring** (3 signals):
+**Detection**: 2+ ephemeral IDs from same /64 subnet + same JA4 in 1 hour → Block
 
-**Signal 1: JA4 Clustering (+80 points)**
-- Detects 2+ ephemeral IDs from same IP + JA4 combination
-- Primary indicator of session-hopping attack
+**Detection Query**:
+```sql
+SELECT COUNT(DISTINCT ephemeral_id) as ephemeral_count
+FROM submissions
+WHERE remote_ip IN (same /64 subnet) AND ja4 = ?
+  AND created_at > datetime('now', '-1 hour')
+```
 
-**Signal 2: Rapid Velocity (+60 points)**
+#### Layer 4b: JA4 + Rapid Global Clustering (Phase 1.8)
+
+**Attack Pattern**: Same JA4 + Multiple Ephemeral IDs + Rapid Submissions (No IP requirement)
+
+Catches attackers who:
+- Switch networks rapidly (VPN hopping, IPv4↔IPv6)
+- Use TLS-terminating proxies (same JA4 across networks)
+- Perform rapid-fire attacks
+
+**Detection**: 3+ ephemeral IDs with same JA4 in 5 minutes (globally) → Block
+
+**Rationale**: Legitimate users can't create 3 sessions in 5 minutes, even with network issues
+
+**Detection Query**:
+```sql
+SELECT COUNT(DISTINCT ephemeral_id) as ephemeral_count
+FROM submissions
+WHERE ja4 = ? AND created_at > datetime('now', '-5 minutes')
+```
+
+#### Layer 4c: JA4 + Extended Global Clustering (Phase 1.8)
+
+**Attack Pattern**: Same JA4 + Multiple Ephemeral IDs + Slower Attacks (No IP requirement)
+
+Catches attackers who:
+- Switch networks more slowly to evade Layer 4b
+- Perform sustained attacks over longer timeframes
+- Use distributed proxy networks
+
+**Detection**: 5+ ephemeral IDs with same JA4 in 1 hour (globally) → Block
+
+**Rationale**: Higher threshold to reduce false positives while catching slower network-switching attacks
+
+**Detection Query**:
+```sql
+SELECT COUNT(DISTINCT ephemeral_id) as ephemeral_count
+FROM submissions
+WHERE ja4 = ? AND created_at > datetime('now', '-1 hour')
+```
+
+#### Composite Risk Scoring (All Layers)
+
+**JA4 Clustering Signal** (+80 points):
+- Primary indicator when threshold exceeded
+- Layer 4a: 2+ ephemeral IDs, same subnet
+- Layer 4b: 3+ ephemeral IDs, 5 min window
+- Layer 4c: 5+ ephemeral IDs, 1 hour window
+
+**Rapid Velocity Signal** (+60 points):
 - Multiple submissions within 60 minutes
 - Indicates automated or rapid manual attacks
 
-**Signal 3: Global Anomaly (+50/+40 points)**
-- High IP diversity globally for this JA4 fingerprint (+50)
-  - Triggered when `ips_quantile_1h > 0.95` (top 5% of JA4s by IP diversity)
-- High request volume globally for this JA4 fingerprint (+40)
-  - Triggered when `reqs_quantile_1h > 0.99` (top 1% of JA4s by request volume)
-- Uses Cloudflare Bot Management intelligence signals from `request.cf.ja4Signals`:
-  - `ips_quantile_1h`: Percentile rank of unique IPs in last hour
-  - `reqs_quantile_1h`: Percentile rank of request count in last hour
-  - `browser_ratio_1h`: Browser-like vs bot-like behavior ratio (stored but not used for scoring)
-  - `h2h3_ratio_1h`: HTTP/2 vs HTTP/3 ratio (stored but not used for scoring)
-
-**Detection Query** (single optimized SQL):
-```sql
-SELECT
-  ja4,
-  COUNT(DISTINCT ephemeral_id) as ephemeral_count,
-  COUNT(*) as submission_count,
-  (julianday(MAX(created_at)) - julianday(MIN(created_at))) * 24 * 60 as time_span_minutes,
-  AVG(CAST(json_extract(ja4_signals, '$.ips_quantile_1h') AS REAL)) as avg_ips_quantile,
-  AVG(CAST(json_extract(ja4_signals, '$.reqs_quantile_1h') AS REAL)) as avg_reqs_quantile
-FROM submissions
-WHERE remote_ip = ? AND ja4 = ? AND created_at > datetime('now', '-24 hours')
-GROUP BY ja4
-```
+**Global Anomaly Signals** (from `request.cf.ja4Signals`):
+- High IP diversity (+50): `ips_quantile_1h > 0.95` (top 5% of JA4s)
+- High request volume (+40): `reqs_quantile_1h > 0.99` (top 1% of JA4s)
+- Requires Cloudflare Bot Management (Enterprise)
 
 **Progressive Auto-blacklist** (same timeouts as Layer 3):
 ```typescript
-If risk ≥ 70 → Add JA4 to fraud_blacklist, block submission (429 Too Many Requests)
+If risk ≥ 70 → Add to fraud_blacklist (ephemeral_id + ja4 + ip), block submission
 If risk < 70 → Allow submission, log warnings
 ```
 
+**Detection Types** (tracked in analytics):
+- `ja4_ip_clustering` (Layer 4a)
+- `ja4_rapid_global` (Layer 4b)
+- `ja4_extended_global` (Layer 4c)
+
 **Key Benefits**:
-- Blocks incognito/browser hopping attacks
-- Complements ephemeral ID detection
+- Layer 4a: Blocks incognito/browser hopping from same location
+- Layer 4b: Blocks rapid network-switching attacks
+- Layer 4c: Blocks slower distributed attacks
 - No false positives for NAT networks (different devices = different JA4s)
-- Requires Cloudflare Bot Management (Enterprise) for ja4_signals
+- Ephemeral IDs blacklisted for up to 24h max (respects ~7 day lifespan)
 
 **Graceful Degradation**:
 - If JA4 unavailable → Falls back to Layers 1-3 only
@@ -149,7 +348,7 @@ If risk < 70 → Allow submission, log warnings
 
 ### Database Schema
 
-**fraud_blacklist table** (10 fields):
+**fraud_blacklist table** (11 fields):
 ```sql
 CREATE TABLE fraud_blacklist (
   id INTEGER PRIMARY KEY,
@@ -163,6 +362,7 @@ CREATE TABLE fraud_blacklist (
   submission_count INTEGER DEFAULT 0,
   last_seen_at DATETIME,
   detection_metadata TEXT, -- JSON
+  detection_type TEXT, -- Phase 1.5+: layer-specific detection types
   CHECK((ephemeral_id IS NOT NULL) OR (ip_address IS NOT NULL) OR (ja4 IS NOT NULL))
 );
 

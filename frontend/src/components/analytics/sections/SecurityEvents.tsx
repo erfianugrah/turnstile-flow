@@ -20,7 +20,7 @@ type SecurityEvent = {
 	identifierType: 'ephemeral' | 'ip';
 	blockReason: string;
 	riskScore: number;
-	detectionType: 'ja4_fraud' | 'ephemeral_fraud' | 'ip_fraud' | 'other';
+	detectionType: 'token_replay' | 'ephemeral_id_fraud' | 'ja4_ip_clustering' | 'ja4_rapid_global' | 'ja4_extended_global' | 'ja4_session_hopping' | 'ip_diversity' | 'validation_frequency' | 'turnstile_failed' | 'duplicate_email' | 'other' | null;
 	country?: string | null;
 	city?: string | null;
 	ja4?: string | null;
@@ -52,6 +52,10 @@ export function SecurityEvents({ activeBlocks, recentDetections }: SecurityEvent
 		detectionType: inferDetectionType(entry.block_reason),
 		expiresAt: entry.expires_at,
 		offenseCount: entry.offense_count,
+		// Enriched metadata from LEFT JOIN with turnstile_validations
+		country: entry.country,
+		city: entry.city,
+		ja4: entry.ja4,
 	}));
 
 	// Convert recent detections to unified format
@@ -131,30 +135,72 @@ export function SecurityEvents({ activeBlocks, recentDetections }: SecurityEvent
 		return 'Low';
 	};
 
-	const getDetectionTypeBadge = (detectionType: string) => {
+	const getDetectionTypeBadge = (detectionType: string | null) => {
 		switch (detectionType) {
-			case 'ja4_fraud':
+			case 'token_replay':
 				return (
 					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
-						JA4 Session Hopping
+						Token Replay
 					</span>
 				);
-			case 'ephemeral_fraud':
+			case 'ephemeral_id_fraud':
 				return (
-					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300">
 						Ephemeral ID
 					</span>
 				);
-			case 'ip_fraud':
+			case 'ja4_ip_clustering':
+				return (
+					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
+						JA4 IP Clustering
+					</span>
+				);
+			case 'ja4_rapid_global':
+				return (
+					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
+						JA4 Rapid Global
+					</span>
+				);
+			case 'ja4_extended_global':
+				return (
+					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
+						JA4 Extended Global
+					</span>
+				);
+			case 'ja4_session_hopping':
+				return (
+					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
+						JA4 Session Hopping (Legacy)
+					</span>
+				);
+			case 'ip_diversity':
+				return (
+					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300">
+						IP Diversity
+					</span>
+				);
+			case 'validation_frequency':
 				return (
 					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300">
-						IP Fraud
+						Validation Frequency
+					</span>
+				);
+			case 'turnstile_failed':
+				return (
+					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300">
+						Turnstile Failed
+					</span>
+				);
+			case 'duplicate_email':
+				return (
+					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300">
+						Duplicate Email
 					</span>
 				);
 			default:
 				return (
 					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300">
-						Other
+						{detectionType || 'Other'}
 					</span>
 				);
 		}
@@ -173,7 +219,7 @@ export function SecurityEvents({ activeBlocks, recentDetections }: SecurityEvent
 					</span>
 					<span
 						className={`inline-flex items-center px-2 py-1 rounded-md border text-xs font-medium ${urgencyClasses.text} ${urgencyClasses.bg} ${urgencyClasses.border}`}
-						title={`Expires at: ${new Date(event.expiresAt).toLocaleString()}`}
+						title={`Expires at: ${new Date(event.expiresAt).toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}`}
 					>
 						Expires: {relativeTime}
 					</span>
@@ -219,9 +265,16 @@ export function SecurityEvents({ activeBlocks, recentDetections }: SecurityEvent
 						label="Detection Type"
 						options={[
 							{ value: 'all', label: 'All Types' },
-							{ value: 'ja4_fraud', label: 'JA4 Session Hopping' },
-							{ value: 'ephemeral_fraud', label: 'Ephemeral ID' },
-							{ value: 'ip_fraud', label: 'IP Fraud' },
+							{ value: 'token_replay', label: 'Token Replay' },
+							{ value: 'ephemeral_id_fraud', label: 'Ephemeral ID' },
+							{ value: 'ja4_ip_clustering', label: 'JA4 IP Clustering' },
+							{ value: 'ja4_rapid_global', label: 'JA4 Rapid Global' },
+							{ value: 'ja4_extended_global', label: 'JA4 Extended Global' },
+							{ value: 'ja4_session_hopping', label: 'JA4 Session Hopping (Legacy)' },
+							{ value: 'ip_diversity', label: 'IP Diversity' },
+							{ value: 'validation_frequency', label: 'Validation Frequency' },
+							{ value: 'turnstile_failed', label: 'Turnstile Failed' },
+							{ value: 'duplicate_email', label: 'Duplicate Email' },
 							{ value: 'other', label: 'Other' }
 						]}
 						value={detectionTypeFilter}
@@ -394,16 +447,39 @@ export function SecurityEvents({ activeBlocks, recentDetections }: SecurityEvent
 	);
 }
 
-function inferDetectionType(blockReason: string): 'ja4_fraud' | 'ephemeral_fraud' | 'ip_fraud' | 'other' {
+function inferDetectionType(blockReason: string): 'token_replay' | 'ephemeral_id_fraud' | 'ja4_ip_clustering' | 'ja4_rapid_global' | 'ja4_extended_global' | 'ja4_session_hopping' | 'ip_diversity' | 'validation_frequency' | 'turnstile_failed' | 'duplicate_email' | 'other' {
 	const reason = blockReason.toLowerCase();
+	if (reason.includes('token') && reason.includes('replay')) {
+		return 'token_replay';
+	}
+	// Phase 1.8: Layer-specific JA4 detection types
+	if (reason.includes('ja4') && reason.includes('ip_clustering')) {
+		return 'ja4_ip_clustering';
+	}
+	if (reason.includes('ja4') && reason.includes('rapid_global')) {
+		return 'ja4_rapid_global';
+	}
+	if (reason.includes('ja4') && reason.includes('extended_global')) {
+		return 'ja4_extended_global';
+	}
+	// Fallback to legacy type for old JA4 blocks
 	if (reason.includes('ja4') || reason.includes('session hopping')) {
-		return 'ja4_fraud';
+		return 'ja4_session_hopping';
 	}
 	if (reason.includes('ephemeral') || reason.includes('automated') || reason.includes('multiple submissions')) {
-		return 'ephemeral_fraud';
+		return 'ephemeral_id_fraud';
 	}
-	if (reason.includes('ip')) {
-		return 'ip_fraud';
+	if (reason.includes('ip') && (reason.includes('diversity') || reason.includes('multiple ip'))) {
+		return 'ip_diversity';
+	}
+	if (reason.includes('validation') && reason.includes('frequency')) {
+		return 'validation_frequency';
+	}
+	if (reason.includes('turnstile')) {
+		return 'turnstile_failed';
+	}
+	if (reason.includes('duplicate') && reason.includes('email')) {
+		return 'duplicate_email';
 	}
 	return 'other';
 }

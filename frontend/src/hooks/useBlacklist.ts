@@ -4,6 +4,9 @@ export interface BlacklistEntry {
 	id: number;
 	ephemeral_id: string | null;
 	ip_address: string | null;
+	ja4: string | null;
+	country: string | null;
+	city: string | null;
 	block_reason: string;
 	risk_score: number;
 	offense_count: number;

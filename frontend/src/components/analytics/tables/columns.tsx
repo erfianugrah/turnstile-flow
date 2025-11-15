@@ -62,7 +62,7 @@ export function createSubmissionColumns(
 			accessorKey: 'created_at',
 			header: 'Date',
 			cell: ({ row }) => (
-				<span className="text-xs">{new Date(row.original.created_at).toLocaleString()}</span>
+				<span className="text-xs">{new Date(row.original.created_at).toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</span>
 			),
 		},
 		{

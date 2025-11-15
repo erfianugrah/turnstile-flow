@@ -40,6 +40,7 @@ export function calculateNormalizedRiskScore(checks: {
 	validationCount: number;
 	uniqueIPCount: number;
 	ja4RawScore: number; // 0-230
+	blockTrigger?: 'token_replay' | 'ephemeral_id_fraud' | 'ja4_session_hopping' | 'ip_diversity' | 'validation_frequency' | 'duplicate_email' | 'turnstile_failed'; // Phase 1.6: Indicates which check triggered a block
 }): RiskScoreBreakdown {
 	// Normalize each component
 	const components: Record<string, RiskComponent> = {};
@@ -53,14 +54,15 @@ export function calculateNormalizedRiskScore(checks: {
 	};
 
 	// Email Fraud (markov-mail, already 0-100)
+	const emailScore = checks.emailRiskScore || 0;
 	components.emailFraud = {
-		score: checks.emailRiskScore || 0,
+		score: emailScore,
 		weight: 0.2,
-		contribution: (checks.emailRiskScore || 0) * 0.2,
+		contribution: emailScore * 0.2,
 		reason:
-			checks.emailRiskScore >= 70
+			emailScore >= 70
 				? 'Fraudulent email pattern'
-				: checks.emailRiskScore >= 40
+				: emailScore >= 40
 					? 'Suspicious email pattern'
 					: 'Email looks legitimate',
 	};
@@ -131,7 +133,44 @@ export function calculateNormalizedRiskScore(checks: {
 	if (components.tokenReplay.score === 100) {
 		// Token replay is instant block
 		total = 100;
+	} else if (checks.blockTrigger) {
+		// Phase 1.6: When a specific check triggers a block, ensure score reflects severity
+		// Calculate base score from all components
+		const baseScore = Object.values(components).reduce((sum, c) => sum + c.contribution, 0);
+
+		// Ensure blocked attempts have minimum score of 70 (block threshold)
+		// But boost the triggering component's contribution
+		switch (checks.blockTrigger) {
+			case 'ja4_session_hopping':
+				// JA4 detected session hopping - critical
+				total = Math.max(baseScore, 75);
+				break;
+			case 'ephemeral_id_fraud':
+				// Multiple submissions detected - high risk
+				total = Math.max(baseScore, 70);
+				break;
+			case 'ip_diversity':
+				// Proxy rotation detected - critical
+				total = Math.max(baseScore, 80);
+				break;
+			case 'validation_frequency':
+				// Too many attempts - high risk
+				total = Math.max(baseScore, 70);
+				break;
+			case 'duplicate_email':
+				// Email already used - medium risk
+				total = Math.max(baseScore, 60);
+				break;
+			case 'turnstile_failed':
+				// Turnstile validation failed - medium-high
+				total = Math.max(baseScore, 65);
+				break;
+			default:
+				total = Math.max(baseScore, 70);
+		}
+		total = Math.min(100, Math.round(total * 10) / 10);
 	} else {
+		// Normal calculation for allowed submissions
 		total = Object.values(components).reduce((sum, c) => sum + c.contribution, 0);
 		total = Math.min(100, Math.round(total * 10) / 10); // Round to 1 decimal
 	}

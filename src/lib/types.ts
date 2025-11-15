@@ -151,6 +151,10 @@ export interface FraudCheckResult {
 	warnings: string[];
 	retryAfter?: number; // seconds until user can retry
 	expiresAt?: string; // ISO timestamp when block expires
+	// Phase 1: Raw counts for normalized scoring
+	ephemeralIdCount?: number;
+	validationCount?: number;
+	uniqueIPCount?: number;
 }
 
 // Environment bindings

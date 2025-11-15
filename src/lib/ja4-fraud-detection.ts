@@ -109,6 +109,8 @@ export interface FraudCheckResult {
 	retryAfter?: number;
 	/** ISO timestamp when block expires (if blocked) */
 	expiresAt?: string;
+	/** Detection type (Phase 1.8: layer-specific for JA4) */
+	detectionType?: string;
 }
 
 // ============================================================================
@@ -124,6 +126,35 @@ function toSQLiteDateTime(date: Date): string {
 		.toISOString()
 		.replace('T', ' ')
 		.replace(/\.\d{3}Z$/, '');
+}
+
+/**
+ * Check if two IPs are in the same network
+ * - IPv4: Exact match
+ * - IPv6: /64 subnet match (tolerates privacy extensions per RFC 8981)
+ *
+ * @param ip1 First IP address
+ * @param ip2 Second IP address
+ * @returns True if IPs are in the same network
+ */
+function isSameNetwork(ip1: string, ip2: string): boolean {
+	// IPv4 exact match
+	if (ip1.indexOf(':') === -1 && ip2.indexOf(':') === -1) {
+		return ip1 === ip2;
+	}
+
+	// IPv6 /64 subnet match
+	// RFC 8981: Operating systems rotate interface identifier (last 64 bits) for privacy
+	// Network prefix stays the same (first 64 bits = 4 groups of 16 bits)
+	if (ip1.indexOf(':') !== -1 && ip2.indexOf(':') !== -1) {
+		// Extract first 64 bits (4 groups)
+		const subnet1 = ip1.split(':').slice(0, 4).join(':');
+		const subnet2 = ip2.split(':').slice(0, 4).join(':');
+		return subnet1 === subnet2;
+	}
+
+	// Mixed IPv4/IPv6 - no match
+	return false;
 }
 
 /**
@@ -185,7 +216,9 @@ async function getOffenseCount(remoteIp: string, db: D1Database): Promise<number
 
 /**
  * Analyze JA4 clustering patterns
- * Signal 1: Detects same JA4 from same IP with multiple ephemeral IDs
+ * Signal 1: Detects same JA4 from same IP/subnet with multiple ephemeral IDs
+ *
+ * Phase 1.7: Now handles IPv6 /64 subnet matching for privacy extensions (RFC 8981)
  *
  * @param remoteIp IP address to analyze
  * @param ja4 JA4 fingerprint to analyze
@@ -200,57 +233,136 @@ async function analyzeJA4Clustering(
 	const oneHourAgo = toSQLiteDateTime(new Date(Date.now() - 60 * 60 * 1000));
 
 	try {
-		const result = await db
+		// Query all submissions with this JA4 in last hour
+		// Phase 1.7: Remove remote_ip filter - we'll filter by subnet in JavaScript
+		const results = await db
 			.prepare(
 				`SELECT
-					ja4,
-					COUNT(DISTINCT ephemeral_id) as ephemeral_count,
-					COUNT(*) as submission_count,
-					(julianday(MAX(created_at)) - julianday(MIN(created_at))) * 24 * 60 as time_span_minutes,
-					AVG(CAST(json_extract(ja4_signals, '$.ips_quantile_1h') AS REAL)) as avg_ips_quantile,
-					AVG(CAST(json_extract(ja4_signals, '$.reqs_quantile_1h') AS REAL)) as avg_reqs_quantile,
-					AVG(CAST(json_extract(ja4_signals, '$.browser_ratio_1h') AS REAL)) as avg_browser_ratio,
-					AVG(CAST(json_extract(ja4_signals, '$.h2h3_ratio_1h') AS REAL)) as avg_h2h3_ratio
+					ephemeral_id,
+					remote_ip,
+					created_at,
+					ja4_signals
 				FROM submissions
-				WHERE remote_ip = ?
-				AND ja4 = ?
+				WHERE ja4 = ?
 				AND created_at > ?
-				GROUP BY ja4`
+				ORDER BY created_at ASC`
 			)
-			.bind(remoteIp, ja4, oneHourAgo)
-			.first<{
-				ja4: string;
-				ephemeral_count: number;
-				submission_count: number;
-				time_span_minutes: number;
-				avg_ips_quantile: number | null;
-				avg_reqs_quantile: number | null;
-				avg_browser_ratio: number | null;
-				avg_h2h3_ratio: number | null;
+			.bind(ja4, oneHourAgo)
+			.all<{
+				ephemeral_id: string;
+				remote_ip: string;
+				created_at: string;
+				ja4_signals: string | null;
 			}>();
 
-		if (!result) {
-			// No previous submissions with this JA4 from this IP in last hour
+		if (!results.results || results.results.length === 0) {
+			// No previous submissions with this JA4 in last hour
 			return null;
 		}
 
-		// Add +1 to account for current submission attempt
-		const ephemeralCount = result.ephemeral_count + 1;
+		// Filter to same IP/subnet only
+		const sameNetwork = results.results.filter(r => isSameNetwork(r.remote_ip, remoteIp));
+
+		if (sameNetwork.length === 0) {
+			// No clustering at this IP/subnet
+			return null;
+		}
+
+		// Count unique ephemeral IDs from same network
+		const uniqueEphemeralIds = new Set(sameNetwork.map(r => r.ephemeral_id));
+		const ephemeralCount = uniqueEphemeralIds.size + 1; // +1 for current submission
+
+		// Calculate time span
+		const timestamps = sameNetwork.map(r => new Date(r.created_at.replace(' ', 'T') + 'Z').getTime());
+		const minTime = Math.min(...timestamps);
+		const maxTime = Math.max(...timestamps);
+		const timeSpanMinutes = (maxTime - minTime) / (60 * 1000);
+
+		// Parse JA4 signals from first result (they should be consistent)
+		const ja4SignalsAvg = parseJA4Signals(sameNetwork[0].ja4_signals);
 
 		return {
-			ja4: result.ja4,
+			ja4,
 			ephemeralCount,
-			submissionCount: result.submission_count + 1,
-			timeSpanMinutes: result.time_span_minutes,
-			ja4SignalsAvg: {
-				ips_quantile_1h: result.avg_ips_quantile ?? undefined,
-				reqs_quantile_1h: result.avg_reqs_quantile ?? undefined,
-				browser_ratio_1h: result.avg_browser_ratio ?? undefined,
-				h2h3_ratio_1h: result.avg_h2h3_ratio ?? undefined,
-			},
+			submissionCount: sameNetwork.length + 1, // +1 for current
+			timeSpanMinutes,
+			ja4SignalsAvg,
 		};
 	} catch (error) {
 		logger.error({ error, remoteIp, ja4 }, 'Error analyzing JA4 clustering');
+		throw error;
+	}
+}
+
+/**
+ * Analyze JA4 clustering patterns globally (no IP filtering)
+ * Phase 1.8: Detects network-switching attacks where attacker uses same JA4 across different IPs
+ *
+ * @param ja4 JA4 fingerprint to analyze
+ * @param db D1 database instance
+ * @param timeWindowMinutes Time window to analyze (5 or 60 minutes)
+ * @returns Global clustering analysis or null
+ */
+async function analyzeJA4GlobalClustering(
+	ja4: string,
+	db: D1Database,
+	timeWindowMinutes: number
+): Promise<ClusteringAnalysis | null> {
+	const timeAgo = toSQLiteDateTime(
+		new Date(Date.now() - timeWindowMinutes * 60 * 1000)
+	);
+
+	try {
+		// Query all submissions with this JA4 in time window
+		// NO IP filtering - we want to catch network switching
+		const results = await db
+			.prepare(
+				`SELECT
+					ephemeral_id,
+					remote_ip,
+					created_at,
+					ja4_signals
+				FROM submissions
+				WHERE ja4 = ?
+				AND created_at > ?
+				ORDER BY created_at ASC`
+			)
+			.bind(ja4, timeAgo)
+			.all<{
+				ephemeral_id: string;
+				remote_ip: string;
+				created_at: string;
+				ja4_signals: string | null;
+			}>();
+
+		if (!results.results || results.results.length === 0) {
+			return null;
+		}
+
+		// Count unique ephemeral IDs globally (across all IPs)
+		const uniqueEphemeralIds = new Set(results.results.map(r => r.ephemeral_id));
+		const ephemeralCount = uniqueEphemeralIds.size + 1; // +1 for current
+
+		// Calculate time span
+		const timestamps = results.results.map(
+			r => new Date(r.created_at.replace(' ', 'T') + 'Z').getTime()
+		);
+		const minTime = Math.min(...timestamps);
+		const maxTime = Math.max(...timestamps);
+		const timeSpanMinutes = (maxTime - minTime) / (60 * 1000);
+
+		// Parse JA4 signals
+		const ja4SignalsAvg = parseJA4Signals(results.results[0].ja4_signals);
+
+		return {
+			ja4,
+			ephemeralCount,
+			submissionCount: results.results.length + 1,
+			timeSpanMinutes,
+			ja4SignalsAvg,
+		};
+	} catch (error) {
+		logger.error({ error, ja4, timeWindowMinutes }, 'Error analyzing JA4 global clustering');
 		throw error;
 	}
 }
@@ -375,6 +487,104 @@ function generateWarnings(
 	return warnings;
 }
 
+/**
+ * Helper function to block and blacklist for JA4 fraud
+ * Phase 1.8: Reduces code duplication for multi-layer detection
+ *
+ * @param clustering Clustering analysis result
+ * @param remoteIp IP address of the request
+ * @param ja4 JA4 fingerprint
+ * @param ephemeralId Turnstile ephemeral ID
+ * @param db D1 database instance
+ * @param detectionLayer Which detection layer triggered the block
+ * @returns Fraud check result with block details
+ */
+async function blockForJA4Fraud(
+	clustering: ClusteringAnalysis,
+	remoteIp: string,
+	ja4: string,
+	ephemeralId: string | null,
+	db: D1Database,
+	detectionLayer: 'ip_clustering' | 'rapid_global' | 'extended_global'
+): Promise<FraudCheckResult> {
+	// Calculate progressive timeout (max 24h for ephemeral IDs)
+	const offenseCount = await getOffenseCount(remoteIp, db);
+	const expiresIn = calculateProgressiveTimeout(offenseCount);
+	const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+
+	// Calculate risk score
+	const velocity = analyzeVelocity(clustering);
+	const signals = compareGlobalSignals(clustering);
+	const rawScore = calculateCompositeRiskScore(clustering, velocity, signals);
+	const warnings = generateWarnings(clustering, velocity, signals);
+
+	// Map detection layer to specific detection type (Phase 1.8)
+	const detectionTypeMap = {
+		ip_clustering: 'ja4_ip_clustering',
+		rapid_global: 'ja4_rapid_global',
+		extended_global: 'ja4_extended_global',
+	} as const;
+
+	const specificDetectionType = detectionTypeMap[detectionLayer];
+
+	// Add to blacklist with ephemeral ID
+	await addToBlacklist(db, {
+		ephemeralId,  // Phase 1.8: Include ephemeral ID (24h max)
+		ja4,
+		ipAddress: remoteIp,
+		blockReason: `JA4 ${detectionLayer}: ${clustering.ephemeralCount} sessions in ${Math.round(clustering.timeSpanMinutes)} min`,
+		confidence: 'high',
+		expiresIn,
+		submissionCount: clustering.ephemeralCount,
+		detectionType: specificDetectionType,  // Phase 1.8: Layer-specific type
+		detectionMetadata: {
+			detection_type: specificDetectionType,
+			detection_layer: detectionLayer,
+			risk_score: rawScore,
+			warnings,
+			ephemeral_count: clustering.ephemeralCount,
+			time_span_minutes: clustering.timeSpanMinutes,
+			global_ips_quantile: signals.ipsQuantile,
+			global_reqs_quantile: signals.reqsQuantile,
+			offense_count: offenseCount,
+			timeout_seconds: expiresIn,
+			detected_at: new Date().toISOString(),
+		},
+	});
+
+	logger.warn(
+		{
+			detection_type: 'ja4_fraud',
+			detection_layer: detectionLayer,
+			ja4,
+			remote_ip: remoteIp,
+			subnet: remoteIp.indexOf(':') !== -1 ? remoteIp.split(':').slice(0, 4).join(':') : remoteIp,
+			clustering: {
+				ephemeral_count: clustering.ephemeralCount,
+				submission_count: clustering.submissionCount,
+				time_span_minutes: Math.round(clustering.timeSpanMinutes),
+			},
+			risk_score: rawScore,
+			warnings,
+			blocked: true,
+			retry_after: expiresIn,
+			offense_count: offenseCount,
+		},
+		'JA4 fraud block triggered'
+	);
+
+	return {
+		allowed: false,
+		reason: 'You have made too many submission attempts',
+		riskScore: rawScore,
+		rawScore,
+		warnings,
+		retryAfter: expiresIn,
+		expiresAt,
+		detectionType: specificDetectionType,  // Phase 1.8: Return layer-specific type
+	};
+}
+
 // ============================================================================
 // Main Detection Function
 // ============================================================================
@@ -389,12 +599,14 @@ function generateWarnings(
  *
  * @param remoteIp IP address of the request
  * @param ja4 JA4 fingerprint from request.cf.ja4
+ * @param ephemeralId Turnstile ephemeral ID for blacklisting (Phase 1.8)
  * @param db D1 database instance
  * @returns Fraud check result
  */
 export async function checkJA4FraudPatterns(
 	remoteIp: string,
 	ja4: string | null,
+	ephemeralId: string | null,
 	db: D1Database
 ): Promise<FraudCheckResult> {
 	// JA4 is required for this detection
@@ -408,112 +620,43 @@ export async function checkJA4FraudPatterns(
 		};
 	}
 
-	logger.info({ remoteIp, ja4 }, 'JA4 fraud detection started');
+	logger.info({ remoteIp, ja4 }, 'JA4 fraud detection started (multi-layer)');
 
 	try {
-		// Step 1: Analyze JA4 clustering
-		const clustering = await analyzeJA4Clustering(remoteIp, ja4, db);
+		// Layer 4a: JA4 + IP Clustering (same IP/subnet + same JA4)
+		const clusteringIP = await analyzeJA4Clustering(remoteIp, ja4, db);
 
-		if (!clustering) {
-			// First submission with this JA4 from this IP
-			logger.info({ remoteIp, ja4 }, 'First submission with this JA4 - allowing');
-			return {
-				allowed: true,
-				riskScore: 0,
-				rawScore: 0,
-				warnings: [],
-			};
+		if (clusteringIP && clusteringIP.ephemeralCount >= 2) {
+			// Block: Same device (JA4) + same location (IP/subnet) + multiple sessions
+			logger.info({ remoteIp, ja4, ephemeralCount: clusteringIP.ephemeralCount }, 'Layer 4a: IP clustering detected');
+			return blockForJA4Fraud(clusteringIP, remoteIp, ja4, ephemeralId, db, 'ip_clustering');
 		}
 
-		// Step 2: Analyze velocity
-		const velocity = analyzeVelocity(clustering);
+		// Layer 4b: JA4 + Rapid Global Clustering (5 min, 3+ ephemeral IDs, NO IP filter)
+		const clusteringRapid = await analyzeJA4GlobalClustering(ja4, db, 5);
 
-		// Step 3: Compare against global signals
-		const signals = compareGlobalSignals(clustering);
-
-		// Step 4: Calculate raw risk score (0-230)
-		const rawScore = calculateCompositeRiskScore(clustering, velocity, signals);
-		const riskScore = rawScore; // Keep for backward compatibility
-
-		// Step 5: Generate warnings
-		const warnings = generateWarnings(clustering, velocity, signals);
-
-		// Step 6: Determine if should block
-		const BLOCK_THRESHOLD = 70;
-		const allowed = riskScore < BLOCK_THRESHOLD;
-
-		if (!allowed) {
-			// Calculate progressive timeout
-			const offenseCount = await getOffenseCount(remoteIp, db);
-			const expiresIn = calculateProgressiveTimeout(offenseCount);
-			const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
-
-			// Add to blacklist
-			await addToBlacklist(db, {
-				ja4,
-				ipAddress: remoteIp,
-				blockReason: `JA4 session hopping: ${clustering.ephemeralCount} sessions in ${Math.round(clustering.timeSpanMinutes)} min`,
-				confidence: 'high',
-				expiresIn,
-				submissionCount: clustering.ephemeralCount,
-				detectionMetadata: {
-					detection_type: 'ja4_session_hopping',
-					risk_score: riskScore,
-					warnings,
-					ephemeral_count: clustering.ephemeralCount,
-					time_span_minutes: clustering.timeSpanMinutes,
-					global_ips_quantile: signals.ipsQuantile,
-					global_reqs_quantile: signals.reqsQuantile,
-					offense_count: offenseCount,
-					timeout_seconds: expiresIn,
-					detected_at: new Date().toISOString(),
-				},
-			});
-
-			logger.warn(
-				{
-					detection_type: 'ja4_fraud',
-					ja4,
-					remote_ip: remoteIp,
-					risk_score: riskScore,
-					warnings,
-					blocked: true,
-					retry_after: expiresIn,
-					offense_count: offenseCount,
-				},
-				'JA4 fraud block triggered'
-			);
-
-			return {
-				allowed: false,
-				reason: 'You have made too many submission attempts',
-				riskScore,
-				rawScore,
-				warnings,
-				retryAfter: expiresIn,
-				expiresAt,
-			};
+		if (clusteringRapid && clusteringRapid.ephemeralCount >= 3) {
+			// Block: Same device (JA4) + 3+ sessions in 5 minutes (aggressive)
+			logger.info({ remoteIp, ja4, ephemeralCount: clusteringRapid.ephemeralCount }, 'Layer 4b: Rapid global clustering detected');
+			return blockForJA4Fraud(clusteringRapid, remoteIp, ja4, ephemeralId, db, 'rapid_global');
 		}
 
-		// Allow but log warnings
-		logger.info(
-			{
-				detection_type: 'ja4_fraud',
-				ja4,
-				remote_ip: remoteIp,
-				risk_score: riskScore,
-				raw_score: rawScore,
-				warnings,
-				blocked: false,
-			},
-			'JA4 fraud check passed'
-		);
+		// Layer 4c: JA4 + Extended Global Clustering (1 hour, 5+ ephemeral IDs, NO IP filter)
+		const clusteringExtended = await analyzeJA4GlobalClustering(ja4, db, 60);
 
+		if (clusteringExtended && clusteringExtended.ephemeralCount >= 5) {
+			// Block: Same device (JA4) + 5+ sessions in 1 hour (slower attacks)
+			logger.info({ remoteIp, ja4, ephemeralCount: clusteringExtended.ephemeralCount }, 'Layer 4c: Extended global clustering detected');
+			return blockForJA4Fraud(clusteringExtended, remoteIp, ja4, ephemeralId, db, 'extended_global');
+		}
+
+		// All layers passed - allow submission
+		logger.info({ remoteIp, ja4 }, 'JA4 fraud checks passed (all layers)');
 		return {
 			allowed: true,
-			riskScore,
-			rawScore,
-			warnings,
+			riskScore: 0,
+			rawScore: 0,
+			warnings: [],
 		};
 	} catch (error) {
 		logger.error({ error, remoteIp, ja4 }, 'Error during JA4 fraud check');

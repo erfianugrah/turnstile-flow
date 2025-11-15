@@ -85,6 +85,17 @@ app.post('/', async (c) => {
 		const isReused = await checkTokenReuse(tokenHash, db);
 
 		if (isReused) {
+			// Calculate normalized risk score for blocked attempt
+			const normalizedRiskScore = calculateNormalizedRiskScore({
+				tokenReplay: true,  // Instant 100
+				emailRiskScore: 0,
+				ephemeralIdCount: 1,
+				validationCount: 1,
+				uniqueIPCount: 1,
+				ja4RawScore: 0,
+				blockTrigger: 'token_replay'  // Phase 1.6
+			});
+
 			// Log the validation attempt
 			try {
 				await logValidation(db, {
@@ -95,9 +106,11 @@ app.post('/', async (c) => {
 						errors: ['Token already used'],
 					},
 					metadata,
-					riskScore: 100,
+					riskScore: normalizedRiskScore.total,
+					riskScoreBreakdown: normalizedRiskScore,
 					allowed: false,
 					blockReason: 'Token replay attack detected',
+					detectionType: 'token_replay',
 				});
 			} catch (dbError) {
 				// Non-critical: log but don't fail the request
@@ -135,15 +148,28 @@ app.post('/', async (c) => {
 			const ephemeralIdBlacklist = await checkPreValidationBlock(validation.ephemeralId, metadata.remoteIp, metadata.ja4 ?? null, db);
 
 			if (ephemeralIdBlacklist.blocked) {
+				// Calculate normalized risk score for blacklisted ephemeral ID
+				const normalizedRiskScore = calculateNormalizedRiskScore({
+					tokenReplay: false,
+					emailRiskScore: 0,
+					ephemeralIdCount: 2,  // Blacklisted means multiple attempts
+					validationCount: 2,
+					uniqueIPCount: 1,
+					ja4RawScore: 0,
+					blockTrigger: 'ephemeral_id_fraud'  // Phase 1.6
+				});
+
 				// Log validation attempt
 				try {
 					await logValidation(db, {
 						tokenHash,
 						validation,
 						metadata,
-						riskScore: 100,
+						riskScore: normalizedRiskScore.total,
+						riskScoreBreakdown: normalizedRiskScore,
 						allowed: false,
 						blockReason: ephemeralIdBlacklist.reason || 'Ephemeral ID blacklisted',
+						detectionType: 'ephemeral_id_fraud',
 					});
 				} catch (dbError) {
 					// Non-critical: log but don't fail the request
@@ -167,15 +193,36 @@ app.post('/', async (c) => {
 			fraudCheck = await checkEphemeralIdFraud(validation.ephemeralId, db);
 
 			if (!fraudCheck.allowed) {
+				// Determine detection type based on fraud check reason
+				let detectionType: 'ephemeral_id_fraud' | 'ip_diversity' | 'validation_frequency' = 'ephemeral_id_fraud';
+				if (fraudCheck.uniqueIPCount && fraudCheck.uniqueIPCount >= 2) {
+					detectionType = 'ip_diversity';
+				} else if (fraudCheck.validationCount && fraudCheck.validationCount >= 3) {
+					detectionType = 'validation_frequency';
+				}
+
+				// Calculate normalized risk score for ephemeral ID fraud
+				const normalizedRiskScore = calculateNormalizedRiskScore({
+					tokenReplay: false,
+					emailRiskScore: 0,
+					ephemeralIdCount: fraudCheck.ephemeralIdCount || 2,
+					validationCount: fraudCheck.validationCount || 1,
+					uniqueIPCount: fraudCheck.uniqueIPCount || 1,
+					ja4RawScore: 0,
+					blockTrigger: detectionType  // Phase 1.6
+				});
+
 				// Log validation attempt
 				try {
 					await logValidation(db, {
 						tokenHash,
 						validation,
 						metadata,
-						riskScore: fraudCheck.riskScore,
+						riskScore: normalizedRiskScore.total,
+						riskScoreBreakdown: normalizedRiskScore,
 						allowed: false,
 						blockReason: fraudCheck.reason,
+						detectionType,
 					});
 				} catch (dbError) {
 					// Non-critical: log but don't fail the request
@@ -200,23 +247,39 @@ app.post('/', async (c) => {
 
 		// JA4 FRAUD DETECTION (Layer 4 - Session Hopping Detection)
 		// Check for same device creating multiple sessions (incognito/browser hopping)
+		let ja4FraudCheck: Awaited<ReturnType<typeof checkJA4FraudPatterns>> | null = null;
+
 		if (metadata.ja4) {
-			const ja4FraudCheck = await checkJA4FraudPatterns(
+			ja4FraudCheck = await checkJA4FraudPatterns(
 				metadata.remoteIp,
 				metadata.ja4,
+				validation.ephemeralId || null,  // Phase 1.8: Pass ephemeral ID for blacklisting (handle undefined)
 				db
 			);
 
 			if (!ja4FraudCheck.allowed) {
-				// Log validation attempt
+				// Calculate normalized risk score for JA4 fraud
+				const normalizedRiskScore = calculateNormalizedRiskScore({
+					tokenReplay: false,
+					emailRiskScore: 0,
+					ephemeralIdCount: fraudCheck.ephemeralIdCount || 1,
+					validationCount: fraudCheck.validationCount || 1,
+					uniqueIPCount: fraudCheck.uniqueIPCount || 1,
+					ja4RawScore: ja4FraudCheck.rawScore || 0,
+					blockTrigger: 'ja4_session_hopping'  // Phase 1.8: All JA4 blocks use same trigger
+				});
+
+				// Log validation attempt with layer-specific detection type (Phase 1.8)
 				try {
 					await logValidation(db, {
 						tokenHash,
 						validation,
 						metadata,
-						riskScore: ja4FraudCheck.riskScore,
+						riskScore: normalizedRiskScore.total,
+						riskScoreBreakdown: normalizedRiskScore,
 						allowed: false,
 						blockReason: ja4FraudCheck.reason,
+						detectionType: ja4FraudCheck.detectionType || 'ja4_session_hopping',  // Phase 1.8: Layer-specific (ja4_ip_clustering, ja4_rapid_global, ja4_extended_global)
 					});
 				} catch (dbError) {
 					// Non-critical: log but don't fail the request
@@ -271,15 +334,29 @@ app.post('/', async (c) => {
 
 		// Now check if validation actually failed
 		if (!validation.valid) {
+			// Calculate normalized risk score for failed Turnstile validation
+			// Use high risk score since Turnstile itself failed the validation
+			const failedValidationScore = calculateNormalizedRiskScore({
+				tokenReplay: false,
+				emailRiskScore: 0,
+				ephemeralIdCount: fraudCheck.ephemeralIdCount || 1,
+				validationCount: Math.max(fraudCheck.validationCount || 1, 3),  // Failed validations indicate multiple attempts
+				uniqueIPCount: fraudCheck.uniqueIPCount || 1,
+				ja4RawScore: ja4FraudCheck?.rawScore || 0,
+				blockTrigger: 'turnstile_failed'  // Phase 1.6
+			});
+
 			// Log validation attempt
 			try {
 				await logValidation(db, {
 					tokenHash,
 					validation,
 					metadata,
-					riskScore: 90,
+					riskScore: failedValidationScore.total,
+					riskScoreBreakdown: failedValidationScore,
 					allowed: false,
 					blockReason: validation.reason,
+					detectionType: 'turnstile_failed',
 				});
 			} catch (dbError) {
 				// Non-critical: log but don't fail the request
@@ -308,15 +385,29 @@ app.post('/', async (c) => {
 			.first<{ id: number; created_at: string }>();
 
 		if (existingSubmission) {
+			// Calculate normalized risk score for duplicate email
+			// This is less severe than fraud patterns, but still suspicious
+			const duplicateEmailScore = calculateNormalizedRiskScore({
+				tokenReplay: false,
+				emailRiskScore: 0,
+				ephemeralIdCount: Math.max(fraudCheck.ephemeralIdCount || 1, 2),  // At least 2 to indicate duplicate attempt
+				validationCount: fraudCheck.validationCount || 1,
+				uniqueIPCount: fraudCheck.uniqueIPCount || 1,
+				ja4RawScore: ja4FraudCheck?.rawScore || 0,
+				blockTrigger: 'duplicate_email'  // Phase 1.6
+			});
+
 			// Log validation attempt
 			try {
 				await logValidation(db, {
 					tokenHash,
 					validation,
 					metadata,
-					riskScore: 60, // Medium risk for duplicate email
+					riskScore: duplicateEmailScore.total,
+					riskScoreBreakdown: duplicateEmailScore,
 					allowed: false,
 					blockReason: 'Duplicate email address',
+					detectionType: 'duplicate_email',
 				});
 			} catch (dbError) {
 				// Non-critical: log but don't fail the request
