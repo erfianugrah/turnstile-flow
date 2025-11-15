@@ -44,6 +44,8 @@ CREATE TABLE IF NOT EXISTS submissions (
 	email_pattern_type TEXT, -- sequential, dated, formatted, etc.
 	email_markov_detected INTEGER, -- 0 or 1
 	email_ood_detected INTEGER, -- 0 or 1
+	-- Risk scoring breakdown (Phase 2)
+	risk_score_breakdown TEXT, -- JSON: component scores for transparency
 	-- Timestamps
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
