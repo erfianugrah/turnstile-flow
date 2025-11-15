@@ -13,6 +13,7 @@ import logger from '../lib/logger';
 import { checkPreValidationBlock } from '../lib/fraud-prevalidation';
 import { checkJA4FraudPatterns } from '../lib/ja4-fraud-detection';
 import { calculateNormalizedRiskScore } from '../lib/scoring';
+import { checkEmailFraud } from '../lib/email-fraud-detection';
 import {
 	ValidationError,
 	RateLimitError,
@@ -78,6 +79,33 @@ app.post('/', async (c) => {
 		// Sanitize form data
 		const sanitized = sanitizeFormData(validationResult.data);
 
+		// EMAIL FRAUD DETECTION (Phase 2 - Layer 5)
+		// Check email for fraudulent patterns using markov-mail RPC
+		let emailFraudResult = null;
+		if (sanitized.email) {
+			emailFraudResult = await checkEmailFraud(sanitized.email, c.env);
+
+			if (emailFraudResult && emailFraudResult.decision === 'block') {
+				logger.warn(
+					{
+						email_hash: sanitized.email,
+						risk_score: emailFraudResult.riskScore,
+						pattern: emailFraudResult.signals.patternType,
+						markov_detected: emailFraudResult.signals.markovDetected,
+					},
+					'Email blocked by fraud detection'
+				);
+
+				throw new ValidationError(
+					'Email rejected by fraud detection',
+					{
+						userMessage: 'This email address cannot be used. Please use a different email address',
+						signals: emailFraudResult.signals,
+					}
+				);
+			}
+		}
+
 		// Hash token for replay protection
 		const tokenHash = hashToken(turnstileToken);
 
@@ -88,7 +116,7 @@ app.post('/', async (c) => {
 			// Calculate normalized risk score for blocked attempt
 			const normalizedRiskScore = calculateNormalizedRiskScore({
 				tokenReplay: true,  // Instant 100
-				emailRiskScore: 0,
+				emailRiskScore: emailFraudResult?.riskScore || 0,
 				ephemeralIdCount: 1,
 				validationCount: 1,
 				uniqueIPCount: 1,
@@ -151,7 +179,7 @@ app.post('/', async (c) => {
 				// Calculate normalized risk score for blacklisted ephemeral ID
 				const normalizedRiskScore = calculateNormalizedRiskScore({
 					tokenReplay: false,
-					emailRiskScore: 0,
+					emailRiskScore: emailFraudResult?.riskScore || 0,
 					ephemeralIdCount: 2,  // Blacklisted means multiple attempts
 					validationCount: 2,
 					uniqueIPCount: 1,
@@ -204,7 +232,7 @@ app.post('/', async (c) => {
 				// Calculate normalized risk score for ephemeral ID fraud
 				const normalizedRiskScore = calculateNormalizedRiskScore({
 					tokenReplay: false,
-					emailRiskScore: 0,
+					emailRiskScore: emailFraudResult?.riskScore || 0,
 					ephemeralIdCount: fraudCheck.ephemeralIdCount || 2,
 					validationCount: fraudCheck.validationCount || 1,
 					uniqueIPCount: fraudCheck.uniqueIPCount || 1,
@@ -261,7 +289,7 @@ app.post('/', async (c) => {
 				// Calculate normalized risk score for JA4 fraud
 				const normalizedRiskScore = calculateNormalizedRiskScore({
 					tokenReplay: false,
-					emailRiskScore: 0,
+					emailRiskScore: emailFraudResult?.riskScore || 0,
 					ephemeralIdCount: fraudCheck.ephemeralIdCount || 1,
 					validationCount: fraudCheck.validationCount || 1,
 					uniqueIPCount: fraudCheck.uniqueIPCount || 1,
@@ -310,7 +338,7 @@ app.post('/', async (c) => {
 		// Collect all fraud detection data
 		const normalizedRiskScore = calculateNormalizedRiskScore({
 			tokenReplay: isReused,
-			emailRiskScore: 0, // TODO: Phase 2 - will add markov-mail email fraud detection
+			emailRiskScore: emailFraudResult?.riskScore || 0, // Phase 2: Markov-mail email fraud detection
 			ephemeralIdCount: fraudCheck.ephemeralIdCount || 1,
 			validationCount: fraudCheck.validationCount || 1,
 			uniqueIPCount: fraudCheck.uniqueIPCount || 1,
@@ -338,7 +366,7 @@ app.post('/', async (c) => {
 			// Use high risk score since Turnstile itself failed the validation
 			const failedValidationScore = calculateNormalizedRiskScore({
 				tokenReplay: false,
-				emailRiskScore: 0,
+				emailRiskScore: emailFraudResult?.riskScore || 0,
 				ephemeralIdCount: fraudCheck.ephemeralIdCount || 1,
 				validationCount: Math.max(fraudCheck.validationCount || 1, 3),  // Failed validations indicate multiple attempts
 				uniqueIPCount: fraudCheck.uniqueIPCount || 1,
@@ -389,7 +417,7 @@ app.post('/', async (c) => {
 			// This is less severe than fraud patterns, but still suspicious
 			const duplicateEmailScore = calculateNormalizedRiskScore({
 				tokenReplay: false,
-				emailRiskScore: 0,
+				emailRiskScore: emailFraudResult?.riskScore || 0,
 				ephemeralIdCount: Math.max(fraudCheck.ephemeralIdCount || 1, 2),  // At least 2 to indicate duplicate attempt
 				validationCount: fraudCheck.validationCount || 1,
 				uniqueIPCount: fraudCheck.uniqueIPCount || 1,
@@ -438,7 +466,8 @@ app.post('/', async (c) => {
 			},
 			metadata,
 			validation.ephemeralId,
-			normalizedRiskScore
+			normalizedRiskScore,
+			emailFraudResult // Phase 2: Include email fraud detection results
 		);
 
 		// Log successful validation

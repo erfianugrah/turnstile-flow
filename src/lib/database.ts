@@ -105,7 +105,8 @@ export async function createSubmission(
 	formData: FormSubmission,
 	metadata: RequestMetadata,
 	ephemeralId?: string | null,
-	riskScoreBreakdown?: any
+	riskScoreBreakdown?: any,
+	emailFraudResult?: { riskScore: number; signals: any } | null
 ): Promise<number> {
 	try {
 		const result = await db
@@ -116,14 +117,19 @@ export async function createSubmission(
 					postal_code, timezone, latitude, longitude, continent, is_eu_country,
 					asn, as_organization, colo, http_protocol, tls_version, tls_cipher,
 					bot_score, client_trust_score, verified_bot, detection_ids,
-					ja3_hash, ja4, ja4_signals, risk_score_breakdown
+					ja3_hash, ja4, ja4_signals,
+					email_risk_score, email_fraud_signals, email_pattern_type,
+					email_markov_detected, email_ood_detected,
+					risk_score_breakdown
 				) VALUES (
 					?, ?, ?, ?, ?, ?,
 					?, ?, ?, ?, ?, ?,
 					?, ?, ?, ?, ?, ?,
 					?, ?, ?, ?, ?, ?,
 					?, ?, ?, ?,
-					?, ?, ?, ?
+					?, ?, ?,
+					?, ?, ?, ?, ?,
+					?
 				)`
 			)
 			.bind(
@@ -158,6 +164,11 @@ export async function createSubmission(
 				metadata.ja3Hash || null,
 				metadata.ja4 || null,
 				metadata.ja4Signals ? JSON.stringify(metadata.ja4Signals) : null,
+				emailFraudResult ? emailFraudResult.riskScore / 100 : null, // Convert back to 0.0-1.0
+				emailFraudResult ? JSON.stringify(emailFraudResult.signals) : null,
+				emailFraudResult?.signals.patternType || null,
+				emailFraudResult?.signals.markovDetected ? 1 : 0,
+				emailFraudResult?.signals.oodDetected ? 1 : 0,
 				riskScoreBreakdown ? JSON.stringify(riskScoreBreakdown) : null
 			)
 			.run();

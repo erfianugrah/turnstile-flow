@@ -20,6 +20,14 @@
 			"remote": true
 		}
 	],
+	// Service bindings (Worker-to-Worker RPC)
+	"services": [
+		{
+			"binding": "FRAUD_DETECTOR",
+			"service": "markov-mail",
+			"entrypoint": "FraudDetectionService"
+		}
+	],
 	// Environment variables
 	"vars": {
 		"ENVIRONMENT": "production",

@@ -38,6 +38,12 @@ CREATE TABLE IF NOT EXISTS submissions (
 	ja3_hash TEXT,
 	ja4 TEXT,
 	ja4_signals TEXT, -- JSON object
+	-- Email fraud detection (Phase 2)
+	email_risk_score REAL, -- 0.0-1.0
+	email_fraud_signals TEXT, -- JSON: markov, disposable, tld, ood
+	email_pattern_type TEXT, -- sequential, dated, formatted, etc.
+	email_markov_detected INTEGER, -- 0 or 1
+	email_ood_detected INTEGER, -- 0 or 1
 	-- Timestamps
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -131,3 +137,4 @@ CREATE INDEX IF NOT EXISTS idx_blacklist_ephemeral_id ON fraud_blacklist(ephemer
 CREATE INDEX IF NOT EXISTS idx_blacklist_ip ON fraud_blacklist(ip_address, expires_at);
 CREATE INDEX IF NOT EXISTS idx_blacklist_ja4 ON fraud_blacklist(ja4, expires_at);
 CREATE INDEX IF NOT EXISTS idx_blacklist_expires ON fraud_blacklist(expires_at);
+CREATE INDEX IF NOT EXISTS idx_submissions_email_pattern ON submissions(email_pattern_type);

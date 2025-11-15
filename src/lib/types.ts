@@ -168,6 +168,27 @@ export interface Env {
 	DB: D1Database;
 	ASSETS: Fetcher;
 
+	// Service bindings (Worker-to-Worker RPC)
+	FRAUD_DETECTOR: {
+		validate(request: {
+			email: string;
+			consumer?: string;
+			flow?: string;
+		}): Promise<{
+			valid: boolean;
+			riskScore: number; // 0.0-1.0
+			decision: 'allow' | 'warn' | 'block';
+			signals: {
+				markovDetected: boolean;
+				markovConfidence: number;
+				patternType: string;
+				isDisposableDomain: boolean;
+				tldRiskScore: number;
+				oodDetected: boolean;
+			};
+		}>;
+	};
+
 	// Variables
 	ENVIRONMENT?: string;
 	ALLOWED_ORIGINS?: string; // Comma-separated list
