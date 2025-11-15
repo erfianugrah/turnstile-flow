@@ -1,0 +1,180 @@
+/**
+ * Risk Score Normalization Module
+ *
+ * Implements weighted component system to normalize risk scores to 0-100 scale
+ *
+ * Component Weights:
+ * - Token Replay: 40% (instant block)
+ * - Email Fraud: 20% (pattern detection)
+ * - Ephemeral ID: 20% (device tracking)
+ * - Validation Frequency: 15% (attempt rate)
+ * - IP Diversity: 10% (proxy detection)
+ * - JA4 Session Hopping: 10% (browser hopping)
+ *
+ * Block Threshold: 70/100
+ */
+
+export interface RiskComponent {
+	score: number; // 0-100
+	weight: number; // 0.0-1.0
+	contribution: number; // score * weight
+	rawScore?: number; // Original value before normalization
+	reason: string; // Human-readable explanation
+}
+
+export interface RiskScoreBreakdown {
+	tokenReplay: number;
+	emailFraud: number;
+	ephemeralId: number;
+	validationFrequency: number;
+	ipDiversity: number;
+	ja4SessionHopping: number;
+	total: number;
+	components: Record<string, RiskComponent>;
+}
+
+export function calculateNormalizedRiskScore(checks: {
+	tokenReplay: boolean;
+	emailRiskScore?: number; // 0-100
+	ephemeralIdCount: number;
+	validationCount: number;
+	uniqueIPCount: number;
+	ja4RawScore: number; // 0-230
+}): RiskScoreBreakdown {
+	// Normalize each component
+	const components: Record<string, RiskComponent> = {};
+
+	// Token Replay (instant block)
+	components.tokenReplay = {
+		score: checks.tokenReplay ? 100 : 0,
+		weight: 0.4,
+		contribution: checks.tokenReplay ? 40 : 0,
+		reason: checks.tokenReplay ? 'Token already used' : 'Token valid',
+	};
+
+	// Email Fraud (markov-mail, already 0-100)
+	components.emailFraud = {
+		score: checks.emailRiskScore || 0,
+		weight: 0.2,
+		contribution: (checks.emailRiskScore || 0) * 0.2,
+		reason:
+			checks.emailRiskScore >= 70
+				? 'Fraudulent email pattern'
+				: checks.emailRiskScore >= 40
+					? 'Suspicious email pattern'
+					: 'Email looks legitimate',
+	};
+
+	// Ephemeral ID
+	const ephemeralScore = normalizeEphemeralIdScore(checks.ephemeralIdCount);
+	components.ephemeralId = {
+		score: ephemeralScore,
+		weight: 0.2,
+		contribution: ephemeralScore * 0.2,
+		rawScore: checks.ephemeralIdCount,
+		reason:
+			checks.ephemeralIdCount >= 3
+				? `${checks.ephemeralIdCount} submissions (likely fraud)`
+				: checks.ephemeralIdCount === 2
+					? '2 submissions (suspicious)'
+					: '1 submission (normal)',
+	};
+
+	// Validation Frequency
+	const validationScore = normalizeValidationScore(checks.validationCount);
+	components.validationFrequency = {
+		score: validationScore,
+		weight: 0.15,
+		contribution: validationScore * 0.15,
+		rawScore: checks.validationCount,
+		reason:
+			checks.validationCount >= 3
+				? `${checks.validationCount} attempts in 1 hour`
+				: checks.validationCount === 2
+					? '2 attempts (acceptable)'
+					: '1 attempt (normal)',
+	};
+
+	// IP Diversity
+	const ipScore = normalizeIPScore(checks.uniqueIPCount);
+	components.ipDiversity = {
+		score: ipScore,
+		weight: 0.1,
+		contribution: ipScore * 0.1,
+		rawScore: checks.uniqueIPCount,
+		reason:
+			checks.uniqueIPCount >= 3
+				? `${checks.uniqueIPCount} IPs (proxy rotation)`
+				: checks.uniqueIPCount === 2
+					? '2 IPs (acceptable)'
+					: '1 IP (normal)',
+	};
+
+	// JA4 Session Hopping
+	const ja4Score = normalizeJA4Score(checks.ja4RawScore);
+	components.ja4SessionHopping = {
+		score: ja4Score,
+		weight: 0.1,
+		contribution: ja4Score * 0.1,
+		rawScore: checks.ja4RawScore,
+		reason:
+			checks.ja4RawScore >= 140
+				? 'Browser hopping detected'
+				: checks.ja4RawScore >= 80
+					? 'Suspicious JA4 clustering'
+					: 'Normal browser behavior',
+	};
+
+	// Calculate total (weighted sum, capped at 100)
+	let total = 0;
+
+	if (components.tokenReplay.score === 100) {
+		// Token replay is instant block
+		total = 100;
+	} else {
+		total = Object.values(components).reduce((sum, c) => sum + c.contribution, 0);
+		total = Math.min(100, Math.round(total * 10) / 10); // Round to 1 decimal
+	}
+
+	return {
+		tokenReplay: components.tokenReplay.score,
+		emailFraud: components.emailFraud.score,
+		ephemeralId: components.ephemeralId.score,
+		validationFrequency: components.validationFrequency.score,
+		ipDiversity: components.ipDiversity.score,
+		ja4SessionHopping: components.ja4SessionHopping.score,
+		total,
+		components,
+	};
+}
+
+// Normalize ephemeral ID submission count (0-3+) to 0-100
+function normalizeEphemeralIdScore(count: number): number {
+	if (count === 0) return 0;
+	if (count === 1) return 10; // Baseline
+	if (count === 2) return 70; // Warn threshold
+	return 100; // 3+ = definite fraud
+}
+
+// Normalize validation attempts (1-3+) to 0-100
+function normalizeValidationScore(count: number): number {
+	if (count === 1) return 0; // Normal
+	if (count === 2) return 40; // Acceptable retry
+	return 100; // 3+ = aggressive
+}
+
+// Normalize IP diversity (1-3+) to 0-100
+function normalizeIPScore(count: number): number {
+	if (count === 1) return 0; // Normal
+	if (count === 2) return 50; // Suspicious
+	return 100; // 3+ = proxy rotation
+}
+
+// Normalize JA4 composite score (0-230) to 0-100
+function normalizeJA4Score(rawScore: number): number {
+	if (rawScore === 0) return 0;
+	if (rawScore <= 70) return rawScore; // Linear below threshold
+
+	// Map 70-230 to 70-100 (diminishing returns)
+	return Math.round(70 + ((rawScore - 70) / (230 - 70)) * 30);
+}

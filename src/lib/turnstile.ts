@@ -212,9 +212,8 @@ async function getOffenseCount(ephemeralId: string, db: D1Database): Promise<num
 export async function checkEphemeralIdFraud(
 	ephemeralId: string,
 	db: D1Database
-): Promise<FraudCheckResult> {
+): Promise<FraudCheckResult & { ephemeralIdCount?: number; validationCount?: number; uniqueIPCount?: number }> {
 	const warnings: string[] = [];
-	let riskScore = 0;
 
 	try {
 		const oneHourAgo = toSQLiteDateTime(new Date(Date.now() - 60 * 60 * 1000));
@@ -239,11 +238,11 @@ export async function checkEphemeralIdFraud(
 
 		// STRICTER THRESHOLD: Block on 2nd submission (1 existing + 1 current) IN LAST HOUR
 		// Registration forms should only be submitted once per user
-		if (effectiveCount >= 2) {
+		const blockOnSubmissions = effectiveCount >= 2;
+		if (blockOnSubmissions) {
 			warnings.push(
 				`Multiple submissions detected (${effectiveCount} total in 1h) - registration forms should only be submitted once`
 			);
-			riskScore = 100; // Immediate block
 		}
 
 		// LAYER 2: Check validation attempts in last hour
@@ -265,16 +264,15 @@ export async function checkEphemeralIdFraud(
 		const effectiveValidationCount = validationCount + 1;
 
 		// Block on 3+ validation attempts in 1 hour (allows 1 retry for legitimate users)
-		if (effectiveValidationCount >= 3) {
+		const blockOnValidations = effectiveValidationCount >= 3;
+		if (blockOnValidations) {
 			warnings.push(
 				`Excessive validation attempts (${effectiveValidationCount} in 1h) - possible automated attack`
 			);
-			riskScore = Math.max(riskScore, 100); // Immediate block
 		}
 		// Warning on 2 validation attempts (1 existing + 1 current)
-		else if (effectiveValidationCount >= 2 && riskScore < 100) {
+		else if (effectiveValidationCount >= 2) {
 			warnings.push(`Multiple validation attempts detected (${effectiveValidationCount} in 1h)`);
-			riskScore = Math.max(riskScore, 60); // High risk but allow one retry
 		}
 
 		// LAYER 3: Check IP diversity (same ephemeral ID from multiple IPs = proxy rotation/botnet)
@@ -291,19 +289,19 @@ export async function checkEphemeralIdFraud(
 		const ipCount = uniqueIps?.count || 0;
 
 		// Same ephemeral ID from 2+ different IPs = suspicious (proxy rotation)
-		if (ipCount >= 2 && submissionCount > 0) {
+		const blockOnProxyRotation = ipCount >= 2 && submissionCount > 0;
+		if (blockOnProxyRotation) {
 			warnings.push(`Multiple IPs for same ephemeral ID (${ipCount} IPs)`);
-			riskScore = Math.max(riskScore, 100); // Immediate block on proxy rotation
 		}
 
-		const allowed = riskScore < 70;
+		const allowed = !(blockOnSubmissions || blockOnValidations || blockOnProxyRotation);
 
 		// Auto-blacklist high-risk ephemeral IDs with PROGRESSIVE timeout
 		let retryAfter: number | undefined;
 		let expiresAt: string | undefined;
 
-		if (!allowed && riskScore >= 70) {
-			const confidence = riskScore >= 100 ? 'high' : riskScore >= 80 ? 'medium' : 'low';
+		if (!allowed) {
+			const confidence = 'high'; // All blocks are high confidence based on hard thresholds
 
 			// Get offense count and calculate progressive timeout
 			const offenseCount = await getOffenseCount(ephemeralId, db);
@@ -323,7 +321,6 @@ export async function checkEphemeralIdFraud(
 				expiresIn,
 				submissionCount: effectiveCount,
 				detectionMetadata: {
-					risk_score: riskScore,
 					warnings,
 					submissions_1h: effectiveCount,
 					validations_1h: effectiveValidationCount,
@@ -337,7 +334,6 @@ export async function checkEphemeralIdFraud(
 			logger.warn(
 				{
 					ephemeralId,
-					riskScore,
 					confidence,
 					expiresIn,
 					offenseCount,
@@ -353,7 +349,6 @@ export async function checkEphemeralIdFraud(
 		logger.info(
 			{
 				ephemeralId,
-				riskScore,
 				allowed,
 				warnings,
 				submissions_1h: effectiveCount,
@@ -366,10 +361,13 @@ export async function checkEphemeralIdFraud(
 		return {
 			allowed,
 			reason: allowed ? undefined : 'You have made too many submission attempts',
-			riskScore,
 			warnings,
 			retryAfter,
 			expiresAt,
+			// Return raw counts for normalized scoring
+			ephemeralIdCount: effectiveCount,
+			validationCount: effectiveValidationCount,
+			uniqueIPCount: ipCount,
 		};
 	} catch (error) {
 		logger.error({ error, ephemeralId }, 'Error during fraud check');
@@ -377,8 +375,10 @@ export async function checkEphemeralIdFraud(
 		return {
 			allowed: true,
 			reason: 'Fraud check failed (allowing)',
-			riskScore: 0,
 			warnings: ['Fraud check error'],
+			ephemeralIdCount: 1,
+			validationCount: 1,
+			uniqueIPCount: 1,
 		};
 	}
 }

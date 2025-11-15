@@ -96,7 +96,8 @@ export async function createSubmission(
 	db: D1Database,
 	formData: FormSubmission,
 	metadata: RequestMetadata,
-	ephemeralId?: string | null
+	ephemeralId?: string | null,
+	riskScoreBreakdown?: any
 ): Promise<number> {
 	try {
 		const result = await db
@@ -107,14 +108,14 @@ export async function createSubmission(
 					postal_code, timezone, latitude, longitude, continent, is_eu_country,
 					asn, as_organization, colo, http_protocol, tls_version, tls_cipher,
 					bot_score, client_trust_score, verified_bot, detection_ids,
-					ja3_hash, ja4, ja4_signals
+					ja3_hash, ja4, ja4_signals, risk_score_breakdown
 				) VALUES (
 					?, ?, ?, ?, ?, ?,
 					?, ?, ?, ?, ?, ?,
 					?, ?, ?, ?, ?, ?,
 					?, ?, ?, ?, ?, ?,
 					?, ?, ?, ?,
-					?, ?, ?
+					?, ?, ?, ?
 				)`
 			)
 			.bind(
@@ -148,7 +149,8 @@ export async function createSubmission(
 				metadata.detectionIds ? JSON.stringify(metadata.detectionIds) : null,
 				metadata.ja3Hash || null,
 				metadata.ja4 || null,
-				metadata.ja4Signals ? JSON.stringify(metadata.ja4Signals) : null
+				metadata.ja4Signals ? JSON.stringify(metadata.ja4Signals) : null,
+				riskScoreBreakdown ? JSON.stringify(riskScoreBreakdown) : null
 			)
 			.run();
 

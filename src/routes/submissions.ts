@@ -12,6 +12,7 @@ import { logValidation, createSubmission } from '../lib/database';
 import logger from '../lib/logger';
 import { checkPreValidationBlock } from '../lib/fraud-prevalidation';
 import { checkJA4FraudPatterns } from '../lib/ja4-fraud-detection';
+import { calculateNormalizedRiskScore } from '../lib/scoring';
 import {
 	ValidationError,
 	RateLimitError,
@@ -242,6 +243,32 @@ app.post('/', async (c) => {
 			fraudCheck.warnings.push('JA4 not available');
 		}
 
+		// CALCULATE NORMALIZED RISK SCORE (0-100 scale)
+		// Collect all fraud detection data
+		const normalizedRiskScore = calculateNormalizedRiskScore({
+			tokenReplay: isReused,
+			emailRiskScore: 0, // TODO: Phase 2 - will add markov-mail email fraud detection
+			ephemeralIdCount: fraudCheck.ephemeralIdCount || 1,
+			validationCount: fraudCheck.validationCount || 1,
+			uniqueIPCount: fraudCheck.uniqueIPCount || 1,
+			ja4RawScore: ja4FraudCheck?.rawScore || 0,
+		});
+
+		logger.info(
+			{
+				normalized_score: normalizedRiskScore.total,
+				components: {
+					token_replay: normalizedRiskScore.tokenReplay,
+					email_fraud: normalizedRiskScore.emailFraud,
+					ephemeral_id: normalizedRiskScore.ephemeralId,
+					validation_freq: normalizedRiskScore.validationFrequency,
+					ip_diversity: normalizedRiskScore.ipDiversity,
+					ja4_hopping: normalizedRiskScore.ja4SessionHopping,
+				},
+			},
+			'Normalized risk score calculated'
+		);
+
 		// Now check if validation actually failed
 		if (!validation.valid) {
 			// Log validation attempt
@@ -319,7 +346,8 @@ app.post('/', async (c) => {
 				dateOfBirth: sanitized.dateOfBirth,
 			},
 			metadata,
-			validation.ephemeralId
+			validation.ephemeralId,
+			normalizedRiskScore
 		);
 
 		// Log successful validation
@@ -327,7 +355,7 @@ app.post('/', async (c) => {
 			tokenHash,
 			validation,
 			metadata,
-			riskScore: fraudCheck.riskScore,
+			riskScore: normalizedRiskScore.total,
 			allowed: true,
 			submissionId,
 		});
@@ -336,7 +364,8 @@ app.post('/', async (c) => {
 			{
 				submissionId,
 				email: sanitized.email,
-				riskScore: fraudCheck.riskScore,
+				riskScore: normalizedRiskScore.total,
+				breakdown: normalizedRiskScore.components,
 			},
 			'Submission created successfully'
 		);

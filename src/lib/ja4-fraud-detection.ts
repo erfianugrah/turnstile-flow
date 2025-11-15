@@ -99,8 +99,10 @@ export interface FraudCheckResult {
 	allowed: boolean;
 	/** Reason for blocking (if not allowed) */
 	reason?: string;
-	/** Composite risk score (0-100+) */
+	/** Composite risk score (0-100+) - will be normalized by scoring.ts */
 	riskScore: number;
+	/** Raw JA4 score (0-230) for normalization */
+	rawScore?: number;
 	/** List of warnings/detections */
 	warnings: string[];
 	/** Seconds until user can retry (if blocked) */
@@ -401,6 +403,7 @@ export async function checkJA4FraudPatterns(
 		return {
 			allowed: true,
 			riskScore: 0,
+			rawScore: 0,
 			warnings: ['JA4 not available'],
 		};
 	}
@@ -417,6 +420,7 @@ export async function checkJA4FraudPatterns(
 			return {
 				allowed: true,
 				riskScore: 0,
+				rawScore: 0,
 				warnings: [],
 			};
 		}
@@ -427,8 +431,9 @@ export async function checkJA4FraudPatterns(
 		// Step 3: Compare against global signals
 		const signals = compareGlobalSignals(clustering);
 
-		// Step 4: Calculate risk score
-		const riskScore = calculateCompositeRiskScore(clustering, velocity, signals);
+		// Step 4: Calculate raw risk score (0-230)
+		const rawScore = calculateCompositeRiskScore(clustering, velocity, signals);
+		const riskScore = rawScore; // Keep for backward compatibility
 
 		// Step 5: Generate warnings
 		const warnings = generateWarnings(clustering, velocity, signals);
@@ -483,6 +488,7 @@ export async function checkJA4FraudPatterns(
 				allowed: false,
 				reason: 'You have made too many submission attempts',
 				riskScore,
+				rawScore,
 				warnings,
 				retryAfter: expiresIn,
 				expiresAt,
@@ -496,6 +502,7 @@ export async function checkJA4FraudPatterns(
 				ja4,
 				remote_ip: remoteIp,
 				risk_score: riskScore,
+				raw_score: rawScore,
 				warnings,
 				blocked: false,
 			},
@@ -505,6 +512,7 @@ export async function checkJA4FraudPatterns(
 		return {
 			allowed: true,
 			riskScore,
+			rawScore,
 			warnings,
 		};
 	} catch (error) {
@@ -513,6 +521,7 @@ export async function checkJA4FraudPatterns(
 		return {
 			allowed: true,
 			riskScore: 0,
+			rawScore: 0,
 			warnings: ['JA4 fraud check error - failing open'],
 		};
 	}
