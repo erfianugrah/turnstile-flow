@@ -10,6 +10,7 @@ import {
 	getTlsVersionDistribution,
 	getJa3Distribution,
 	getJa4Distribution,
+	getEmailPatternDistribution,
 	getSubmissionById,
 	getTimeSeriesData,
 	detectFraudPatterns,
@@ -371,6 +372,31 @@ app.get('/ja4', async (c) => {
 			{
 				error: 'Internal server error',
 				message: 'Failed to fetch JA4 distribution',
+			},
+			500
+		);
+	}
+});
+
+// GET /api/analytics/email-patterns - Get email pattern type distribution (Phase 2)
+app.get('/email-patterns', async (c) => {
+	try {
+		const db = c.env.DB;
+		const distribution = await getEmailPatternDistribution(db);
+
+		logger.info('Email pattern distribution retrieved');
+
+		return c.json({
+			success: true,
+			data: distribution,
+		});
+	} catch (error) {
+		logger.error({ error }, 'Error fetching email pattern distribution');
+
+		return c.json(
+			{
+				error: 'Internal server error',
+				message: 'Failed to fetch email pattern distribution',
 			},
 			500
 		);

@@ -414,7 +414,33 @@ export async function getValidationStats(db: D1Database) {
 				ja4_fraud_blocks: number;
 			}>();
 
-		return stats;
+		// Get email fraud statistics from submissions table (Phase 2)
+		const emailStats = await db
+			.prepare(
+				`SELECT
+					COUNT(*) as total_with_email_check,
+					SUM(CASE WHEN email_markov_detected = 1 THEN 1 ELSE 0 END) as markov_detected,
+					SUM(CASE WHEN email_ood_detected = 1 THEN 1 ELSE 0 END) as ood_detected,
+					AVG(email_risk_score) as avg_email_risk_score
+				 FROM submissions
+				 WHERE email_risk_score IS NOT NULL`
+			)
+			.first<{
+				total_with_email_check: number;
+				markov_detected: number;
+				ood_detected: number;
+				avg_email_risk_score: number;
+			}>();
+
+		return {
+			...stats,
+			email_fraud: emailStats || {
+				total_with_email_check: 0,
+				markov_detected: 0,
+				ood_detected: 0,
+				avg_email_risk_score: 0,
+			},
+		};
 	} catch (error) {
 		logger.error({ error }, 'Error fetching validation stats');
 		throw error;
@@ -562,6 +588,33 @@ export async function getJa4Distribution(db: D1Database) {
 		return result.results;
 	} catch (error) {
 		logger.error({ error }, 'Error fetching JA4 distribution');
+		throw error;
+	}
+}
+
+/**
+ * Get email pattern type distribution (for analytics) - Phase 2
+ */
+export async function getEmailPatternDistribution(db: D1Database) {
+	try {
+		const result = await db
+			.prepare(
+				`SELECT
+					email_pattern_type,
+					COUNT(*) as count,
+					AVG(email_risk_score) as avg_risk_score,
+					SUM(CASE WHEN email_markov_detected = 1 THEN 1 ELSE 0 END) as markov_detected_count
+				 FROM submissions
+				 WHERE email_pattern_type IS NOT NULL
+				 GROUP BY email_pattern_type
+				 ORDER BY count DESC
+				 LIMIT 10`
+			)
+			.all();
+
+		return result.results;
+	} catch (error) {
+		logger.error({ error }, 'Error fetching email pattern distribution');
 		throw error;
 	}
 }
