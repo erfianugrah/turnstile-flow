@@ -992,11 +992,9 @@ export async function getRecentBlockedValidations(db: D1Database, limit: number 
 					city,
 					block_reason,
 					risk_score,
-					risk_score_breakdown,
 					bot_score,
 					user_agent,
 					ja4,
-					detection_type,
 					REPLACE(created_at, ' ', 'T') || 'Z' AS challenge_ts
 				 FROM turnstile_validations
 				 WHERE allowed = 0
