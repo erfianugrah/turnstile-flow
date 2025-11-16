@@ -9,6 +9,7 @@ export interface RouteConfig {
 	admin: string;
 	geo: string;
 	health: string;
+	config: string;
 }
 
 /**
@@ -19,7 +20,8 @@ const DEFAULT_ROUTES: RouteConfig = {
 	analytics: '/api/analytics',
 	admin: '/api/admin',
 	geo: '/api/geo',
-	health: '/api/health'
+	health: '/api/health',
+	config: '/api/config'
 };
 
 // In-memory cache (loaded once per worker instance)

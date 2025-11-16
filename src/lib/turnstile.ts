@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { TurnstileValidationResult, FraudCheckResult } from './types';
+import type { FraudDetectionConfig } from './config';
 import logger from './logger';
 import { addToBlacklist } from './fraud-prevalidation';
 import {
@@ -211,7 +212,8 @@ async function getOffenseCount(ephemeralId: string, db: D1Database): Promise<num
  */
 export async function checkEphemeralIdFraud(
 	ephemeralId: string,
-	db: D1Database
+	db: D1Database,
+	config: FraudDetectionConfig
 ): Promise<FraudCheckResult & { ephemeralIdCount?: number; validationCount?: number; uniqueIPCount?: number }> {
 	const warnings: string[] = [];
 
@@ -236,9 +238,9 @@ export async function checkEphemeralIdFraud(
 		// Add +1 to account for the current submission attempt (runs before creation)
 		const effectiveCount = submissionCount + 1;
 
-		// STRICTER THRESHOLD: Block on 2nd submission (1 existing + 1 current) IN LAST HOUR
+		// STRICTER THRESHOLD: Block on Nth submission (configurable, default 2)
 		// Registration forms should only be submitted once per user
-		const blockOnSubmissions = effectiveCount >= 2;
+		const blockOnSubmissions = effectiveCount >= config.detection.ephemeralIdSubmissionThreshold;
 		if (blockOnSubmissions) {
 			warnings.push(
 				`Multiple submissions detected (${effectiveCount} total in 1h) - registration forms should only be submitted once`
@@ -263,15 +265,15 @@ export async function checkEphemeralIdFraud(
 		// Add +1 for current validation attempt (this runs before logging validation)
 		const effectiveValidationCount = validationCount + 1;
 
-		// Block on 3+ validation attempts in 1 hour (allows 1 retry for legitimate users)
-		const blockOnValidations = effectiveValidationCount >= 3;
+		// Block on N+ validation attempts in 1 hour (configurable, default 3)
+		const blockOnValidations = effectiveValidationCount >= config.detection.validationFrequencyBlockThreshold;
 		if (blockOnValidations) {
 			warnings.push(
 				`Excessive validation attempts (${effectiveValidationCount} in 1h) - possible automated attack`
 			);
 		}
-		// Warning on 2 validation attempts (1 existing + 1 current)
-		else if (effectiveValidationCount >= 2) {
+		// Warning on warn threshold (configurable, default 2)
+		else if (effectiveValidationCount >= config.detection.validationFrequencyWarnThreshold) {
 			warnings.push(`Multiple validation attempts detected (${effectiveValidationCount} in 1h)`);
 		}
 
@@ -288,8 +290,8 @@ export async function checkEphemeralIdFraud(
 
 		const ipCount = uniqueIps?.count || 0;
 
-		// Same ephemeral ID from 2+ different IPs = suspicious (proxy rotation)
-		const blockOnProxyRotation = ipCount >= 2 && submissionCount > 0;
+		// Same ephemeral ID from multiple different IPs = suspicious (proxy rotation)
+		const blockOnProxyRotation = ipCount >= config.detection.ipDiversityThreshold && submissionCount > 0;
 		if (blockOnProxyRotation) {
 			warnings.push(`Multiple IPs for same ephemeral ID (${ipCount} IPs)`);
 		}

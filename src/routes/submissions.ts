@@ -16,6 +16,7 @@ import { checkJA4FraudPatterns } from '../lib/ja4-fraud-detection';
 import { calculateNormalizedRiskScore } from '../lib/scoring';
 import { checkEmailFraud } from '../lib/email-fraud-detection';
 import { extractField } from '../lib/field-mapper'; // Phase 3: Field mapping
+import { getConfig } from '../lib/config';
 import {
 	ValidationError,
 	RateLimitError,
@@ -51,6 +52,9 @@ app.post('/', async (c) => {
 	try {
 		const db = c.env.DB;
 		const secretKey = c.env['TURNSTILE-SECRET-KEY'];
+
+		// Load fraud detection configuration
+		const config = getConfig(c.env);
 
 		// ========== TESTING BYPASS CHECK ==========
 		// Check if testing bypass is enabled and valid API key provided
@@ -158,7 +162,7 @@ app.post('/', async (c) => {
 					uniqueIPCount: 1,
 					ja4RawScore: 0,
 					blockTrigger: 'token_replay'  // Phase 1.6
-				});
+				}, config);
 
 				// Log the validation attempt
 				try {
@@ -240,7 +244,7 @@ app.post('/', async (c) => {
 					uniqueIPCount: 1,
 					ja4RawScore: 0,
 					blockTrigger: 'ephemeral_id_fraud'  // Phase 1.6
-				});
+				}, config);
 
 				// Log validation attempt
 				try {
@@ -273,14 +277,14 @@ app.post('/', async (c) => {
 			// FRAUD DETECTION ON ALL REQUESTS (failed and successful validations)
 			// Check if this ephemeral ID is making repeated attempts (even with failed tokens)
 			// This catches attackers who repeatedly try with expired/invalid tokens
-			fraudCheck = await checkEphemeralIdFraud(validation.ephemeralId, db);
+			fraudCheck = await checkEphemeralIdFraud(validation.ephemeralId, db, config);
 
 			if (!fraudCheck.allowed) {
 				// Determine detection type based on fraud check reason
 				let detectionType: 'ephemeral_id_fraud' | 'ip_diversity' | 'validation_frequency' = 'ephemeral_id_fraud';
-				if (fraudCheck.uniqueIPCount && fraudCheck.uniqueIPCount >= 2) {
+				if (fraudCheck.uniqueIPCount && fraudCheck.uniqueIPCount >= config.detection.ipDiversityThreshold) {
 					detectionType = 'ip_diversity';
-				} else if (fraudCheck.validationCount && fraudCheck.validationCount >= 3) {
+				} else if (fraudCheck.validationCount && fraudCheck.validationCount >= config.detection.validationFrequencyBlockThreshold) {
 					detectionType = 'validation_frequency';
 				}
 
@@ -293,7 +297,7 @@ app.post('/', async (c) => {
 					uniqueIPCount: fraudCheck.uniqueIPCount || 1,
 					ja4RawScore: 0,
 					blockTrigger: detectionType  // Phase 1.6
-				});
+				}, config);
 
 				// Log validation attempt
 				try {
@@ -337,7 +341,8 @@ app.post('/', async (c) => {
 				metadata.remoteIp,
 				metadata.ja4,
 				validation.ephemeralId || null,  // Phase 1.8: Pass ephemeral ID for blacklisting (handle undefined)
-				db
+				db,
+				config
 			);
 
 			if (!ja4FraudCheck.allowed) {
@@ -350,7 +355,7 @@ app.post('/', async (c) => {
 					uniqueIPCount: fraudCheck.uniqueIPCount || 1,
 					ja4RawScore: ja4FraudCheck.rawScore || 0,
 					blockTrigger: 'ja4_session_hopping'  // Phase 1.8: All JA4 blocks use same trigger
-				});
+				}, config);
 
 				// Log validation attempt with layer-specific detection type (Phase 1.8)
 				try {
@@ -398,7 +403,7 @@ app.post('/', async (c) => {
 			validationCount: fraudCheck.validationCount || 1,
 			uniqueIPCount: fraudCheck.uniqueIPCount || 1,
 			ja4RawScore: ja4FraudCheck?.rawScore || 0,
-		});
+		}, config);
 
 		logger.info(
 			{
@@ -427,7 +432,7 @@ app.post('/', async (c) => {
 				uniqueIPCount: fraudCheck.uniqueIPCount || 1,
 				ja4RawScore: ja4FraudCheck?.rawScore || 0,
 				blockTrigger: 'turnstile_failed'  // Phase 1.6
-			});
+			}, config);
 
 			// Log validation attempt
 			try {
@@ -478,7 +483,7 @@ app.post('/', async (c) => {
 				uniqueIPCount: fraudCheck.uniqueIPCount || 1,
 				ja4RawScore: ja4FraudCheck?.rawScore || 0,
 				blockTrigger: 'duplicate_email'  // Phase 1.6
-			});
+			}, config);
 
 			// Log validation attempt
 			try {

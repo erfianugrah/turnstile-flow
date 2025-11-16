@@ -6,6 +6,7 @@ import { getRouteConfig, matchRoute, stripRoutePrefix } from './lib/router';
 import submissionsRoute from './routes/submissions';
 import analyticsRoute from './routes/analytics';
 import geoRoute from './routes/geo';
+import { config as configRoute } from './routes/config';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -100,6 +101,9 @@ app.all('*', async (c) => {
 
 			case 'geo':
 				return geoRoute.fetch(normalizedRequest, c.env, c.executionCtx);
+
+			case 'config':
+				return configRoute.fetch(normalizedRequest, c.env, c.executionCtx);
 
 			case 'health':
 				return c.json({

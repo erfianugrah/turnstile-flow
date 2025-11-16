@@ -199,4 +199,5 @@ export interface Env {
 	TURNSTILE_SITE_KEY?: string;
 	ALLOW_TESTING_BYPASS?: string; // Enable testing bypass (set to 'true' in dev/staging only)
 	ROUTES?: RouteConfig | string; // Dynamic route configuration (JSON string or object)
+	FRAUD_CONFIG?: Record<string, any> | string; // Fraud detection configuration (JSON string or object)
 }

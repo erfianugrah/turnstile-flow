@@ -23,6 +23,7 @@ This document provides exhaustive details on every API endpoint, including reque
   - [GET /api/analytics/fraud-patterns](#get-apianalyticsfraud-patterns)
   - [GET /api/analytics/export](#get-apianalyticsexport)
   - [GET /api/health](#get-apihealth)
+  - [GET /api/config](#get-apiconfig)
 
 ## Base URL
 
@@ -36,6 +37,7 @@ This document provides exhaustive details on every API endpoint, including reque
 - POST /api/submissions
 - GET /api/geo
 - GET /api/health
+- GET /api/config
 
 **Protected endpoints (require X-API-KEY header):**
 - GET /api/analytics/* (all analytics endpoints)
@@ -1369,6 +1371,188 @@ Interval: 30 seconds
 Timeout: 5 seconds
 ```
 
+---
+
+### GET /api/config
+
+Get fraud detection configuration.
+
+**Location:** `/src/routes/config.ts`
+
+#### Request
+
+**Headers:** None required
+
+**Query parameters:** None
+
+**Body:** None
+
+#### Response
+
+**Success (200):**
+```json
+{
+  "success": true,
+  "version": "2.0.0",
+  "customized": false,
+  "data": {
+    "risk": {
+      "blockThreshold": 70,
+      "levels": {
+        "low": { "min": 0, "max": 39 },
+        "medium": { "min": 40, "max": 69 },
+        "high": { "min": 70, "max": 100 }
+      },
+      "weights": {
+        "tokenReplay": 0.35,
+        "emailFraud": 0.17,
+        "ephemeralId": 0.18,
+        "validationFrequency": 0.13,
+        "ipDiversity": 0.09,
+        "ja4SessionHopping": 0.08
+      }
+    },
+    "ja4": {
+      "ipsQuantileThreshold": 0.95,
+      "reqsQuantileThreshold": 0.99,
+      "heuristicRatioThreshold": 0.8,
+      "browserRatioThreshold": 0.2,
+      "h2h3RatioThreshold": 0.9,
+      "cacheRatioThreshold": 0.5
+    },
+    "detection": {
+      "ephemeralIdSubmissionThreshold": 2,
+      "validationFrequencyBlockThreshold": 3,
+      "validationFrequencyWarnThreshold": 2,
+      "ipDiversityThreshold": 2,
+      "ja4Clustering": {
+        "ipClusteringThreshold": 2,
+        "rapidGlobalThreshold": 3,
+        "rapidGlobalWindowMinutes": 5,
+        "extendedGlobalThreshold": 5,
+        "extendedGlobalWindowMinutes": 60
+      }
+    },
+    "timeouts": {
+      "schedule": [3600, 14400, 28800, 43200, 86400],
+      "maximum": 86400
+    }
+  }
+}
+```
+
+**Field details:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| success | boolean | Always true if successful |
+| version | string | Configuration schema version |
+| customized | boolean | True if FRAUD_CONFIG environment variable is set |
+| data | object | Complete fraud detection configuration |
+| data.risk | object | Risk scoring configuration |
+| data.risk.blockThreshold | number | Block submissions with risk score ≥ this value (default: 70) |
+| data.risk.levels | object | Risk level ranges (low, medium, high) |
+| data.risk.weights | object | Component weights (must sum to 1.0) |
+| data.ja4 | object | JA4 fingerprint signal thresholds |
+| data.ja4.ipsQuantileThreshold | number | IP diversity percentile (default: 0.95 = 95th percentile) |
+| data.ja4.reqsQuantileThreshold | number | Request volume percentile (default: 0.99 = 99th percentile) |
+| data.detection | object | Detection thresholds |
+| data.detection.ephemeralIdSubmissionThreshold | number | Max submissions per device in 24h (default: 2) |
+| data.detection.validationFrequencyBlockThreshold | number | Max validation attempts in 1h to block (default: 3) |
+| data.detection.validationFrequencyWarnThreshold | number | Validation attempts to warn (default: 2) |
+| data.detection.ipDiversityThreshold | number | Max IPs per device in 24h (default: 2) |
+| data.detection.ja4Clustering | object | JA4 session hopping detection thresholds |
+| data.timeouts | object | Progressive timeout schedule |
+
+#### Usage
+
+**Get current configuration:**
+```bash
+curl https://form.erfi.dev/api/config | jq '.data.risk.blockThreshold'
+# Output: 70
+```
+
+**Check if customized:**
+```bash
+curl https://form.erfi.dev/api/config | jq '.customized'
+# Output: false (using defaults) or true (FRAUD_CONFIG set)
+```
+
+**Frontend usage:**
+```typescript
+// React component
+import { useConfig } from './hooks/useConfig';
+
+function MyComponent() {
+  const { config, loading } = useConfig();
+
+  if (loading) return <div>Loading...</div>;
+
+  return (
+    <div>
+      <p>Block Threshold: {config.risk.blockThreshold}</p>
+      <p>Email Weight: {config.risk.weights.emailFraud}</p>
+    </div>
+  );
+}
+```
+
+#### Configuration Customization
+
+**Via Cloudflare Dashboard:**
+1. Navigate to Workers & Pages → forminator → Settings → Variables
+2. Add secret `FRAUD_CONFIG` with JSON value:
+```json
+{
+  "risk": {
+    "blockThreshold": 80,
+    "weights": {
+      "emailFraud": 0.25
+    }
+  },
+  "detection": {
+    "ephemeralIdSubmissionThreshold": 3
+  }
+}
+```
+
+**Via wrangler CLI:**
+```bash
+echo '{"risk":{"blockThreshold":80}}' | wrangler secret put FRAUD_CONFIG
+```
+
+**Deep merge:** Only specified values are overridden. All other values use defaults.
+
+**Documentation:** See [CONFIGURATION-SYSTEM.md](../CONFIGURATION-SYSTEM.md) for complete guide.
+
+#### Implementation Details
+
+**Source:** `src/lib/config.ts`
+- Default configuration with research-backed rationale
+- Deep merge algorithm for partial overrides
+- Type-safe with FraudDetectionConfig interface
+- Zero hardcoded values in fraud detection code
+
+**Integration:**
+- All fraud detection functions accept config parameter
+- Frontend fetches config on mount via useConfig hook
+- Analytics UI displays dynamic thresholds
+
+**Testing:**
+```bash
+# Test default configuration
+curl https://form.erfi.dev/api/config | jq '.customized'
+# Expected: false
+
+# Set custom configuration
+echo '{"risk":{"blockThreshold":80}}' | wrangler secret put FRAUD_CONFIG
+
+# Verify custom configuration applied
+sleep 3
+curl https://form.erfi.dev/api/config | jq '{customized, blockThreshold: .data.risk.blockThreshold}'
+# Expected: {"customized": true, "blockThreshold": 80}
+```
+
 #### cURL Example
 
 ```bash
@@ -1528,6 +1712,7 @@ describe('API Endpoints', () => {
 
 ## Related Documentation
 
+- [CONFIGURATION-SYSTEM.md](../CONFIGURATION-SYSTEM.md) - Fraud detection configuration guide
 - [FORM-VALIDATION.md](./FORM-VALIDATION.md) - Input validation details
 - [TURNSTILE.md](./TURNSTILE.md) - Turnstile verification
 - [FRAUD-DETECTION.md](./FRAUD-DETECTION.md) - Fraud detection algorithm

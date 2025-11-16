@@ -35,6 +35,7 @@ Comprehensive technical documentation for **Forminator** - I'm collecting all yo
 | [GEOLOCATION.md](./GEOLOCATION.md) | Country detection via Cloudflare | ~28KB |
 | [TURNSTILE.md](./TURNSTILE.md) | Turnstile integration and verification | ~18KB |
 | [FRAUD-DETECTION.md](./FRAUD-DETECTION.md) | Ephemeral ID fraud detection with progressive timeouts | ~28KB |
+| [../CONFIGURATION-SYSTEM.md](../CONFIGURATION-SYSTEM.md) | Fraud detection configuration and customization guide | ~12KB |
 | [DATABASE-OPERATIONS.md](./DATABASE-OPERATIONS.md) | Complete D1 database management guide | ~35KB |
 
 ## Document Summaries
@@ -332,6 +333,7 @@ Comprehensive technical documentation for **Forminator** - I'm collecting all yo
 | Understand the architecture | [ARCHITECTURE.md](./ARCHITECTURE.md) |
 | Security audit required | [SECURITY.md](./SECURITY.md) |
 | Fraud detection too aggressive | [FRAUD-DETECTION.md](./FRAUD-DETECTION.md) → Risk Score section |
+| Customize fraud detection thresholds | [../CONFIGURATION-SYSTEM.md](../CONFIGURATION-SYSTEM.md) |
 | Test API endpoints | [API-REFERENCE.md](./API-REFERENCE.md) → Testing section |
 | Clear database or view data | [DATABASE-OPERATIONS.md](./DATABASE-OPERATIONS.md) → Common Operations |
 | Manage fraud blacklist | [DATABASE-OPERATIONS.md](./DATABASE-OPERATIONS.md) → Fraud Management |
@@ -510,6 +512,7 @@ When adding/updating a feature:
 | API endpoints | API-REFERENCE.md | Complete |
 | Turnstile | TURNSTILE.md | Complete |
 | Fraud detection | FRAUD-DETECTION.md | Complete |
+| Configuration | CONFIGURATION-SYSTEM.md | Complete |
 | Architecture | ARCHITECTURE.md | Complete |
 | Security | SECURITY.md | Complete |
 | Database | DATABASE-OPERATIONS.md | Complete |
@@ -517,6 +520,13 @@ When adding/updating a feature:
 | Deployment | README only | Needs doc |
 
 ### Recent Updates
+
+**2025-11-16:** Configuration system documentation
+- Added CONFIGURATION-SYSTEM.md - Complete fraud detection configuration guide (12KB)
+- Updated API-REFERENCE.md - Added /api/config endpoint documentation
+- Updated FRAUD-DETECTION.md - Added configuration system section
+- Updated SCORING-ANALYSIS.md - Note that thresholds are configurable
+- Updated this index with configuration system navigation
 
 **2025-11-13:** Database operations & fraud detection updates
 - Added DATABASE-OPERATIONS.md - Complete D1 management guide (35KB)

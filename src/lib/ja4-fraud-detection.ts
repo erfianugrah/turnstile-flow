@@ -11,7 +11,7 @@
  * - Signal 2: Rapid velocity (<60 min between submissions) → +60 points
  * - Signal 3: Global anomaly (high global distribution + local clustering) → +50/+40 points
  *
- * Block threshold: 70 points
+ * All thresholds are configurable via src/lib/config.ts
  *
  * Key Principle: Only use hard-to-spoof signals (JA4, ephemeral ID, CF global data, timing)
  */
@@ -19,6 +19,7 @@
 import logger from './logger';
 import { addToBlacklist } from './fraud-prevalidation';
 import { calculateProgressiveTimeout } from './turnstile';
+import type { FraudDetectionConfig } from './config';
 
 // ============================================================================
 // Type Definitions
@@ -386,15 +387,16 @@ function analyzeVelocity(clustering: ClusteringAnalysis): VelocityAnalysis {
  * Signal 3: Detects anomalies (globally distributed JA4 clustering locally)
  *
  * @param clustering Clustering analysis result
+ * @param config Fraud detection configuration
  * @returns Signal analysis result
  */
-function compareGlobalSignals(clustering: ClusteringAnalysis): SignalAnalysis {
+function compareGlobalSignals(clustering: ClusteringAnalysis, config: FraudDetectionConfig): SignalAnalysis {
 	const ipsQuantile = clustering.ja4SignalsAvg?.ips_quantile_1h ?? null;
 	const reqsQuantile = clustering.ja4SignalsAvg?.reqs_quantile_1h ?? null;
 
 	return {
-		highGlobalDistribution: ipsQuantile !== null && ipsQuantile > 0.95,
-		highRequestVolume: reqsQuantile !== null && reqsQuantile > 0.99,
+		highGlobalDistribution: ipsQuantile !== null && ipsQuantile > config.ja4.ipsQuantileThreshold,
+		highRequestVolume: reqsQuantile !== null && reqsQuantile > config.ja4.reqsQuantileThreshold,
 		ipsQuantile,
 		reqsQuantile,
 	};
@@ -505,7 +507,8 @@ async function blockForJA4Fraud(
 	ja4: string,
 	ephemeralId: string | null,
 	db: D1Database,
-	detectionLayer: 'ip_clustering' | 'rapid_global' | 'extended_global'
+	detectionLayer: 'ip_clustering' | 'rapid_global' | 'extended_global',
+	config: FraudDetectionConfig
 ): Promise<FraudCheckResult> {
 	// Calculate progressive timeout (max 24h for ephemeral IDs)
 	const offenseCount = await getOffenseCount(remoteIp, db);
@@ -514,7 +517,7 @@ async function blockForJA4Fraud(
 
 	// Calculate risk score
 	const velocity = analyzeVelocity(clustering);
-	const signals = compareGlobalSignals(clustering);
+	const signals = compareGlobalSignals(clustering, config);
 	const rawScore = calculateCompositeRiskScore(clustering, velocity, signals);
 	const warnings = generateWarnings(clustering, velocity, signals);
 
@@ -607,7 +610,8 @@ export async function checkJA4FraudPatterns(
 	remoteIp: string,
 	ja4: string | null,
 	ephemeralId: string | null,
-	db: D1Database
+	db: D1Database,
+	config: FraudDetectionConfig
 ): Promise<FraudCheckResult> {
 	// JA4 is required for this detection
 	if (!ja4) {
@@ -626,28 +630,28 @@ export async function checkJA4FraudPatterns(
 		// Layer 4a: JA4 + IP Clustering (same IP/subnet + same JA4)
 		const clusteringIP = await analyzeJA4Clustering(remoteIp, ja4, db);
 
-		if (clusteringIP && clusteringIP.ephemeralCount >= 2) {
+		if (clusteringIP && clusteringIP.ephemeralCount >= config.detection.ja4Clustering.ipClusteringThreshold) {
 			// Block: Same device (JA4) + same location (IP/subnet) + multiple sessions
 			logger.info({ remoteIp, ja4, ephemeralCount: clusteringIP.ephemeralCount }, 'Layer 4a: IP clustering detected');
-			return blockForJA4Fraud(clusteringIP, remoteIp, ja4, ephemeralId, db, 'ip_clustering');
+			return blockForJA4Fraud(clusteringIP, remoteIp, ja4, ephemeralId, db, 'ip_clustering', config);
 		}
 
 		// Layer 4b: JA4 + Rapid Global Clustering (5 min, 3+ ephemeral IDs, NO IP filter)
-		const clusteringRapid = await analyzeJA4GlobalClustering(ja4, db, 5);
+		const clusteringRapid = await analyzeJA4GlobalClustering(ja4, db, config.detection.ja4Clustering.rapidGlobalWindowMinutes);
 
-		if (clusteringRapid && clusteringRapid.ephemeralCount >= 3) {
-			// Block: Same device (JA4) + 3+ sessions in 5 minutes (aggressive)
+		if (clusteringRapid && clusteringRapid.ephemeralCount >= config.detection.ja4Clustering.rapidGlobalThreshold) {
+			// Block: Same device (JA4) + multiple sessions in rapid window (aggressive)
 			logger.info({ remoteIp, ja4, ephemeralCount: clusteringRapid.ephemeralCount }, 'Layer 4b: Rapid global clustering detected');
-			return blockForJA4Fraud(clusteringRapid, remoteIp, ja4, ephemeralId, db, 'rapid_global');
+			return blockForJA4Fraud(clusteringRapid, remoteIp, ja4, ephemeralId, db, 'rapid_global', config);
 		}
 
 		// Layer 4c: JA4 + Extended Global Clustering (1 hour, 5+ ephemeral IDs, NO IP filter)
-		const clusteringExtended = await analyzeJA4GlobalClustering(ja4, db, 60);
+		const clusteringExtended = await analyzeJA4GlobalClustering(ja4, db, config.detection.ja4Clustering.extendedGlobalWindowMinutes);
 
-		if (clusteringExtended && clusteringExtended.ephemeralCount >= 5) {
-			// Block: Same device (JA4) + 5+ sessions in 1 hour (slower attacks)
+		if (clusteringExtended && clusteringExtended.ephemeralCount >= config.detection.ja4Clustering.extendedGlobalThreshold) {
+			// Block: Same device (JA4) + multiple sessions in extended window (slower attacks)
 			logger.info({ remoteIp, ja4, ephemeralCount: clusteringExtended.ephemeralCount }, 'Layer 4c: Extended global clustering detected');
-			return blockForJA4Fraud(clusteringExtended, remoteIp, ja4, ephemeralId, db, 'extended_global');
+			return blockForJA4Fraud(clusteringExtended, remoteIp, ja4, ephemeralId, db, 'extended_global', config);
 		}
 
 		// All layers passed - allow submission
