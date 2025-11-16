@@ -282,7 +282,7 @@ export async function getSubmissions(
 		const sortOrder = filters.sortOrder || 'desc';
 
 		// Validate sortBy field (whitelist to prevent SQL injection)
-		const validSortFields = ['created_at', 'bot_score', 'email', 'country', 'first_name', 'last_name'];
+		const validSortFields = ['created_at', 'bot_score', 'email', 'country', 'first_name', 'last_name', 'risk_score'];
 		if (!validSortFields.includes(sortBy)) {
 			throw new Error(`Invalid sortBy field: ${sortBy}`);
 		}
@@ -299,23 +299,23 @@ export async function getSubmissions(
 		// Country filter
 		if (filters.countries && filters.countries.length > 0) {
 			const placeholders = filters.countries.map(() => '?').join(',');
-			whereClauses.push(`country IN (${placeholders})`);
+			whereClauses.push(`s.country IN (${placeholders})`);
 			bindings.push(...filters.countries);
 		}
 
 		// Bot score range
 		if (filters.botScoreMin !== undefined) {
-			whereClauses.push('bot_score >= ?');
+			whereClauses.push('s.bot_score >= ?');
 			bindings.push(filters.botScoreMin);
 		}
 		if (filters.botScoreMax !== undefined) {
-			whereClauses.push('bot_score <= ?');
+			whereClauses.push('s.bot_score <= ?');
 			bindings.push(filters.botScoreMax);
 		}
 
 		// Date range - convert ISO format dates from frontend to SQLite format
 		if (filters.startDate) {
-			whereClauses.push('created_at >= ?');
+			whereClauses.push('s.created_at >= ?');
 			// Convert ISO date to SQLite format if it contains 'T'
 			const startDate = filters.startDate.includes('T')
 				? toSQLiteDateTime(new Date(filters.startDate))
@@ -323,7 +323,7 @@ export async function getSubmissions(
 			bindings.push(startDate);
 		}
 		if (filters.endDate) {
-			whereClauses.push('created_at <= ?');
+			whereClauses.push('s.created_at <= ?');
 			// Convert ISO date to SQLite format if it contains 'T'
 			const endDate = filters.endDate.includes('T')
 				? toSQLiteDateTime(new Date(filters.endDate))
@@ -333,44 +333,48 @@ export async function getSubmissions(
 
 		// Verified bot filter
 		if (filters.verifiedBot !== undefined) {
-			whereClauses.push('verified_bot = ?');
+			whereClauses.push('s.verified_bot = ?');
 			bindings.push(filters.verifiedBot ? 1 : 0);
 		}
 
 		// JA3 hash presence
 		if (filters.hasJa3 !== undefined) {
-			whereClauses.push(filters.hasJa3 ? 'ja3_hash IS NOT NULL' : 'ja3_hash IS NULL');
+			whereClauses.push(filters.hasJa3 ? 's.ja3_hash IS NOT NULL' : 's.ja3_hash IS NULL');
 		}
 
 		// JA4 hash presence
 		if (filters.hasJa4 !== undefined) {
-			whereClauses.push(filters.hasJa4 ? 'ja4 IS NOT NULL' : 'ja4 IS NULL');
+			whereClauses.push(filters.hasJa4 ? 's.ja4 IS NOT NULL' : 's.ja4 IS NULL');
 		}
 
 		// Allowed status filter (show blocked, allowed, or all)
 		if (filters.allowed !== undefined && filters.allowed !== 'all') {
-			whereClauses.push('allowed = ?');
+			whereClauses.push('s.allowed = ?');
 			bindings.push(filters.allowed ? 1 : 0);
 		}
 
 		// Search across multiple fields
 		if (filters.search && filters.search.trim()) {
 			const searchTerm = `%${filters.search.trim()}%`;
-			whereClauses.push('(email LIKE ? OR first_name LIKE ? OR last_name LIKE ? OR remote_ip LIKE ?)');
+			whereClauses.push('(s.email LIKE ? OR s.first_name LIKE ? OR s.last_name LIKE ? OR s.remote_ip LIKE ?)');
 			bindings.push(searchTerm, searchTerm, searchTerm, searchTerm);
 		}
 
 		const whereClause = whereClauses.join(' AND ');
 
-		// Build main query
+		// Build main query - join with turnstile_validations to get risk scores
+		// Handle risk_score sorting from joined table
+		const orderByField = sortBy === 'risk_score' ? 'tv.risk_score' : `s.${sortBy}`;
 		const query = `
 			SELECT
-				id, first_name, last_name, email, country, city, bot_score,
-				created_at, remote_ip, user_agent, tls_version, asn,
-				ja3_hash, ja4, ephemeral_id, verified_bot
-			FROM submissions
+				s.id, s.first_name, s.last_name, s.email, s.country, s.city, s.bot_score,
+				s.created_at, s.remote_ip, s.user_agent, s.tls_version, s.asn,
+				s.ja3_hash, s.ja4, s.ephemeral_id, s.verified_bot,
+				tv.risk_score, tv.risk_score_breakdown
+			FROM submissions s
+			LEFT JOIN turnstile_validations tv ON s.id = tv.submission_id
 			WHERE ${whereClause}
-			ORDER BY ${sortBy} ${sortOrder}
+			ORDER BY ${orderByField} ${sortOrder}
 			LIMIT ? OFFSET ?
 		`;
 
@@ -642,7 +646,12 @@ export async function getEmailPatternDistribution(db: D1Database) {
 export async function getSubmissionById(db: D1Database, id: number) {
 	try {
 		const submission = await db
-			.prepare('SELECT * FROM submissions WHERE id = ?')
+			.prepare(`
+				SELECT s.*, tv.risk_score, tv.risk_score_breakdown
+				FROM submissions s
+				LEFT JOIN turnstile_validations tv ON s.id = tv.submission_id
+				WHERE s.id = ?
+			`)
 			.bind(id)
 			.first();
 
