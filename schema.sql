@@ -46,6 +46,10 @@ CREATE TABLE IF NOT EXISTS submissions (
 	email_ood_detected INTEGER, -- 0 or 1
 	-- Risk scoring breakdown (Phase 2)
 	risk_score_breakdown TEXT, -- JSON: component scores for transparency
+	-- Payload-agnostic forms (Phase 3)
+	form_data TEXT, -- Complete raw JSON payload
+	extracted_email TEXT, -- Extracted email for querying
+	extracted_phone TEXT, -- Extracted phone for querying
 	-- Timestamps
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -143,3 +147,6 @@ CREATE INDEX IF NOT EXISTS idx_blacklist_ip ON fraud_blacklist(ip_address, expir
 CREATE INDEX IF NOT EXISTS idx_blacklist_ja4 ON fraud_blacklist(ja4, expires_at);
 CREATE INDEX IF NOT EXISTS idx_blacklist_expires ON fraud_blacklist(expires_at);
 CREATE INDEX IF NOT EXISTS idx_submissions_email_pattern ON submissions(email_pattern_type);
+-- Phase 3: Indexes for extracted fields
+CREATE INDEX IF NOT EXISTS idx_submissions_extracted_email ON submissions(extracted_email);
+CREATE INDEX IF NOT EXISTS idx_submissions_extracted_phone ON submissions(extracted_phone);

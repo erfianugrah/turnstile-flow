@@ -33,7 +33,6 @@
 		"ENVIRONMENT": "production",
 		"ALLOWED_ORIGINS": "https://form.erfi.dev,https://erfi.dev,https://erfianugrah.com",
 		"ALLOW_TESTING_BYPASS": "false", // Set to "true" only in dev/staging
-
 		// Configurable route paths (customize without code changes)
 		"ROUTES": {
 			"submissions": "/api/submissions",
@@ -51,6 +50,13 @@
 		{
 			"pattern": "form.erfi.dev",
 			"custom_domain": true
+		}
+	],
+	"kv_namespaces": [
+		{
+			"binding": "FORM_CONFIG",
+			"id": "be7d939c7fcc45afbf79140a22578600",
+			"remote": true
 		}
 	]
 	// Note: Secrets should be set via CLI:

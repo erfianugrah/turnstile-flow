@@ -106,7 +106,11 @@ export async function createSubmission(
 	metadata: RequestMetadata,
 	ephemeralId?: string | null,
 	riskScoreBreakdown?: any,
-	emailFraudResult?: { riskScore: number; signals: any } | null
+	emailFraudResult?: { riskScore: number; signals: any } | null,
+	// Phase 3: Payload-agnostic forms
+	rawPayload?: Record<string, any> | null,
+	extractedEmail?: string | null,
+	extractedPhone?: string | null
 ): Promise<number> {
 	try {
 		const result = await db
@@ -120,7 +124,8 @@ export async function createSubmission(
 					ja3_hash, ja4, ja4_signals,
 					email_risk_score, email_fraud_signals, email_pattern_type,
 					email_markov_detected, email_ood_detected,
-					risk_score_breakdown
+					risk_score_breakdown,
+					form_data, extracted_email, extracted_phone
 				) VALUES (
 					?, ?, ?, ?, ?, ?,
 					?, ?, ?, ?, ?, ?,
@@ -129,7 +134,8 @@ export async function createSubmission(
 					?, ?, ?, ?,
 					?, ?, ?,
 					?, ?, ?, ?, ?,
-					?
+					?,
+					?, ?, ?
 				)`
 			)
 			.bind(
@@ -169,7 +175,11 @@ export async function createSubmission(
 				emailFraudResult?.signals.patternType || null,
 				emailFraudResult?.signals.markovDetected ? 1 : 0,
 				emailFraudResult?.signals.oodDetected ? 1 : 0,
-				riskScoreBreakdown ? JSON.stringify(riskScoreBreakdown) : null
+				riskScoreBreakdown ? JSON.stringify(riskScoreBreakdown) : null,
+				// Phase 3: Store raw payload and extracted fields
+				rawPayload ? JSON.stringify(rawPayload) : null,
+				extractedEmail || null,
+				extractedPhone || null
 			)
 			.run();
 

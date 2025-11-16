@@ -190,6 +190,9 @@ export interface Env {
 		}>;
 	};
 
+	// KV Namespaces
+	FORM_CONFIG?: KVNamespace; // Field mappings for payload-agnostic forms
+
 	// Variables
 	ENVIRONMENT?: string;
 	ALLOWED_ORIGINS?: string; // Comma-separated list

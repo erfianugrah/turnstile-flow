@@ -15,6 +15,7 @@ import { checkPreValidationBlock } from '../lib/fraud-prevalidation';
 import { checkJA4FraudPatterns } from '../lib/ja4-fraud-detection';
 import { calculateNormalizedRiskScore } from '../lib/scoring';
 import { checkEmailFraud } from '../lib/email-fraud-detection';
+import { extractField } from '../lib/field-mapper'; // Phase 3: Field mapping
 import {
 	ValidationError,
 	RateLimitError,
@@ -82,11 +83,15 @@ app.post('/', async (c) => {
 			'Form submission received'
 		);
 
-		// Parse request body
-		const body = await c.req.json();
+		// Parse request body (Phase 3: Store raw payload for payload-agnostic forms)
+		const rawPayload = await c.req.json();
 
-		// Validate form data
-		const validationResult = formSubmissionSchema.safeParse(body);
+		// Extract fields using field mapper (Phase 3: Try field extraction first)
+		const extractedEmail = await extractField(rawPayload, 'email', c.env);
+		const extractedPhone = await extractField(rawPayload, 'phone', c.env);
+
+		// Validate form data (backwards compatibility)
+		const validationResult = formSubmissionSchema.safeParse(rawPayload);
 
 		if (!validationResult.success) {
 			throw new ValidationError('Form validation failed', {
@@ -517,7 +522,10 @@ app.post('/', async (c) => {
 			metadata,
 			validation.ephemeralId,
 			normalizedRiskScore,
-			emailFraudResult // Phase 2: Include email fraud detection results
+			emailFraudResult, // Phase 2: Include email fraud detection results
+			rawPayload, // Phase 3: Store raw payload
+			extractedEmail, // Phase 3: Store extracted email
+			extractedPhone // Phase 3: Store extracted phone
 		);
 
 		// Log successful validation
