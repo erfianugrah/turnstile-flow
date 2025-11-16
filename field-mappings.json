@@ -1,0 +1,43 @@
+{
+  "email": {
+    "paths": ["email", "userEmail", "contact_email", "emailAddress", "e-mail"],
+    "required": false,
+    "fraudDetection": true,
+    "validation": {
+      "maxLength": 255,
+      "type": "email"
+    }
+  },
+  "phone": {
+    "paths": ["phone", "phoneNumber", "contact_phone", "mobile", "tel"],
+    "required": false,
+    "fraudDetection": false,
+    "validation": {
+      "maxLength": 20,
+      "type": "phone"
+    }
+  },
+  "firstName": {
+    "paths": ["firstName", "first_name", "fname", "givenName"],
+    "required": false,
+    "fraudDetection": false,
+    "validation": {
+      "maxLength": 100,
+      "type": "string"
+    }
+  },
+  "lastName": {
+    "paths": ["lastName", "last_name", "lname", "surname", "familyName"],
+    "required": false,
+    "fraudDetection": false,
+    "validation": {
+      "maxLength": 100,
+      "type": "string"
+    }
+  },
+  "turnstileToken": {
+    "paths": ["turnstileToken", "cf-turnstile-response", "captcha_token", "turnstile"],
+    "required": true,
+    "fraudDetection": false
+  }
+}
