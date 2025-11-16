@@ -1,6 +1,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../ui/dialog';
 import { FraudAssessment } from '../FraudAssessment';
 import { JA4SignalsDetail } from '../JA4SignalsDetail';
+import type { FraudDetectionConfig } from '../../../hooks/useConfig';
 
 export interface SubmissionDetail {
 	// Form data
@@ -50,9 +51,10 @@ interface SubmissionDetailDialogProps {
 	submission: SubmissionDetail | null;
 	loading: boolean;
 	onClose: () => void;
+	config?: FraudDetectionConfig;
 }
 
-export function SubmissionDetailDialog({ submission, loading, onClose }: SubmissionDetailDialogProps) {
+export function SubmissionDetailDialog({ submission, loading, onClose, config }: SubmissionDetailDialogProps) {
 	return (
 		<Dialog open={submission !== null} onClose={onClose}>
 			<DialogContent className="p-0 max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -111,7 +113,7 @@ export function SubmissionDetailDialog({ submission, loading, onClose }: Submiss
 							{submission.risk_score_breakdown && (() => {
 								try {
 									const breakdown = JSON.parse(submission.risk_score_breakdown);
-									return <FraudAssessment breakdown={breakdown} />;
+									return <FraudAssessment breakdown={breakdown} config={config} />;
 								} catch (e) {
 									return null;
 								}
@@ -255,7 +257,7 @@ export function SubmissionDetailDialog({ submission, loading, onClose }: Submiss
 							{submission.ja4 && submission.ja4_signals && (() => {
 								try {
 									const signals = JSON.parse(submission.ja4_signals);
-									return <JA4SignalsDetail signals={signals} ja4Fingerprint={submission.ja4} />;
+									return <JA4SignalsDetail signals={signals} ja4Fingerprint={submission.ja4} config={config} />;
 								} catch (e) {
 									return (
 										<div>

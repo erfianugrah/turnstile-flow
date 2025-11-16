@@ -1,6 +1,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../ui/dialog';
 import { FraudAssessment } from '../FraudAssessment';
 import { JA4SignalsDetail } from '../JA4SignalsDetail';
+import type { FraudDetectionConfig } from '../../../hooks/useConfig';
 
 export interface ValidationDetail {
 	// Validation data
@@ -52,9 +53,10 @@ interface ValidationDetailDialogProps {
 	validation: ValidationDetail | null;
 	loading: boolean;
 	onClose: () => void;
+	config?: FraudDetectionConfig;
 }
 
-export function ValidationDetailDialog({ validation, loading, onClose }: ValidationDetailDialogProps) {
+export function ValidationDetailDialog({ validation, loading, onClose, config }: ValidationDetailDialogProps) {
 	return (
 		<Dialog open={validation !== null} onClose={onClose}>
 			<DialogContent className="p-0 max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -137,7 +139,7 @@ export function ValidationDetailDialog({ validation, loading, onClose }: Validat
 							{validation.risk_score_breakdown && (() => {
 								try {
 									const breakdown = JSON.parse(validation.risk_score_breakdown);
-									return <FraudAssessment breakdown={breakdown} />;
+									return <FraudAssessment breakdown={breakdown} config={config} />;
 								} catch (e) {
 									return null;
 								}
@@ -277,7 +279,7 @@ export function ValidationDetailDialog({ validation, loading, onClose }: Validat
 							{validation.ja4 && validation.ja4_signals && (() => {
 								try {
 									const signals = JSON.parse(validation.ja4_signals);
-									return <JA4SignalsDetail signals={signals} ja4Fingerprint={validation.ja4} />;
+									return <JA4SignalsDetail signals={signals} ja4Fingerprint={validation.ja4} config={config} />;
 								} catch (e) {
 									return (
 										<div>

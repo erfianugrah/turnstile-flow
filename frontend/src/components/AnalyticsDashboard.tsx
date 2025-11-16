@@ -15,8 +15,11 @@ import { useAnalytics } from '../hooks/useAnalytics';
 import { useSubmissions, type UseSubmissionsFilters } from '../hooks/useSubmissions';
 import { useBlacklist } from '../hooks/useBlacklist';
 import { useBlockedValidations } from '../hooks/useBlockedValidations';
+import { useConfig } from '../hooks/useConfig';
 
 export default function AnalyticsDashboard() {
+	// Fetch fraud detection configuration
+	const { config } = useConfig();
 	// API Key state
 	const [apiKey, setApiKey] = useState<string>('');
 	const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
@@ -352,12 +355,14 @@ export default function AnalyticsDashboard() {
 					submission={selectedSubmission}
 					loading={submissionModalLoading}
 					onClose={() => setSelectedSubmission(null)}
+					config={config}
 				/>
 
 				<ValidationDetailDialog
 					validation={selectedValidation}
 					loading={validationModalLoading}
 					onClose={() => setSelectedValidation(null)}
+					config={config}
 				/>
 			</div>
 		</>

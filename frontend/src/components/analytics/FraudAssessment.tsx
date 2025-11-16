@@ -2,6 +2,7 @@ import { Card, CardHeader, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Progress } from '../ui/progress';
 import { Calculator, Info } from 'lucide-react';
+import type { FraudDetectionConfig } from '../../hooks/useConfig';
 
 interface RiskComponent {
 	score: number;
@@ -22,18 +23,27 @@ interface RiskBreakdown {
 	};
 }
 
-export function FraudAssessment({ breakdown }: { breakdown: RiskBreakdown }) {
+interface FraudAssessmentProps {
+	breakdown: RiskBreakdown;
+	config?: FraudDetectionConfig;
+}
+
+export function FraudAssessment({ breakdown, config }: FraudAssessmentProps) {
 	const { total, components } = breakdown;
 
-	const severity = total >= 70 ? 'destructive' : total >= 40 ? 'default' : 'secondary';
+	// Use config thresholds or defaults
+	const blockThreshold = config?.risk.blockThreshold ?? 70;
+	const mediumThreshold = config?.risk.levels.medium.min ?? 40;
+
+	const severity = total >= blockThreshold ? 'destructive' : total >= mediumThreshold ? 'default' : 'secondary';
 	const severityColor =
-		total >= 70
+		total >= blockThreshold
 			? 'border-red-500 dark:border-red-400'
-			: total >= 40
+			: total >= mediumThreshold
 			? 'border-yellow-500 dark:border-yellow-400'
 			: 'border-green-500 dark:border-green-400';
 
-	const severityText = total >= 70 ? 'HIGH RISK (Blocked)' : total >= 40 ? 'MEDIUM RISK' : 'LOW RISK';
+	const severityText = total >= blockThreshold ? 'HIGH RISK (Blocked)' : total >= mediumThreshold ? 'MEDIUM RISK' : 'LOW RISK';
 
 	return (
 		<Card className={`border-l-4 ${severityColor}`}>
@@ -45,7 +55,7 @@ export function FraudAssessment({ breakdown }: { breakdown: RiskBreakdown }) {
 							Risk Score Calculation
 						</h3>
 						<p className="text-xs text-muted-foreground mt-1">
-							{severityText} • Threshold: 70/100
+							{severityText} • Threshold: {blockThreshold}/100
 						</p>
 					</div>
 					<Badge variant={severity} className="text-lg font-mono">

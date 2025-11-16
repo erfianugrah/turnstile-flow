@@ -1,6 +1,7 @@
 import { Card, CardHeader, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { AlertCircle, CheckCircle, AlertTriangle } from 'lucide-react';
+import type { FraudDetectionConfig } from '../../hooks/useConfig';
 
 interface JA4Signals {
 	ips_quantile_1h?: number;
@@ -18,9 +19,18 @@ interface JA4Signals {
 interface JA4SignalsDetailProps {
 	signals: JA4Signals;
 	ja4Fingerprint: string;
+	config?: FraudDetectionConfig;
 }
 
-export function JA4SignalsDetail({ signals, ja4Fingerprint }: JA4SignalsDetailProps) {
+export function JA4SignalsDetail({ signals, ja4Fingerprint, config }: JA4SignalsDetailProps) {
+	// Use config thresholds or defaults
+	const ipsThreshold = config?.ja4.ipsQuantileThreshold ?? 0.95;
+	const reqsThreshold = config?.ja4.reqsQuantileThreshold ?? 0.99;
+	const heuristicThreshold = config?.ja4.heuristicRatioThreshold ?? 0.8;
+	const browserThreshold = config?.ja4.browserRatioThreshold ?? 0.2;
+	const h2h3Threshold = config?.ja4.h2h3RatioThreshold ?? 0.9;
+	const cacheThreshold = config?.ja4.cacheRatioThreshold ?? 0.5;
+
 	if (!signals || Object.keys(signals).length === 0) {
 		return (
 			<Card>
@@ -50,7 +60,7 @@ export function JA4SignalsDetail({ signals, ja4Fingerprint }: JA4SignalsDetailPr
 					<SignalRow
 						label="IP Diversity (Global)"
 						value={signals.ips_quantile_1h}
-						threshold={0.95}
+						threshold={ipsThreshold}
 						description="This JA4 is used by many different IPs globally. High values can indicate popular browser OR proxy/bot networks."
 						format="percentile"
 						used={true}
@@ -59,7 +69,7 @@ export function JA4SignalsDetail({ signals, ja4Fingerprint }: JA4SignalsDetailPr
 					<SignalRow
 						label="Request Volume (Global)"
 						value={signals.reqs_quantile_1h}
-						threshold={0.99}
+						threshold={reqsThreshold}
 						description="This JA4 generates high request volume globally. Can indicate popular browser OR bot networks."
 						format="percentile"
 						used={true}
@@ -75,7 +85,7 @@ export function JA4SignalsDetail({ signals, ja4Fingerprint }: JA4SignalsDetailPr
 					<SignalRow
 						label="Heuristic Ratio"
 						value={signals.heuristic_ratio_1h}
-						threshold={0.8}
+						threshold={heuristicThreshold}
 						description="Ratio of heuristic bot detections. High values indicate bot-like behavior."
 						format="percentage"
 						used={false}
@@ -84,7 +94,7 @@ export function JA4SignalsDetail({ signals, ja4Fingerprint }: JA4SignalsDetailPr
 					<SignalRow
 						label="Browser Ratio"
 						value={signals.browser_ratio_1h}
-						threshold={0.2}
+						threshold={browserThreshold}
 						description="Ratio of browser-like requests. Low values may indicate automation."
 						format="percentage"
 						used={false}
@@ -93,7 +103,7 @@ export function JA4SignalsDetail({ signals, ja4Fingerprint }: JA4SignalsDetailPr
 					<SignalRow
 						label="HTTP/2-3 Ratio"
 						value={signals.h2h3_ratio_1h}
-						threshold={0.9}
+						threshold={h2h3Threshold}
 						description="Ratio of HTTP/2 and HTTP/3 requests. Unusual values may indicate custom clients."
 						format="percentage"
 						used={false}
@@ -102,7 +112,7 @@ export function JA4SignalsDetail({ signals, ja4Fingerprint }: JA4SignalsDetailPr
 					<SignalRow
 						label="Cache Ratio"
 						value={signals.cache_ratio_1h}
-						threshold={0.5}
+						threshold={cacheThreshold}
 						description="Ratio of cached responses. Very low values may indicate scraping."
 						format="percentage"
 						used={false}
