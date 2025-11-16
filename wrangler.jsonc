@@ -39,8 +39,26 @@
 			"analytics": "/api/analytics",
 			"admin": "/api/admin",
 			"geo": "/api/geo",
-			"health": "/api/health"
+			"health": "/api/health",
+			"config": "/api/config"
 		}
+		// Fraud detection configuration (optional - overrides sane defaults)
+		// See src/lib/config.ts for full list of options and default values
+		// Example: Increase block threshold to 80 for stricter enforcement
+		// "FRAUD_CONFIG": {
+		//   "risk": {
+		//     "blockThreshold": 80,
+		//     "weights": {
+		//       "emailFraud": 0.20
+		//     }
+		//   },
+		//   "ja4": {
+		//     "ipsQuantileThreshold": 0.98
+		//   },
+		//   "detection": {
+		//     "ephemeralIdSubmissionThreshold": 3
+		//   }
+		// }
 	},
 	// Observability
 	"observability": {

@@ -15,16 +15,18 @@ const config = new Hono<{ Bindings: Env }>();
  * GET /api/config
  *
  * Returns fraud detection system configuration
+ * Merges default values with custom FRAUD_CONFIG from environment
  * Public endpoint (no authentication required)
  */
 config.get('/', (c) => {
 	try {
-		const configuration = getConfig();
+		const configuration = getConfig(c.env);
 
 		return c.json({
 			success: true,
 			data: configuration,
 			version: '2.0.0',
+			customized: !!c.env.FRAUD_CONFIG, // Indicates if custom config is active
 		});
 	} catch (error) {
 		console.error('Config retrieval error:', error);
