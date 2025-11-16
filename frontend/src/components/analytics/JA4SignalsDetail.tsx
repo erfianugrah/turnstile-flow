@@ -51,7 +51,7 @@ export function JA4SignalsDetail({ signals, ja4Fingerprint }: JA4SignalsDetailPr
 						label="IP Diversity (Global)"
 						value={signals.ips_quantile_1h}
 						threshold={0.95}
-						description="Percentile of JA4s by IP diversity. High values indicate residential proxy networks."
+						description="This JA4 is used by many different IPs globally. High values can indicate popular browser OR proxy/bot networks."
 						format="percentile"
 						used={true}
 					/>
@@ -60,7 +60,7 @@ export function JA4SignalsDetail({ signals, ja4Fingerprint }: JA4SignalsDetailPr
 						label="Request Volume (Global)"
 						value={signals.reqs_quantile_1h}
 						threshold={0.99}
-						description="Percentile of JA4s by request volume. Very high values indicate bot networks."
+						description="This JA4 generates high request volume globally. Can indicate popular browser OR bot networks."
 						format="percentile"
 						used={true}
 					/>
