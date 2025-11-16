@@ -282,9 +282,9 @@ app.post('/', async (c) => {
 			if (!fraudCheck.allowed) {
 				// Determine detection type based on fraud check reason
 				let detectionType: 'ephemeral_id_fraud' | 'ip_diversity' | 'validation_frequency' = 'ephemeral_id_fraud';
-				if (fraudCheck.uniqueIPCount && fraudCheck.uniqueIPCount >= 2) {
+				if (fraudCheck.uniqueIPCount && fraudCheck.uniqueIPCount >= config.detection.ipDiversityThreshold) {
 					detectionType = 'ip_diversity';
-				} else if (fraudCheck.validationCount && fraudCheck.validationCount >= 3) {
+				} else if (fraudCheck.validationCount && fraudCheck.validationCount >= config.detection.validationFrequencyBlockThreshold) {
 					detectionType = 'validation_frequency';
 				}
 
