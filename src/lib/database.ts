@@ -378,10 +378,10 @@ export async function getSubmissions(
 			LIMIT ? OFFSET ?
 		`;
 
-		// Build count query for total
+		// Build count query for total (must use same alias as main query)
 		const countQuery = `
 			SELECT COUNT(*) as total
-			FROM submissions
+			FROM submissions s
 			WHERE ${whereClause}
 		`;
 
