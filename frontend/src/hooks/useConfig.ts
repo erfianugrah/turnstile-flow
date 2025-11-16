@@ -112,7 +112,7 @@ export function useConfig() {
 					throw new Error(`HTTP ${response.status}: ${response.statusText}`);
 				}
 
-				const json = await response.json();
+				const json = await response.json() as { success: boolean; data?: FraudDetectionConfig };
 				if (json.success && json.data) {
 					setConfig(json.data);
 					setError(null);

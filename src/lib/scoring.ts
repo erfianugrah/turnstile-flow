@@ -3,7 +3,7 @@
  *
  * Implements weighted component system to normalize risk scores to 0-100 scale
  *
- * Component Weights (normalized to 100%):
+ * Component Weights (configurable, defaults sum to 100%):
  * - Token Replay: 35% (instant block, highest priority)
  * - Email Fraud: 17% (pattern detection via markov-mail)
  * - Ephemeral ID: 18% (device tracking, core fraud signal)
@@ -11,10 +11,11 @@
  * - IP Diversity: 9% (proxy rotation detection)
  * - JA4 Session Hopping: 8% (browser hopping detection)
  *
- * Total: 100% (proportionally normalized from previous 115%)
- *
- * Block Threshold: 70/100
+ * All thresholds and weights are configurable via src/lib/config.ts
+ * Block Threshold: Default 70/100 (configurable)
  */
+
+import type { FraudDetectionConfig } from './config';
 
 export interface RiskComponent {
 	score: number; // 0-100
@@ -35,46 +36,52 @@ export interface RiskScoreBreakdown {
 	components: Record<string, RiskComponent>;
 }
 
-export function calculateNormalizedRiskScore(checks: {
-	tokenReplay: boolean;
-	emailRiskScore?: number; // 0-100
-	ephemeralIdCount: number;
-	validationCount: number;
-	uniqueIPCount: number;
-	ja4RawScore: number; // 0-230
-	blockTrigger?: 'token_replay' | 'ephemeral_id_fraud' | 'ja4_session_hopping' | 'ip_diversity' | 'validation_frequency' | 'duplicate_email' | 'turnstile_failed'; // Phase 1.6: Indicates which check triggered a block
-}): RiskScoreBreakdown {
+export function calculateNormalizedRiskScore(
+	checks: {
+		tokenReplay: boolean;
+		emailRiskScore?: number; // 0-100
+		ephemeralIdCount: number;
+		validationCount: number;
+		uniqueIPCount: number;
+		ja4RawScore: number; // 0-230
+		blockTrigger?: 'token_replay' | 'ephemeral_id_fraud' | 'ja4_session_hopping' | 'ip_diversity' | 'validation_frequency' | 'duplicate_email' | 'turnstile_failed'; // Phase 1.6: Indicates which check triggered a block
+	},
+	config: FraudDetectionConfig
+): RiskScoreBreakdown {
 	// Normalize each component
 	const components: Record<string, RiskComponent> = {};
 
 	// Token Replay (instant block)
+	const tokenWeight = config.risk.weights.tokenReplay;
 	components.tokenReplay = {
 		score: checks.tokenReplay ? 100 : 0,
-		weight: 0.35,
-		contribution: checks.tokenReplay ? 35 : 0,
+		weight: tokenWeight,
+		contribution: checks.tokenReplay ? tokenWeight * 100 : 0,
 		reason: checks.tokenReplay ? 'Token already used' : 'Token valid',
 	};
 
 	// Email Fraud (markov-mail, already 0-100)
 	const emailScore = checks.emailRiskScore || 0;
+	const emailWeight = config.risk.weights.emailFraud;
 	components.emailFraud = {
 		score: emailScore,
-		weight: 0.17,
-		contribution: emailScore * 0.17,
+		weight: emailWeight,
+		contribution: emailScore * emailWeight,
 		reason:
-			emailScore >= 70
+			emailScore >= config.risk.blockThreshold
 				? 'Fraudulent email pattern'
-				: emailScore >= 40
+				: emailScore >= config.risk.levels.medium.min
 					? 'Suspicious email pattern'
 					: 'Email looks legitimate',
 	};
 
 	// Ephemeral ID
-	const ephemeralScore = normalizeEphemeralIdScore(checks.ephemeralIdCount);
+	const ephemeralScore = normalizeEphemeralIdScore(checks.ephemeralIdCount, config);
+	const ephemeralWeight = config.risk.weights.ephemeralId;
 	components.ephemeralId = {
 		score: ephemeralScore,
-		weight: 0.18,
-		contribution: ephemeralScore * 0.18,
+		weight: ephemeralWeight,
+		contribution: ephemeralScore * ephemeralWeight,
 		rawScore: checks.ephemeralIdCount,
 		reason:
 			checks.ephemeralIdCount >= 3
@@ -85,41 +92,44 @@ export function calculateNormalizedRiskScore(checks: {
 	};
 
 	// Validation Frequency
-	const validationScore = normalizeValidationScore(checks.validationCount);
+	const validationScore = normalizeValidationScore(checks.validationCount, config);
+	const validationWeight = config.risk.weights.validationFrequency;
 	components.validationFrequency = {
 		score: validationScore,
-		weight: 0.13,
-		contribution: validationScore * 0.13,
+		weight: validationWeight,
+		contribution: validationScore * validationWeight,
 		rawScore: checks.validationCount,
 		reason:
-			checks.validationCount >= 3
+			checks.validationCount >= config.detection.validationFrequencyBlockThreshold
 				? `${checks.validationCount} attempts in 1 hour`
-				: checks.validationCount === 2
+				: checks.validationCount === config.detection.validationFrequencyWarnThreshold
 					? '2 attempts (acceptable)'
 					: '1 attempt (normal)',
 	};
 
 	// IP Diversity
-	const ipScore = normalizeIPScore(checks.uniqueIPCount);
+	const ipScore = normalizeIPScore(checks.uniqueIPCount, config);
+	const ipWeight = config.risk.weights.ipDiversity;
 	components.ipDiversity = {
 		score: ipScore,
-		weight: 0.09,
-		contribution: ipScore * 0.09,
+		weight: ipWeight,
+		contribution: ipScore * ipWeight,
 		rawScore: checks.uniqueIPCount,
 		reason:
 			checks.uniqueIPCount >= 3
 				? `${checks.uniqueIPCount} IPs (proxy rotation)`
-				: checks.uniqueIPCount === 2
+				: checks.uniqueIPCount === config.detection.ipDiversityThreshold
 					? '2 IPs (acceptable)'
 					: '1 IP (normal)',
 	};
 
 	// JA4 Session Hopping
-	const ja4Score = normalizeJA4Score(checks.ja4RawScore);
+	const ja4Score = normalizeJA4Score(checks.ja4RawScore, config);
+	const ja4Weight = config.risk.weights.ja4SessionHopping;
 	components.ja4SessionHopping = {
 		score: ja4Score,
-		weight: 0.08,
-		contribution: ja4Score * 0.08,
+		weight: ja4Weight,
+		contribution: ja4Score * ja4Weight,
 		rawScore: checks.ja4RawScore,
 		reason:
 			checks.ja4RawScore >= 140
@@ -140,35 +150,36 @@ export function calculateNormalizedRiskScore(checks: {
 		// Calculate base score from all components
 		const baseScore = Object.values(components).reduce((sum, c) => sum + c.contribution, 0);
 
-		// Ensure blocked attempts have minimum score of 70 (block threshold)
+		// Ensure blocked attempts have minimum score of block threshold
 		// But boost the triggering component's contribution
+		const blockThreshold = config.risk.blockThreshold;
 		switch (checks.blockTrigger) {
 			case 'ja4_session_hopping':
 				// JA4 detected session hopping - critical
-				total = Math.max(baseScore, 75);
+				total = Math.max(baseScore, blockThreshold + 5);
 				break;
 			case 'ephemeral_id_fraud':
 				// Multiple submissions detected - high risk
-				total = Math.max(baseScore, 70);
+				total = Math.max(baseScore, blockThreshold);
 				break;
 			case 'ip_diversity':
 				// Proxy rotation detected - critical
-				total = Math.max(baseScore, 80);
+				total = Math.max(baseScore, blockThreshold + 10);
 				break;
 			case 'validation_frequency':
 				// Too many attempts - high risk
-				total = Math.max(baseScore, 70);
+				total = Math.max(baseScore, blockThreshold);
 				break;
 			case 'duplicate_email':
 				// Email already used - medium risk
-				total = Math.max(baseScore, 60);
+				total = Math.max(baseScore, blockThreshold - 10);
 				break;
 			case 'turnstile_failed':
 				// Turnstile validation failed - medium-high
-				total = Math.max(baseScore, 65);
+				total = Math.max(baseScore, blockThreshold - 5);
 				break;
 			default:
-				total = Math.max(baseScore, 70);
+				total = Math.max(baseScore, blockThreshold);
 		}
 		total = Math.min(100, Math.round(total * 10) / 10);
 	} else {
@@ -189,33 +200,35 @@ export function calculateNormalizedRiskScore(checks: {
 	};
 }
 
-// Normalize ephemeral ID submission count (0-3+) to 0-100
-function normalizeEphemeralIdScore(count: number): number {
+// Normalize ephemeral ID submission count to 0-100
+function normalizeEphemeralIdScore(count: number, config: FraudDetectionConfig): number {
 	if (count === 0) return 0;
 	if (count === 1) return 10; // Baseline
-	if (count === 2) return 70; // Warn threshold
-	return 100; // 3+ = definite fraud
+	const threshold = config.detection.ephemeralIdSubmissionThreshold;
+	if (count === threshold) return config.risk.blockThreshold; // At threshold
+	return 100; // Above threshold = definite fraud
 }
 
-// Normalize validation attempts (1-3+) to 0-100
-function normalizeValidationScore(count: number): number {
+// Normalize validation attempts to 0-100
+function normalizeValidationScore(count: number, config: FraudDetectionConfig): number {
 	if (count === 1) return 0; // Normal
-	if (count === 2) return 40; // Acceptable retry
-	return 100; // 3+ = aggressive
+	if (count === config.detection.validationFrequencyWarnThreshold) return 40; // Acceptable retry
+	return 100; // At block threshold = aggressive
 }
 
-// Normalize IP diversity (1-3+) to 0-100
-function normalizeIPScore(count: number): number {
+// Normalize IP diversity to 0-100
+function normalizeIPScore(count: number, config: FraudDetectionConfig): number {
 	if (count === 1) return 0; // Normal
-	if (count === 2) return 50; // Suspicious
-	return 100; // 3+ = proxy rotation
+	if (count === config.detection.ipDiversityThreshold) return 50; // Suspicious
+	return 100; // Above threshold = proxy rotation
 }
 
 // Normalize JA4 composite score (0-230) to 0-100
-function normalizeJA4Score(rawScore: number): number {
+function normalizeJA4Score(rawScore: number, config: FraudDetectionConfig): number {
 	if (rawScore === 0) return 0;
-	if (rawScore <= 70) return rawScore; // Linear below threshold
+	const blockThreshold = config.risk.blockThreshold;
+	if (rawScore <= blockThreshold) return rawScore; // Linear below threshold
 
-	// Map 70-230 to 70-100 (diminishing returns)
-	return Math.round(70 + ((rawScore - 70) / (230 - 70)) * 30);
+	// Map blockThreshold-230 to blockThreshold-100 (diminishing returns)
+	return Math.round(blockThreshold + ((rawScore - blockThreshold) / (230 - blockThreshold)) * (100 - blockThreshold));
 }
