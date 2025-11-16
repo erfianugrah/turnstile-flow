@@ -2,6 +2,54 @@
 
 All notable changes to Forminator will be documented in this file.
 
+## [2024-11-16] - Phase 4: Risk Visualization & Detailed Validation Views
+
+### Added
+- **ValidationDetailDialog Component**: Comprehensive modal for inspecting blocked validation attempts
+  - All 35+ validation fields displayed (geographic, network, bot detection, fingerprints)
+  - Fraud risk assessment breakdown with component scoring
+  - JA4 signals intelligence detail view
+  - Similar UX to existing SubmissionDetailDialog
+
+- **RiskScoreInfo Component**: Educational component explaining fraud detection system
+  - 6-layer fraud detection scoring system visualization
+  - Component weights and descriptions (Token Replay 35%, Email Fraud 17%, etc.)
+  - Color-coded risk levels (0-39 low, 40-69 medium, 70-100 high/blocked)
+  - Block threshold explanation (≥70 blocks submission)
+
+- **Security Events Detail View**: Clickable validation records with "Details" button
+  - Eye icon button in top-right corner of each event card
+  - Loads full validation data via API
+  - Consistent with submission detail workflow
+
+- **New API Endpoint**: `GET /api/analytics/validations/:id`
+  - Fetches single validation record with all fields
+  - Protected with X-API-KEY authentication
+  - Returns 401 on invalid key, 404 on missing validation
+
+### Changed
+- **Security Events Layout**: Improved from side-by-side to vertical stack
+  - Better visual hierarchy with header row
+  - Compact "Details" button positioned top-right
+  - Improved spacing and mobile responsiveness
+
+- **DataTable Component**: Enhanced spacing and pagination
+  - Increased spacing from space-y-4 to space-y-6
+  - Added visual page indicator ("Page X of Y")
+  - Better border visibility on table headers
+  - More consistent padding (px-3 py-3.5)
+
+- **Error Messages**: More contextual and helpful error feedback
+  - Analytics hooks provide clear guidance on API key issues
+  - Submission form distinguishes fetch, timeout, and network errors
+  - Better user communication throughout application
+
+### Improved
+- **Phase 4 Completion**: Risk visualization and transparent fraud detection UI
+- **Documentation**: Updated README.md, CHANGELOG.md, and CLAUDE.md to reflect Phase 4
+- **Code Organization**: Consistent component structure across detail dialogs
+- **Type Safety**: Comprehensive TypeScript interfaces for validation data
+
 ## [2024-11-13] - UI Fixes & SVG Flags
 
 ### Fixed

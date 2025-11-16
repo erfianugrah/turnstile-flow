@@ -53,9 +53,12 @@ Captures 40+ fields from `request.cf` and headers:
 ### UI & Analytics
 - **Dark Mode**: Full support with enhanced accent colors and shadows
 - **Custom Phone Input**: International phone selector with 200+ countries, SVG flags, searchable dropdown
-- **Real-time Analytics**: 13 API endpoints covering stats, submissions, time-series, exports
+- **Real-time Analytics**: 14 API endpoints covering stats, submissions, validations, time-series, exports
 - **Form Validation**: Client and server-side with Zod schemas
 - **Visual Submission Flow**: 4-stage progress indicator with interactive callback integration
+- **Risk Transparency**: Educational component explaining 6-layer fraud detection scoring system
+- **Detailed Inspection**: Modal dialogs for both submissions and blocked validations with 35+ fields
+- **Security Events Detail View**: Comprehensive validation inspection with geographic, network, bot detection, and fingerprint data
 
 ## Quick Start
 
@@ -188,6 +191,9 @@ Paginated submissions with filtering (country, bot score range, date range, sear
 
 **GET /api/analytics/submissions/:id**
 Single submission details.
+
+**GET /api/analytics/validations/:id**
+Single validation details with all 35+ fields.
 
 **GET /api/analytics/countries**
 Submissions by country (top 20).
