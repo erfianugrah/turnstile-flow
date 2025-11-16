@@ -31,7 +31,17 @@
 	// Environment variables
 	"vars": {
 		"ENVIRONMENT": "production",
-		"ALLOWED_ORIGINS": "https://form.erfi.dev,https://erfi.dev,https://erfianugrah.com"
+		"ALLOWED_ORIGINS": "https://form.erfi.dev,https://erfi.dev,https://erfianugrah.com",
+		"ALLOW_TESTING_BYPASS": "false", // Set to "true" only in dev/staging
+
+		// Configurable route paths (customize without code changes)
+		"ROUTES": {
+			"submissions": "/api/submissions",
+			"analytics": "/api/analytics",
+			"admin": "/api/admin",
+			"geo": "/api/geo",
+			"health": "/api/health"
+		}
 	},
 	// Observability
 	"observability": {

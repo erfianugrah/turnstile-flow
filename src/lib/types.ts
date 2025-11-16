@@ -2,6 +2,7 @@
 // See: https://developers.cloudflare.com/workers/runtime-apis/request/#incomingrequestcfproperties
 
 import type { IncomingRequestCfProperties } from '@cloudflare/workers-types';
+import type { RouteConfig } from './router';
 
 // Re-export for convenience
 export type { IncomingRequestCfProperties };
@@ -193,4 +194,6 @@ export interface Env {
 	ENVIRONMENT?: string;
 	ALLOWED_ORIGINS?: string; // Comma-separated list
 	TURNSTILE_SITE_KEY?: string;
+	ALLOW_TESTING_BYPASS?: string; // Enable testing bypass (set to 'true' in dev/staging only)
+	ROUTES?: RouteConfig | string; // Dynamic route configuration (JSON string or object)
 }

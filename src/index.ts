@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import type { Env } from './lib/types';
+import { getRouteConfig, matchRoute, stripRoutePrefix } from './lib/router';
 import submissionsRoute from './routes/submissions';
 import analyticsRoute from './routes/analytics';
 import geoRoute from './routes/geo';
@@ -12,7 +13,7 @@ const app = new Hono<{ Bindings: Env }>();
 app.use('*', logger());
 
 // CORS with restricted origins from environment
-app.use('/api/*', async (c, next) => {
+app.use('*', async (c, next) => {
 	// Get allowed origins from environment variable
 	const allowedOriginsEnv = c.env.ALLOWED_ORIGINS || 'https://form.erfi.dev';
 	const allowedOrigins = allowedOriginsEnv.split(',').map(o => o.trim());
@@ -22,11 +23,11 @@ app.use('/api/*', async (c, next) => {
 		allowedOrigins.push('http://localhost:8787', 'http://localhost:4321');
 	}
 
-	// Apply CORS
+	// Apply CORS (X-API-KEY added for testing bypass)
 	const corsMiddleware = cors({
 		origin: allowedOrigins,
 		allowMethods: ['GET', 'POST', 'OPTIONS'],
-		allowHeaders: ['Content-Type'],
+		allowHeaders: ['Content-Type', 'X-API-KEY'],
 		maxAge: 86400,
 	});
 
@@ -64,24 +65,58 @@ app.use('*', async (c, next) => {
 	);
 });
 
-// API Routes
-app.route('/api/submissions', submissionsRoute);
-app.route('/api/analytics', analyticsRoute);
-app.route('/api/geo', geoRoute);
-
-// Health check
-app.get('/api/health', (c) => {
-	return c.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
-// Serve static assets from Astro build
-app.get('*', async (c) => {
+// ========== DYNAMIC ROUTING ==========
+// Match incoming requests against configured routes
+// This allows users to customize paths without code changes
+app.all('*', async (c) => {
 	const url = new URL(c.req.url);
+	const path = url.pathname;
 
-	// Request static asset from ASSETS binding
-	const assetResponse = await c.env.ASSETS.fetch(c.req.raw);
+	// Load route configuration (cached after first load)
+	const routes = getRouteConfig(c.env);
 
-	return assetResponse;
+	// Match path against configured routes
+	const matchedRoute = matchRoute(path, routes);
+
+	if (matchedRoute) {
+		// Strip the route prefix to normalize the path
+		const routePrefix = routes[matchedRoute];
+		const subPath = stripRoutePrefix(path, routePrefix);
+
+		// Create a new request with the normalized path
+		// This ensures route handlers see consistent paths
+		const normalizedUrl = new URL(subPath || '/', url.origin);
+		normalizedUrl.search = url.search;
+
+		const normalizedRequest = new Request(normalizedUrl, c.req.raw);
+
+		// Route to appropriate handler
+		switch (matchedRoute) {
+			case 'submissions':
+				return submissionsRoute.fetch(normalizedRequest, c.env, c.executionCtx);
+
+			case 'analytics':
+				return analyticsRoute.fetch(normalizedRequest, c.env, c.executionCtx);
+
+			case 'geo':
+				return geoRoute.fetch(normalizedRequest, c.env, c.executionCtx);
+
+			case 'health':
+				return c.json({
+					status: 'ok',
+					timestamp: new Date().toISOString(),
+					version: '1.0.0',
+					routes: routes  // Show configured routes for debugging
+				});
+
+			case 'admin':
+				// Admin route not yet implemented (Phase 3)
+				return c.json({ error: 'Admin route not yet implemented' }, 501);
+		}
+	}
+
+	// No route matched - serve static assets from Astro build
+	return c.env.ASSETS.fetch(c.req.raw);
 });
 
 export default app;

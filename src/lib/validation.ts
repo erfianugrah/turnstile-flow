@@ -65,7 +65,7 @@ export const formSubmissionSchema = z.object({
 				}, 'You must be at least 18 years old')
 				.optional()
 		),
-	turnstileToken: z.string().min(1, 'Turnstile token is required'),
+	turnstileToken: z.string().min(1, 'Turnstile token is required').optional(),
 });
 
 export type FormSubmissionInput = z.infer<typeof formSubmissionSchema>;

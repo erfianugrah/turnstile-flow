@@ -386,3 +386,32 @@ export async function checkEphemeralIdFraud(
 	}
 }
 
+/**
+ * Create mock validation for testing bypass
+ * ONLY used when ALLOW_TESTING_BYPASS=true and X-API-KEY is valid
+ *
+ * This allows automated testing without solving Turnstile CAPTCHA
+ * while still running all fraud detection layers
+ */
+export function createMockValidation(
+	ip: string,
+	hostname: string = 'test'
+): TurnstileValidationResult {
+	// Generate unique ephemeral ID for each test
+	const mockEphemeralId = `test-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+	return {
+		valid: true,
+		data: {
+			success: true,
+			challenge_ts: new Date().toISOString(),
+			hostname,
+			action: 'test',
+			cdata: 'test',
+			metadata: {
+				ephemeral_id: mockEphemeralId
+			}
+		},
+		ephemeralId: mockEphemeralId
+	};
+}

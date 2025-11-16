@@ -7,6 +7,7 @@ import {
 	hashToken,
 	checkTokenReuse,
 	checkEphemeralIdFraud,
+	createMockValidation,
 } from '../lib/turnstile';
 import { logValidation, createSubmission } from '../lib/database';
 import logger from '../lib/logger';
@@ -49,6 +50,25 @@ app.post('/', async (c) => {
 	try {
 		const db = c.env.DB;
 		const secretKey = c.env['TURNSTILE-SECRET-KEY'];
+
+		// ========== TESTING BYPASS CHECK ==========
+		// Check if testing bypass is enabled and valid API key provided
+		const apiKey = c.req.header('X-API-KEY');
+		const expectedKey = c.env['X-API-KEY'];
+		const allowBypass = c.env.ALLOW_TESTING_BYPASS === 'true';
+
+		let skipTurnstile = false;
+
+		if (allowBypass && apiKey && apiKey === expectedKey) {
+			logger.info(
+				{
+					event: 'testing_bypass_activated',
+					bypass_enabled: true
+				},
+				'Testing bypass activated via X-API-KEY'
+			);
+			skipTurnstile = true;
+		}
 
 		// Extract request metadata
 		const metadata = extractRequestMetadata(c.req.raw);
@@ -106,57 +126,87 @@ app.post('/', async (c) => {
 			}
 		}
 
-		// Hash token for replay protection
-		const tokenHash = hashToken(turnstileToken);
+		// ========== TURNSTILE VALIDATION OR BYPASS ==========
+		let validation;
+		let tokenHash: string | undefined;
+		let isReused = false; // Track token replay (false when bypassing)
 
-		// Check for token reuse
-		const isReused = await checkTokenReuse(tokenHash, db);
-
-		if (isReused) {
-			// Calculate normalized risk score for blocked attempt
-			const normalizedRiskScore = calculateNormalizedRiskScore({
-				tokenReplay: true,  // Instant 100
-				emailRiskScore: emailFraudResult?.riskScore || 0,
-				ephemeralIdCount: 1,
-				validationCount: 1,
-				uniqueIPCount: 1,
-				ja4RawScore: 0,
-				blockTrigger: 'token_replay'  // Phase 1.6
-			});
-
-			// Log the validation attempt
-			try {
-				await logValidation(db, {
-					tokenHash,
-					validation: {
-						valid: false,
-						reason: 'token_reused',
-						errors: ['Token already used'],
-					},
-					metadata,
-					riskScore: normalizedRiskScore.total,
-					riskScoreBreakdown: normalizedRiskScore,
-					allowed: false,
-					blockReason: 'Token replay attack detected',
-					detectionType: 'token_replay',
-				});
-			} catch (dbError) {
-				// Non-critical: log but don't fail the request
-				logger.error({ error: dbError }, 'Failed to log token reuse');
+		if (!skipTurnstile) {
+			// Standard flow: validate Turnstile token
+			if (!turnstileToken) {
+				throw new ValidationError('Turnstile token required');
 			}
 
-			throw new ValidationError('Token replay attack', {
-				tokenHash,
-				userMessage: 'This verification has already been used. Please refresh the page and try again',
-			});
-		}
+			// Hash token for replay protection
+			tokenHash = hashToken(turnstileToken);
 
-		// Validate Turnstile token
-		const validation = await validateTurnstileToken(
-			turnstileToken,
-			metadata.remoteIp,
-			secretKey
-		);
+			// Check for token reuse
+			isReused = await checkTokenReuse(tokenHash, db);
+
+			if (isReused) {
+				// Calculate normalized risk score for blocked attempt
+				const normalizedRiskScore = calculateNormalizedRiskScore({
+					tokenReplay: true,  // Instant 100
+					emailRiskScore: emailFraudResult?.riskScore || 0,
+					ephemeralIdCount: 1,
+					validationCount: 1,
+					uniqueIPCount: 1,
+					ja4RawScore: 0,
+					blockTrigger: 'token_replay'  // Phase 1.6
+				});
+
+				// Log the validation attempt
+				try {
+					await logValidation(db, {
+						tokenHash,
+						validation: {
+							valid: false,
+							reason: 'token_reused',
+							errors: ['Token already used'],
+						},
+						metadata,
+						riskScore: normalizedRiskScore.total,
+						riskScoreBreakdown: normalizedRiskScore,
+						allowed: false,
+						blockReason: 'Token replay attack detected',
+						detectionType: 'token_replay',
+					});
+				} catch (dbError) {
+					// Non-critical: log but don't fail the request
+					logger.error({ error: dbError }, 'Failed to log token reuse');
+				}
+
+				throw new ValidationError('Token replay attack', {
+					tokenHash,
+					userMessage: 'This verification has already been used. Please refresh the page and try again',
+				});
+			}
+
+			// Validate Turnstile token
+			validation = await validateTurnstileToken(
+				turnstileToken,
+				metadata.remoteIp,
+				secretKey
+			);
+		} else {
+			// Testing bypass: create mock validation
+			// IMPORTANT: Still runs all fraud detection layers
+			logger.info(
+				{
+					ip: metadata.remoteIp,
+					testing_mode: true
+				},
+				'Using mock validation for testing'
+			);
+
+			validation = createMockValidation(
+				metadata.remoteIp,
+				'localhost'
+			);
+
+			// Use a mock token hash for testing
+			tokenHash = hashToken(`test-${Date.now()}`);
+		}
 
 		// CRITICAL: Check fraud patterns BEFORE returning validation errors
 		// This prevents attackers from bypassing fraud detection with expired/invalid tokens
