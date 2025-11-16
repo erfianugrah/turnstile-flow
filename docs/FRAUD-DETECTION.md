@@ -167,12 +167,13 @@ See `docs/SCORING-ANALYSIS.md` for detailed impact analysis of the normalization
 
 **Detection order:**
 1. **Layer 0**: Pre-validation blacklist (10ms)
-2. **Layer 1**: Submission check (2+ in 24h)
-3. **Layer 2**: Validation attempt check (3+ in 1h)
-4. **Layer 3**: IP diversity check (2+ unique IPs)
+2. **Layer 1**: Email fraud detection (Markov-Mail RPC, 0.1-0.5ms)
+3. **Layer 2**: Ephemeral ID fraud check (2+ submissions in 24h)
+4. **Layer 3**: Validation frequency monitoring (3+ attempts in 1h)
 5. **Layer 4a**: JA4 + IP clustering (2+ ephemeral IDs, same subnet)
 6. **Layer 4b**: JA4 + rapid global (3+ ephemeral IDs, 5 min)
 7. **Layer 4c**: JA4 + extended global (5+ ephemeral IDs, 1h)
+8. **Layer 5**: IP diversity check (2+ unique IPs in 24h)
 
 ## Detection Layers (In Order)
 
@@ -195,6 +196,48 @@ If not found → Continue to Layer 2
 - 10x faster than Turnstile API (10ms vs 150ms)
 - Automatic expiry prevents stale blocks
 
+### Layer 1: Email Fraud Detection (0.1-0.5ms)
+
+**Worker-to-Worker RPC call to Markov-Mail fraud detection service**
+
+```typescript
+// RPC call to FRAUD_DETECTOR service binding
+const result = await env.FRAUD_DETECTOR.check(email);
+
+// Returns fraud detection data
+{
+  decision: 'allow' | 'warn' | 'block',
+  risk_score: 0.0-1.0,  // Normalized to 0-100 in scoring
+  detected_patterns: ['sequential', 'dated', 'formatted', etc.],
+  disposable_domain: boolean,
+  tld_risk: 'low' | 'medium' | 'high',
+  ood_detected: boolean  // Out-of-Distribution detection
+}
+
+// Fail-open design: If service unavailable, allow submission
+If RPC fails → Log warning, continue (risk component = 0)
+If detected → Add to risk score (17% weight)
+```
+
+**Detection Capabilities:**
+- **Markov Chain Analysis**: 83% accuracy, 0% false positives
+- **Pattern Classification**: Sequential (user1, user2), dated (user2024), formatted (user+tag)
+- **Out-of-Distribution (OOD)**: Detects unusual email formats
+- **Disposable Domains**: 71K+ known disposable email providers
+- **TLD Risk Profiling**: 143 TLDs analyzed for fraud patterns
+- **Performance**: 0.1-0.5ms latency (worker-to-worker RPC on same network)
+
+**Integration:**
+- Service binding in `wrangler.jsonc`: `FRAUD_DETECTOR` → markov-mail worker
+- Implementation: `src/lib/email-fraud-detection.ts`
+- Scoring weight: 17% of total risk score
+
+**Why This Works:**
+- Catches email pattern fraud that Turnstile can't detect
+- Fail-open design ensures legitimate users aren't blocked
+- Worker-to-worker RPC is extremely fast (sub-millisecond)
+- Independent fraud signal complements device-based detection
+
 ### Layer 2: Turnstile Validation (~150ms)
 
 **Standard siteverify API + token replay protection**
@@ -216,46 +259,64 @@ If validation fails → Block (400 Bad Request)
 If validation succeeds → Extract ephemeral_id, continue to Layer 3
 ```
 
-### Layer 3: Pattern Analysis (~50ms)
+### Layer 2: Ephemeral ID Fraud Detection (~10-20ms)
 
-**Post-validation fraud scoring with auto-blacklisting**
+**Submission pattern analysis for device-based fraud**
 
-**Multi-layer detection strategy** (handles D1 eventual consistency):
+**Detection**: 2+ submissions from same ephemeral ID in 24h window → Block immediately (riskScore = 100)
 
-**Sub-Layer 1: Submission Check (24h window)**
-- 2+ submissions: Block immediately (riskScore = 100)
-- Rationale: Registration forms should only be submitted ONCE per user
+**Rationale**: Registration forms should only be submitted ONCE per user
 
-**Sub-Layer 2: Validation Attempt Check (1h window)** ⭐ KEY FOR RAPID ATTACKS
-- 3+ validation attempts: Block immediately (riskScore = 100)
-- 2 validation attempts: High risk (riskScore = 60, allows one retry)
-- CRITICAL: Checks `turnstile_validations` table which replicates faster than `submissions`
-- Catches rapid-fire attacks BEFORE D1 replication lag becomes an issue
-
-**Sub-Layer 3: IP Diversity Check (24h window)**
-- 2+ unique IPs for same ephemeral ID: Block immediately (riskScore = 100)
-- Detects proxy rotation and distributed botnets
-
-**Auto-blacklist if risk ≥ 70 (Progressive Timeout System):**
-
-First offense: 1 hour
-Second offense: 4 hours
-Third offense: 8 hours
-Fourth offense: 12 hours
-Fifth+ offense: 24 hours (maximum)
-
-The system tracks offense count over last 24h and applies progressive escalation to repeat offenders.
-
-**IP-based fallback** (when ephemeral ID unavailable):
-- 3+ submissions in 1 hour: +40 risk
-- 5+ submissions in 1 hour: +30 risk
-
-```typescript
-If risk ≥ 70 → Add to fraud_blacklist, block submission (429 Too Many Requests)
-If risk < 70 → Allow submission, log validation attempt
+```sql
+SELECT COUNT(*) FROM submissions
+WHERE ephemeral_id = ?
+  AND created_at > datetime('now', '-24 hours')
 ```
 
-### Layer 4: JA4 Multi-Layer Detection (~5-10ms)
+**Why This Works:**
+- Ephemeral IDs track same device across ~7 days without cookies
+- Perfect for preventing duplicate registrations
+- Works even when cookies are cleared
+
+### Layer 3: Validation Frequency Monitoring (~10-20ms)
+
+**Validation attempt rate limiting** ⭐ KEY FOR RAPID ATTACKS
+
+**Detection:**
+- 3+ validation attempts in 1h: Block immediately (riskScore = 100)
+- 2 validation attempts in 1h: High risk (riskScore = 60, allows one retry)
+
+**CRITICAL**: Checks `turnstile_validations` table which replicates faster than `submissions`
+
+```sql
+SELECT COUNT(*) FROM turnstile_validations
+WHERE ephemeral_id = ?
+  AND created_at > datetime('now', '-1 hour')
+```
+
+**Why This Works:**
+- Catches rapid-fire attacks BEFORE D1 replication lag becomes an issue
+- Faster table replication provides near real-time protection
+- Prevents brute-force token generation attempts
+
+### Layer 5: IP Diversity Detection (~10-20ms)
+
+**Proxy rotation and botnet detection**
+
+**Detection**: 2+ unique IPs for same ephemeral ID in 24h window → Block immediately (riskScore = 100)
+
+```sql
+SELECT COUNT(DISTINCT remote_ip) FROM submissions
+WHERE ephemeral_id = ?
+  AND created_at > datetime('now', '-24 hours')
+```
+
+**Why This Works:**
+- Detects proxy rotation attacks
+- Catches distributed botnets using same device
+- Legitimate users rarely change IPs within 24h
+
+### Layer 4: JA4 Session Hopping Detection (~5-10ms)
 
 **Detects device-based and network-switching attacks using TLS fingerprinting**
 

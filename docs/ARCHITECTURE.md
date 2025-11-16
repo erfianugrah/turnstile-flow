@@ -28,16 +28,22 @@ forminator/
 │   └── package.json
 │
 ├── src/                         # Cloudflare Worker (Backend - at root)
-│   ├── index.ts                # Hono app entry + asset serving
+│   ├── index.ts                # Hono app entry + asset serving + dynamic routing
 │   ├── routes/                 # API routes
-│   │   ├── submissions.ts      # Form submission endpoint
-│   │   └── analytics.ts        # Analytics endpoints
+│   │   ├── submissions.ts      # Form submission endpoint (with testing bypass)
+│   │   ├── analytics.ts        # Analytics endpoints
+│   │   └── geo.ts              # Geolocation endpoint
 │   └── lib/                    # Business logic
-│       ├── turnstile.ts        # Turnstile validation
+│       ├── router.ts           # Dynamic route configuration
+│       ├── turnstile.ts        # Turnstile validation + fraud detection
 │       ├── database.ts         # D1 operations
 │       ├── validation.ts       # Form validation (Zod)
+│       ├── email-fraud-detection.ts  # Markov-Mail RPC
+│       ├── scoring.ts          # Normalized risk scoring
+│       ├── fraud-prevalidation.ts    # Pre-validation blacklist
+│       ├── ja4-fraud-detection.ts    # JA4 session hopping
 │       ├── logger.ts           # Pino logging
-│       └── types.ts            # TypeScript types
+│       └── types.ts            # TypeScript types + metadata extraction
 │
 ├── wrangler.jsonc              # Worker configuration
 ├── package.json                # Worker dependencies
@@ -237,6 +243,118 @@ export function extractRequestMetadata(request: CloudflareRequest): RequestMetad
   };
 }
 ```
+
+### 7. Dynamic Routing System
+
+**Configurable API endpoints** via environment variables:
+
+```jsonc
+// wrangler.jsonc
+"vars": {
+  "ROUTES": {
+    "submissions": "/api/submissions",  // or "/sign-ups", "/v2/forms", etc.
+    "analytics": "/api/analytics",
+    "admin": "/api/admin",
+    "geo": "/api/geo",
+    "health": "/api/health"
+  }
+}
+```
+
+**Implementation** (`src/lib/router.ts`):
+
+```typescript
+// Load routes from environment with in-memory caching
+export function getRouteConfig(env: Env): RouteConfig {
+  if (cachedRoutes !== null) return cachedRoutes;
+
+  const routes = typeof env.ROUTES === 'string'
+    ? JSON.parse(env.ROUTES)
+    : env.ROUTES;
+
+  const merged = { ...DEFAULT_ROUTES, ...routes };
+  cachedRoutes = merged;
+  return merged;
+}
+
+// Match incoming path against configured routes (longest-prefix matching)
+export function matchRoute(path: string, routes: RouteConfig): keyof RouteConfig | null {
+  const normalizedPath = path.endsWith('/') && path.length > 1
+    ? path.slice(0, -1)
+    : path;
+
+  // Sort by length (longest first) for correct matching
+  const sortedRoutes = Object.entries(routes).sort(
+    ([, a], [, b]) => b.length - a.length
+  );
+
+  for (const [name, pattern] of sortedRoutes) {
+    // Exact or prefix match
+    if (normalizedPath === pattern || normalizedPath.startsWith(pattern + '/')) {
+      return name as keyof RouteConfig;
+    }
+  }
+
+  return null;
+}
+
+// Strip route prefix for handler normalization
+export function stripRoutePrefix(path: string, routePattern: string): string {
+  if (path === routePattern) return '/';
+  if (path.startsWith(routePattern + '/')) {
+    return path.slice(routePattern.length);
+  }
+  return path;
+}
+```
+
+**Why This Works:**
+- **Flexibility**: Deploy same worker to multiple domains with different paths
+- **Performance**: In-memory caching (single parse per worker instance)
+- **Safety**: Longest-prefix matching prevents `/api/sub` matching `/api/submissions`
+- **Transparency**: Route configuration visible in wrangler.jsonc
+
+**Use Cases:**
+- Multi-tenant deployments (`/client-a/submit`, `/client-b/submit`)
+- API versioning (`/v2/submissions`)
+- Legacy path support (`/sign-ups` → same handler as `/api/submissions`)
+- Custom branding (`/register` instead of `/api/submissions`)
+
+### 8. Testing Bypass System
+
+**API key-authenticated testing mode** for CI/CD and local development:
+
+**Configuration:**
+```jsonc
+// wrangler.jsonc
+"vars": {
+  "ALLOW_TESTING_BYPASS": "false"  // MUST be false in production
+}
+```
+
+**Implementation** (`src/routes/submissions.ts`):
+```typescript
+// Check if testing bypass is allowed
+if (env.ALLOW_TESTING_BYPASS === 'true' && apiKey && apiKey === env['X-API-KEY']) {
+  // Create mock validation for testing
+  validation = createMockValidation(sanitizedData.email, metadata);
+} else {
+  // Normal Turnstile validation
+  validation = await validateTurnstileToken(/* ... */);
+}
+```
+
+**Security:**
+- Requires **both** `ALLOW_TESTING_BYPASS=true` AND valid `X-API-KEY` header
+- All fraud detection layers still run (email, JA4, IP diversity, etc.)
+- Only skips Turnstile site-verify API call
+- Never enabled in production
+
+**Benefits:**
+- Automated testing without Turnstile widget
+- CI/CD pipeline integration
+- curl/Postman API testing
+- Local development without token generation
 
 ## API Endpoints
 

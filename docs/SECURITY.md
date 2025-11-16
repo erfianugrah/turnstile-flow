@@ -29,19 +29,47 @@ Only requests from configured allowed hostnames are accepted. Hostname validatio
 
 ## Fraud Detection
 
-### Multi-Layer Detection System
+### 5-Layer Detection System
 
-**Layer 1 - Submission Check (24h window)**:
+**Layer 0 - Pre-Validation Blacklist** (~10ms):
+- Fast D1 lookup before expensive Turnstile API call
+- 85-90% reduction in API calls for repeat offenders
+- Checks ephemeral_id, ip_address, ja4 against fraud_blacklist table
+
+**Layer 1 - Email Fraud Detection** (0.1-0.5ms):
+- Worker-to-Worker RPC call to Markov-Mail service
+- Markov Chain pattern analysis (83% accuracy, 0% false positives)
+- Detects sequential, dated, formatted email patterns
+- Disposable domain detection (71K+ domains)
+- Fail-open design (allows submission if service unavailable)
+
+**Layer 2 - Ephemeral ID Fraud Detection** (24h window):
 - Blocks 2+ submissions from same ephemeral ID
 - Registration forms should only be submitted once per user
 
-**Layer 2 - Validation Attempt Check (1h window)**:
+**Layer 3 - Validation Frequency Monitoring** (1h window):
 - Blocks 3+ validation attempts from same ephemeral ID
 - Catches rapid-fire attacks before database replication
 
-**Layer 3 - IP Diversity Check (24h window)**:
+**Layer 4 - JA4 Session Hopping Detection**:
+- **4a**: IP Clustering (same subnet + same JA4 + 2+ ephemeral IDs in 1h)
+- **4b**: Rapid Global (same JA4 + 3+ ephemeral IDs in 5 min)
+- **4c**: Extended Global (same JA4 + 5+ ephemeral IDs in 1h)
+- Detects incognito/browser switching attacks via TLS fingerprinting
+
+**Layer 5 - IP Diversity Detection** (24h window):
 - Blocks 2+ unique IPs for same ephemeral ID
 - Detects proxy rotation and distributed attacks
+
+### Normalized Risk Scoring
+
+All detections contribute to a 0-100 risk score with weighted components:
+- **Token Replay**: 35% (instant block)
+- **Ephemeral ID**: 18%
+- **Email Fraud**: 17%
+- **Validation Frequency**: 13%
+- **IP Diversity**: 9%
+- **JA4 Session Hopping**: 8%
 
 **Block Threshold**: Risk score ≥ 70
 
@@ -160,6 +188,64 @@ Analytics endpoints are protected with API key authentication:
 - Key validated against environment variable
 - Returns 401 for missing or invalid keys
 
+### Testing Bypass
+
+**For CI/CD and local development only**
+
+The testing bypass allows automated testing without Turnstile widgets while maintaining security:
+
+**Security Requirements:**
+- **Dual-factor authentication**: Requires BOTH environment flag AND valid API key
+- **Environment flag**: `ALLOW_TESTING_BYPASS` must be explicitly set to `"true"`
+- **API key header**: `X-API-KEY` must match configured secret
+- **Production protection**: Flag MUST be `"false"` in production
+
+**What is NOT Bypassed:**
+- Email fraud detection (Markov-Mail RPC still runs)
+- Ephemeral ID fraud detection (mock ID generated for testing)
+- Validation frequency monitoring
+- JA4 session hopping detection
+- IP diversity detection
+- All normalized risk scoring
+
+**What IS Bypassed:**
+- Turnstile site-verify API call only
+- Mock ephemeral ID generated for fraud detection testing
+
+**Security Implications:**
+- No security reduction: All fraud detection layers still active
+- Testing surface: Allows testing fraud detection without Turnstile dependency
+- Fail-secure: Missing API key or wrong flag → normal Turnstile validation
+
+**Example Configuration:**
+```jsonc
+// wrangler.jsonc (development)
+"vars": {
+  "ALLOW_TESTING_BYPASS": "true"  // Enable for dev/staging only
+}
+
+// wrangler.jsonc (production)
+"vars": {
+  "ALLOW_TESTING_BYPASS": "false"  // MUST be false
+}
+```
+
+**Implementation** (`src/routes/submissions.ts:78-87`):
+```typescript
+const apiKey = c.req.header('X-API-KEY');
+
+if (env.ALLOW_TESTING_BYPASS === 'true' && apiKey && apiKey === env['X-API-KEY']) {
+  // Generate mock validation for testing
+  validation = createMockValidation(sanitizedData.email, metadata);
+} else {
+  // Normal Turnstile validation path
+  if (!data.turnstileToken) {
+    return c.json({ error: 'Turnstile token required' }, 400);
+  }
+  validation = await validateTurnstileToken(/* ... */);
+}
+```
+
 ## Data Protection
 
 ### Token Storage
@@ -202,15 +288,22 @@ To report security vulnerabilities:
 When deploying or modifying the application:
 
 - [ ] Update allowed hostnames in environment configuration
-- [ ] Set Turnstile secret key via `wrangler secret put`
+- [ ] Set Turnstile secret key via `wrangler secret put TURNSTILE-SECRET-KEY`
+- [ ] Set API key via `wrangler secret put X-API-KEY`
+- [ ] **Set `ALLOW_TESTING_BYPASS="false"` in production**
 - [ ] Configure CORS origins for production domains
+- [ ] Configure custom routes in `ROUTES` environment variable
+- [ ] Configure service binding to Markov-Mail worker
 - [ ] Initialize D1 schema with proper indexes
 - [ ] Test Turnstile widget on production domain
 - [ ] Verify CSP headers allow Turnstile iframe
 - [ ] Monitor logs for security events
-- [ ] Review fraud detection thresholds
+- [ ] Review fraud detection thresholds (risk score ≥ 70)
+- [ ] Test all 5 fraud detection layers
 - [ ] Test rate limiting configuration
 - [ ] Validate all endpoints require proper authentication
+- [ ] Verify dynamic routing matches expected paths
+- [ ] Test testing bypass is disabled in production
 
 ## References
 

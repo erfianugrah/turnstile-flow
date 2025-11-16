@@ -32,8 +32,13 @@ forminator/
 - **Turnstile Integration**: Explicit rendering with interaction-only appearance
 - **Single-step Validation**: Token validation + fraud check + submission in one atomic operation
 - **Token Replay Protection**: SHA256 hashing with unique index
-- **Ephemeral ID Fraud Detection**: Pattern recognition over 7-day window (Enterprise)
-- **IP-based Fallback**: Fraud detection when ephemeral ID unavailable
+- **5-Layer Fraud Detection**: Pre-validation blacklist, email fraud (Markov-Mail), ephemeral ID, validation frequency, JA4 session hopping, IP diversity
+- **Normalized Risk Scoring**: Mathematical 0-100 scale with weighted components (6 layers, weights total 100%)
+- **Progressive Timeout System**: Auto-blacklist with escalating timeouts (1h → 24h)
+- **Email Fraud Detection**: Worker-to-Worker RPC with Markov Chain analysis (83% accuracy, 0% false positives)
+- **JA4 Session Hopping**: Detects incognito/browser switching attacks via TLS fingerprinting
+- **Testing Bypass**: API key-authenticated testing mode for CI/CD
+- **Dynamic Routing**: Configurable API endpoints via environment variables
 - **SQL Injection Prevention**: Parameterized queries with whitelisting
 - **Input Sanitization**: HTML stripping and normalization
 
@@ -89,11 +94,14 @@ wrangler d1 execute turnstile-demo --file=./schema.sql --remote
 # Set secrets for production
 wrangler secret put TURNSTILE-SECRET-KEY
 wrangler secret put TURNSTILE-SITE-KEY
+wrangler secret put X-API-KEY
 
 # For local development, create .dev.vars in root
 cat > .dev.vars << EOF
 TURNSTILE-SECRET-KEY=your_secret_key_here
 TURNSTILE-SITE-KEY=0x4AAAAAACAjw0bmUZ7V7fh2
+X-API-KEY=your_api_key_here
+ALLOW_TESTING_BYPASS=true
 EOF
 ```
 
@@ -259,38 +267,63 @@ Auto-populated when risk score ≥70:
 
 ## Fraud Detection Algorithm
 
-### 3-Layer Architecture
+### 5-Layer Detection System
 
-**Layer 1: Pre-validation Blacklist**
+**Layer 0: Pre-validation Blacklist**
 - Fast D1 lookup (~10ms) before Turnstile API (~150ms)
-- Checks fraud_blacklist table for ephemeral_id/IP
 - 85-90% reduction in API calls for repeat offenders
-- Automatic expiry based on risk score
+- Checks ephemeral_id, ip_address, ja4 against fraud_blacklist table
 
-**Layer 2: Turnstile Validation**
-- Standard siteverify API call
-- Token replay check via SHA256 hash
-- Extracts ephemeral_id from validation response
+**Layer 1: Email Fraud Detection (Markov-Mail Integration)**
+- Worker-to-Worker RPC service binding (0.1-0.5ms latency)
+- Markov Chain pattern analysis (83% accuracy, 0% false positives)
+- Pattern classification: sequential, dated, formatted, gibberish
+- Out-of-Distribution (OOD) detection for unusual formats
+- Disposable domain detection (71K+ domains)
+- TLD risk profiling (143 TLDs analyzed)
+- Fail-open design: allows submissions if service unavailable
 
-**Layer 3: Pattern Analysis**
-- Post-validation fraud scoring
-- Auto-blacklists when risk ≥70
+**Layer 2: Ephemeral ID Fraud Detection**
+- Tracks same device across ~7 days without cookies
+- 2+ submissions in 24h window: Block immediately
+- Detects repeat registration attempts
 
-### Ephemeral ID Check (Primary, Enterprise)
-Analyzes last 7 days:
-- 5+ submissions in 7 days: +30 risk
-- 10+ submissions in 7 days: +40 risk
-- 10+ validations in 1 hour: +25 risk
-- 3+ submissions from different IPs (proxy rotation): +40 risk
-- **Block threshold**: 70 risk score
+**Layer 3: Validation Frequency Monitoring**
+- 3+ validation attempts in 1h: Block immediately
+- 2 validation attempts in 1h: High risk (allows one retry)
+- Catches rapid-fire attacks before D1 replication lag
 
-### IP-based Fallback
-Analyzes last hour when ephemeral ID unavailable:
-- 3+ submissions in 1 hour: +40 risk
-- 5+ submissions in 1 hour: +30 risk
-- **Block threshold**: 70 risk score
+**Layer 4: JA4 Session Hopping Detection (3 sub-layers)**
+- **4a: IP Clustering (1h)**: Same subnet + same JA4 + 2+ ephemeral IDs
+- **4b: Rapid Global (5min)**: Same JA4 + 3+ ephemeral IDs globally
+- **4c: Extended Global (1h)**: Same JA4 + 5+ ephemeral IDs globally
+- Detects incognito mode/browser hopping attacks
+- TLS fingerprint-based device tracking
 
-**Note**: This is pattern-based fraud detection, not strict rate limiting. Turnstile handles primary bot protection. For production-grade strict rate limiting, consider adding Durable Objects.
+**Layer 5: IP Diversity Detection**
+- 2+ unique IPs for same ephemeral ID in 24h: Block immediately
+- Detects proxy rotation and distributed botnets
+
+### Normalized Risk Scoring
+All components contribute to normalized 0-100 risk score (weights total exactly 100%):
+- **Token Replay**: 35% (instant block, highest priority)
+- **Ephemeral ID**: 18% (device tracking, core fraud signal)
+- **Email Fraud**: 17% (Markov-Mail pattern detection)
+- **Validation Frequency**: 13% (attempt rate monitoring)
+- **IP Diversity**: 9% (proxy rotation detection)
+- **JA4 Session Hopping**: 8% (browser hopping detection)
+
+**Block Threshold**: riskScore >= 70
+
+### Progressive Timeout System
+Auto-blacklist with escalating timeouts:
+- 1st offense: 1 hour
+- 2nd offense: 4 hours
+- 3rd offense: 8 hours
+- 4th offense: 12 hours
+- 5th+ offense: 24 hours (maximum)
+
+**Note**: This is pattern recognition enhanced with multi-layer checks. For strict real-time rate limiting, implement Durable Objects.
 
 ## Security Notes
 
@@ -298,9 +331,15 @@ Analyzes last hour when ephemeral ID unavailable:
 ✅ Atomic validation (no token replay window)
 ✅ Token replay protection (SHA256 hashing with unique index)
 ✅ Pre-validation blacklist (85-90% API call reduction)
-✅ 3-layer fraud detection (blacklist + Turnstile + pattern analysis)
-✅ Ephemeral ID fraud detection (7-day window, proxy rotation detection)
-✅ IP-based fallback fraud detection
+✅ 5-layer fraud detection with normalized risk scoring (0-100 scale)
+✅ Email fraud detection via Markov-Mail RPC
+✅ JA4 session hopping detection (3 sub-layers)
+✅ Ephemeral ID fraud detection (7-day window)
+✅ Validation frequency monitoring (1h window)
+✅ IP diversity detection (proxy rotation)
+✅ Progressive timeout system (1h → 24h escalation)
+✅ Testing bypass with API key authentication
+✅ Dynamic routing system (configurable endpoints)
 ✅ SQL injection prevention (parameterized queries)
 ✅ Input sanitization (HTML stripping)
 ✅ Comprehensive request metadata capture (40+ fields)
@@ -320,18 +359,33 @@ Analyzes last hour when ephemeral ID unavailable:
 - 10x faster than Turnstile API (10ms vs 150ms)
 - Massive API call reduction for repeat offenders
 - Automatic expiry prevents stale blocks
-- Fail-open approach when ephemeral ID unavailable
+- Progressive timeout system (1h → 24h escalation)
+
+**Multi-Layer Defense in Depth:**
+- Email fraud detection via Markov-Mail worker (0.1-0.5ms RPC latency)
+- JA4 TLS fingerprinting catches session hopping attacks
+- Normalized risk scoring (0-100) with mathematically weighted components
+- Each layer adds independent detection signal
+- Combined approach provides comprehensive fraud coverage
 
 **Pattern Recognition vs Rate Limiting:**
 - Turnstile already limits token acquisition rate
 - Ephemeral IDs enable pattern analysis across 7-day window
-- D1 eventual consistency acceptable for fraud detection
+- Multi-layer detection compensates for D1 eventual consistency
+- Validation frequency monitoring catches rapid attacks before DB lag
 - For strict "max N per window" enforcement, use Durable Objects
 
 **Fail-Open Strategy:**
-- No ephemeral ID = skip fraud check, allow submission
+- Email fraud detection allows submission if service unavailable
+- No ephemeral ID = IP-based fallback fraud detection
 - Prioritizes legitimate users over aggressive blocking
 - Turnstile provides baseline protection
+
+**Testing Bypass:**
+- API key authentication enables CI/CD testing
+- All fraud detection layers still run (no security bypass)
+- Only skips Turnstile site-verify API call
+- Never enabled in production (ALLOW_TESTING_BYPASS=false)
 
 ## Custom Domain Setup
 

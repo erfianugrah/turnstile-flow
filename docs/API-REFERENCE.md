@@ -237,21 +237,91 @@ Content-Type: application/json
 }
 ```
 
+#### Testing Bypass
+
+**For development and CI/CD testing only**
+
+When `ALLOW_TESTING_BYPASS=true` in environment, you can bypass Turnstile validation using API key authentication:
+
+**Headers:**
+```
+Content-Type: application/json
+X-API-KEY: your_api_key_here
+```
+
+**Body:**
+```json
+{
+  "firstName": "Test",
+  "lastName": "User",
+  "email": "test@example.com"
+  // turnstileToken optional when bypass enabled
+}
+```
+
+**Behavior:**
+- Turnstile site-verify API call is skipped
+- Mock ephemeral ID is generated for testing
+- **All fraud detection layers still run** (email fraud, JA4, IP diversity, etc.)
+- Only the Turnstile validation step is bypassed
+
+**Security:**
+- Requires both `ALLOW_TESTING_BYPASS=true` AND valid `X-API-KEY` header
+- **Must be disabled in production** (set `ALLOW_TESTING_BYPASS=false`)
+- No security bypass - fraud detection still active
+
+**Use Cases:**
+- Automated testing (Playwright, Cypress, etc.)
+- CI/CD pipelines
+- Local development without Turnstile widget
+- API testing with curl/Postman
+
+**Example curl test:**
+```bash
+curl -X POST http://localhost:8787/api/submissions \
+  -H "Content-Type: application/json" \
+  -H "X-API-KEY: your_test_api_key" \
+  -d '{
+    "firstName": "Test",
+    "lastName": "User",
+    "email": "test@example.com"
+  }'
+```
+
 #### Processing Flow
 
 ```
 1. Parse request body → JSON
 2. Validate schema → Zod validation
 3. Sanitize inputs → Remove HTML, normalize
-4. Hash token → SHA256
-5. Check token reuse → D1 lookup
-6. Verify Turnstile → API call to Cloudflare
-7. Fraud check → Ephemeral ID / IP patterns
-8. Extract metadata → 40+ fields from request
-9. Insert submission → D1 transaction
-10. Insert validation log → Same transaction
-11. Return success → 200 OK
+
+4. [BYPASS CHECK]
+   - If X-API-KEY header present AND ALLOW_TESTING_BYPASS=true:
+     → Create mock validation object (skips steps 5-7)
+     → Generate mock ephemeral ID for testing fraud detection
+     → Continue to step 8
+   - Otherwise:
+     → Continue to step 5 (normal Turnstile flow)
+
+5. Hash token → SHA256
+6. Check token reuse → D1 lookup
+7. Verify Turnstile → API call to Cloudflare
+   → Extract real ephemeral ID from response
+
+8. Email fraud check → Markov-Mail RPC (Layer 1)
+9. Fraud check → Ephemeral ID / validation frequency / JA4 / IP patterns (Layers 2-5)
+10. Extract metadata → 40+ fields from request
+11. Insert submission → D1 transaction
+12. Insert validation log → Same transaction
+13. Return success → 201 Created
 ```
+
+**What "Generate mock ephemeral ID" means:**
+- The bypass creates a fake validation response (mimics what Turnstile would return)
+- Includes a mock ephemeral ID like `test_bypass_<timestamp>_<email_hash>`
+- This mock ID is used for fraud detection testing (not skipped!)
+- All fraud detection layers (email, JA4, IP diversity) still run normally
+- Only the Turnstile API call (steps 5-7) is skipped
 
 **Timing:** ~200-500ms total
 
