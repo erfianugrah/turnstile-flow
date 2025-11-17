@@ -2,8 +2,6 @@
 
 Complete guide to managing the D1 database for the Turnstile Flow application.
 
-**Last Updated:** 2025-11-13
-
 ## Table of Contents
 
 - [Overview](#overview)
@@ -652,75 +650,6 @@ wrangler d1 execute DB --command="
 
 ---
 
-## Best Practices
-
-### 1. Always Use Transactions for Multi-Step Operations
-
-```bash
-wrangler d1 execute DB --command="
-  BEGIN TRANSACTION;
-
-  DELETE FROM turnstile_validations;
-  DELETE FROM submissions;
-  DELETE FROM fraud_blacklist;
-
-  COMMIT;
-" --remote
-```
-
-### 2. Test Locally First
-
-```bash
-# Test without --remote
-wrangler d1 execute DB --command="SELECT COUNT(*) FROM submissions"
-
-# Then apply to production
-wrangler d1 execute DB --command="SELECT COUNT(*) FROM submissions" --remote
-```
-
-### 3. Backup Before Destructive Operations
-
-```bash
-# Before: Export data
-wrangler d1 execute DB --command="SELECT * FROM submissions" --remote > backup.json
-
-# Execute: Make changes
-wrangler d1 execute DB --command="DELETE FROM submissions WHERE ..." --remote
-
-# Verify: Check results
-wrangler d1 execute DB --command="SELECT COUNT(*) FROM submissions" --remote
-```
-
-### 4. Use Descriptive Comments
-
-```bash
-wrangler d1 execute DB --command="
-  -- Cleanup: Remove test submissions from development
-  DELETE FROM submissions
-  WHERE email LIKE '%@test.com'
-  AND created_at < datetime('now', '-7 days')
-" --remote
-```
-
-### 5. Monitor Database Size
-
-```bash
-# Check database size (pages)
-wrangler d1 execute DB --command="PRAGMA page_count" --remote
-
-# Check table sizes (approximate)
-wrangler d1 execute DB --command="
-  SELECT
-    name,
-    (SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND tbl_name=m.name) as indexes
-  FROM sqlite_master m
-  WHERE type='table'
-  ORDER BY name
-" --remote
-```
-
----
-
 ## Related Documentation
 
 - [../schema.sql](../schema.sql) - Complete database schema
@@ -752,7 +681,3 @@ wrangler d1 execute DB --command="SELECT * FROM fraud_blacklist WHERE expires_at
 # Remove expired blacklist entries
 wrangler d1 execute DB --command="DELETE FROM fraud_blacklist WHERE expires_at <= datetime('now')" --remote
 ```
-
----
-
-**Need help?** Check the [Cloudflare D1 documentation](https://developers.cloudflare.com/d1/) or open an issue.

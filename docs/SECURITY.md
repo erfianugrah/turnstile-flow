@@ -83,15 +83,15 @@ Repeat offenders receive escalating timeout periods:
 - 4th offense: 12 hours
 - 5th+ offense: 24 hours
 
-### Graceful Degradation
+### Detection Modes
 
-**Ephemeral ID** (Enterprise feature, preferred):
+**Ephemeral ID** (Enterprise feature):
 - Tracks users across ~7 days without cookies
-- More accurate fraud detection
+- Device-based fraud detection
 
 **IP-based fallback** (when ephemeral ID unavailable):
 - Higher thresholds to account for shared IPs
-- Less accurate but still effective
+- Network-based fraud detection
 
 ## Input Validation
 
@@ -282,28 +282,6 @@ To report security vulnerabilities:
 2. Email security concerns to the repository owner
 3. Include detailed reproduction steps
 4. Allow reasonable time for response
-
-## Security Checklist
-
-When deploying or modifying the application:
-
-- [ ] Update allowed hostnames in environment configuration
-- [ ] Set Turnstile secret key via `wrangler secret put TURNSTILE-SECRET-KEY`
-- [ ] Set API key via `wrangler secret put X-API-KEY`
-- [ ] **Set `ALLOW_TESTING_BYPASS="false"` in production**
-- [ ] Configure CORS origins for production domains
-- [ ] Configure custom routes in `ROUTES` environment variable
-- [ ] Configure service binding to Markov-Mail worker
-- [ ] Initialize D1 schema with proper indexes
-- [ ] Test Turnstile widget on production domain
-- [ ] Verify CSP headers allow Turnstile iframe
-- [ ] Monitor logs for security events
-- [ ] Review fraud detection thresholds (risk score ≥ 70)
-- [ ] Test all 5 fraud detection layers
-- [ ] Test rate limiting configuration
-- [ ] Validate all endpoints require proper authentication
-- [ ] Verify dynamic routing matches expected paths
-- [ ] Test testing bypass is disabled in production
 
 ## References
 

@@ -94,26 +94,3 @@
 
 **Impact**: ⚠️ **Potential change** - this edge case would be allowed instead of blocked
 **Note**: This scenario is *extremely* unlikely (all 5 signals at max, no blockTrigger). In practice, any single high signal would trigger blockTrigger logic.
-
-## Conclusions
-
-### Benefits of Re-Normalization
-1. **Mathematically sound**: Weights sum to exactly 100%
-2. **No artificial capping**: Scores reflect true risk without hitting ceiling
-3. **Clearer interpretation**: Each component's contribution is transparent
-4. **Preserves ratios**: Relative importance of components maintained
-
-### Threshold Analysis
-- **Keep at 70**: ✅ **Recommended**
-  - BlockTrigger logic ensures high-risk patterns still block
-  - Most fraud scenarios are caught by specific detections (ephemeral ID, IP diversity, JA4)
-  - Combined weight reduction is ~13%, but blockTrigger compensates
-  - Extremely rare edge cases (all 5 signals at max with no blockTrigger) are unlikely in practice
-
-- **Lower to 65-68**: Consider if monitoring shows:
-  - Increase in allowed fraud patterns
-  - Edge cases reaching 63-69 range without blockTrigger
-  - Need for more aggressive blocking
-
-### Recommendation
-**Deploy with threshold at 70** and monitor for 24-48 hours. The blockTrigger system ensures critical fraud patterns still block, and the mathematical correctness of normalized weights outweighs the minimal risk of edge case changes.

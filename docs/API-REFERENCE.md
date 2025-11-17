@@ -42,11 +42,6 @@ This document provides exhaustive details on every API endpoint, including reque
 **Protected endpoints (require X-API-KEY header):**
 - GET /api/analytics/* (all analytics endpoints)
 
-**Why analytics require auth:**
-- Sensitive submission data exposure
-- PII and fraud detection data
-- Production deployments should protect analytics with API keys
-
 **Implementation:**
 ```typescript
 // src/routes/analytics.ts
@@ -56,36 +51,9 @@ if (!apiKey || apiKey !== c.env['API-KEY']) {
 }
 ```
 
-**Adding authentication (future):**
-```typescript
-// Middleware
-app.use('/api/analytics/*', async (c, next) => {
-  const token = c.req.header('Authorization');
-  if (!token || !await verifyToken(token)) {
-    return c.json({ error: 'Unauthorized' }, 401);
-  }
-  await next();
-});
-```
-
 ## Rate Limiting
 
-**Current implementation:** Pattern-based fraud detection (see FRAUD-DETECTION.md)
-
-**NOT strict rate limiting:**
-- No "429 Too Many Requests" responses
-- No fixed time windows
-- Relies on Turnstile for bot protection
-
-**Limits enforced:**
-- Turnstile: ~1 token per 5 seconds per user
-- Fraud detection: Blocks suspicious patterns
-- D1: ~50 writes/sec per database
-
-**For strict rate limiting:**
-- Use Durable Objects for distributed counters
-- Implement sliding window algorithm
-- Return 429 with Retry-After header
+Pattern-based fraud detection (see FRAUD-DETECTION.md). Turnstile provides bot protection. D1 supports ~50 writes/sec per database.
 
 ## Error Responses
 
@@ -1607,54 +1575,9 @@ Permissions-Policy: geolocation=(), microphone=(), camera=()
 Content-Security-Policy: default-src 'self'; script-src 'self' https://challenges.cloudflare.com; ...
 ```
 
-**Why each header:**
-- `X-Content-Type-Options`: Prevents MIME sniffing attacks
-- `X-Frame-Options`: Prevents clickjacking
-- `X-XSS-Protection`: Enables browser XSS filter
-- `Referrer-Policy`: Controls referrer information
-- `Permissions-Policy`: Restricts browser features
-- `Content-Security-Policy`: Prevents XSS and injection attacks
-
-## Request ID Tracking
-
-**Not implemented** but recommended for production:
-
-```typescript
-// Middleware to add request ID
-app.use('*', async (c, next) => {
-  const requestId = crypto.randomUUID();
-  c.set('requestId', requestId);
-  c.header('X-Request-ID', requestId);
-  await next();
-});
-
-// Include in error responses
-return c.json({
-  success: false,
-  message: 'Internal server error',
-  requestId: c.get('requestId'),
-}, 500);
-```
-
-**Benefits:**
-- Correlate logs across systems
-- Debug specific requests
-- Support tickets reference
-- Distributed tracing
-
 ## API Versioning
 
-**Current:** No versioning (v1 implicit)
-
-**For future:**
-```typescript
-// URL versioning
-app.route('/api/v1/submissions', submissionsV1);
-app.route('/api/v2/submissions', submissionsV2);
-
-// Header versioning
-const version = c.req.header('API-Version') || 'v1';
-```
+No versioning (v1 implicit).
 
 ## Testing
 

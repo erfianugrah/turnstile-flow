@@ -2,15 +2,13 @@
 
 ## Overview
 
-Lightweight custom international phone input with country detection. Replaced `react-international-phone` with ~70% smaller custom implementation.
+Custom international phone input with country detection.
 
-**Benefits:**
-- **22KB source** (~15KB bundled) vs ~50KB external library
-- **No external dependencies** or CDN issues
-- **Full styling control** - native dark mode support
+**Features:**
 - **200+ countries** with ISO codes, dial codes, and SVG flags (flag-icons library)
 - **Searchable dropdown** with keyboard navigation
-- **Cross-browser compatible** - SVG flags work on all platforms (Chrome/Windows, Firefox, Safari)
+- **Dark mode support** via CSS variables
+- **SVG flags** work on all platforms (Chrome/Windows, Firefox, Safari)
 
 ## Architecture
 
@@ -53,8 +51,6 @@ useEffect(() => {
     .then(data => setDefaultCountry(data.countryCode.toLowerCase()));
 }, []);
 ```
-
-Timing: ~100ms from page load to country detection.
 
 ## Component Usage
 
@@ -158,11 +154,6 @@ phone: z.string()
 ## SVG Flags Implementation
 
 Using `flag-icons@7.5.0` for cross-browser compatible country flags.
-
-**Why SVG flags:**
-- Chrome on Windows doesn't render emoji flags (Segoe UI Emoji lacks color flag support)
-- Forcing emoji fonts broke Firefox's native rendering
-- SVG flags work consistently across all browsers and platforms
 
 **Implementation:**
 ```tsx
@@ -268,19 +259,6 @@ const handleNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 };
 ```
 
-## Bundle Size Comparison
-
-| Component | Before | After | Savings |
-|-----------|--------|-------|---------|
-| react-international-phone | ~50KB | Removed | -50KB |
-| Custom implementation | 0KB | 22KB source | +22KB |
-| flag-icons CSS | 0KB | ~30KB (contains all flags) | +30KB |
-| **Net savings** | - | - | **+2KB (minimal increase)** |
-
-Bundled size: ~17KB (gzipped: ~6KB)
-
-**Trade-off:** Slightly larger bundle for cross-browser compatibility. SVG flags work on all platforms, unlike emoji flags which fail on Chrome/Windows.
-
 ## Accessibility
 
 - **Keyboard navigation**: Arrows, Enter, Escape in dropdown
@@ -288,34 +266,6 @@ Bundled size: ~17KB (gzipped: ~6KB)
 - **Click outside**: Closes dropdown
 - **ARIA labels**: Proper input labeling
 - **Screen readers**: Semantic HTML structure
-
-## Known Limitations
-
-1. **No auto-formatting**: User must type digits (e.g., `5551234567`)
-   - Pro: Simpler implementation, no format parsing
-   - Con: Less user-friendly than formatted input
-
-2. **Basic validation**: Client-side only checks for digits
-   - Real validation happens on server with E.164 regex
-
-3. **No format hints**: No placeholder showing format (e.g., `(###) ###-####`)
-   - Could be added via `format` field in country data
-
-## Recent Improvements
-
-**2024-11-13: SVG Flags**
-- Replaced emoji flags with SVG flags (flag-icons library)
-- Fixes Chrome on Windows flag rendering issue
-- Cross-browser compatible
-- Slightly larger bundle (~30KB for flag-icons CSS) but works everywhere
-
-## Future Enhancements
-
-1. **Client-side formatting**: Use `format` field to format as user types
-2. **Format hints**: Show example in placeholder based on country
-3. **Validation hints**: Show real-time validation feedback
-4. **Optimize flag-icons**: Only bundle flags for countries used (tree-shaking)
-5. **Virtual scrolling**: For dropdown with 200+ countries
 
 ## Related
 

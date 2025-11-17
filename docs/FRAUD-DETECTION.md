@@ -167,7 +167,7 @@ Prevents wasting Turnstile API calls on replayed tokens.
 
 Cost optimization: Turnstile's API would reject replayed tokens anyway, but this blocks earlier to save API costs.
 
-Note: Replayed tokens cannot create submissions, so this only appears in validation logs.
+Replayed tokens cannot create submissions, so this only appears in validation logs.
 
 ---
 
@@ -206,7 +206,7 @@ const result = await env.FRAUD_DETECTOR.validate({
 Behavioral analysis detecting repeat submissions from same device.
 
 **Time Windows**:
-- Submissions: 24h (registration forms should submit only once)
+- Submissions: 24h (registration forms typically submit once)
 - Validations: 1h (catches rapid-fire before D1 replication)
 - IP diversity: 24h (proxy rotation detection)
 
@@ -220,7 +220,7 @@ WHERE ephemeral_id = ?
   AND created_at > datetime('now', '-24 hours')
 ```
 
-Threshold: 2+ submissions → Block (registration forms should only be submitted once per user)
+Threshold: 2+ submissions → Block (registration forms typically submitted once per user)
 
 #### Layer 2b: Validation Frequency
 
