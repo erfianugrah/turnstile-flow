@@ -134,6 +134,35 @@ CREATE TABLE IF NOT EXISTS fraud_blacklist (
 	CHECK((ephemeral_id IS NOT NULL) OR (ip_address IS NOT NULL) OR (ja4 IS NOT NULL))
 );
 
+-- Fraud blocks table (Phase 1: Email Fraud Logging)
+-- Stores fraud blocks that occur BEFORE Turnstile validation
+-- (e.g., email fraud, IP reputation, etc.)
+-- Complements turnstile_validations which captures blocks AFTER validation
+CREATE TABLE IF NOT EXISTS fraud_blocks (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	-- Detection information
+	detection_type TEXT NOT NULL,           -- 'email_fraud', 'ip_reputation', etc.
+	block_reason TEXT NOT NULL,             -- Human-readable reason
+	risk_score REAL NOT NULL,               -- 0-100 scale
+	-- Request metadata (minimal, can expand as needed)
+	remote_ip TEXT NOT NULL,
+	user_agent TEXT,
+	country TEXT,
+	-- Email fraud specific (nullable for other detection types)
+	email_pattern_type TEXT,                -- 'sequential', 'dated', 'formatted', etc.
+	email_markov_detected INTEGER,          -- 0 or 1
+	email_ood_detected INTEGER,             -- 0 or 1 (Out-of-Distribution)
+	email_disposable_domain INTEGER,        -- 0 or 1
+	email_tld_risk_score REAL,              -- 0.0-1.0
+	-- Full metadata JSON (for flexibility)
+	metadata_json TEXT,                     -- JSON string of all request metadata
+	fraud_signals_json TEXT,                -- JSON string of fraud detection signals
+	-- Request tracking
+	erfid TEXT,                             -- Request tracking ID
+	-- Timestamps
+	created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes for performance
 CREATE UNIQUE INDEX IF NOT EXISTS idx_token_hash ON turnstile_validations(token_hash);
 CREATE INDEX IF NOT EXISTS idx_ephemeral_id ON turnstile_validations(ephemeral_id);
@@ -156,3 +185,8 @@ CREATE INDEX IF NOT EXISTS idx_submissions_email_pattern ON submissions(email_pa
 -- Phase 3: Indexes for extracted fields
 CREATE INDEX IF NOT EXISTS idx_submissions_extracted_email ON submissions(extracted_email);
 CREATE INDEX IF NOT EXISTS idx_submissions_extracted_phone ON submissions(extracted_phone);
+-- Phase 1: Indexes for fraud_blocks table
+CREATE INDEX IF NOT EXISTS idx_fraud_blocks_detection_type ON fraud_blocks(detection_type);
+CREATE INDEX IF NOT EXISTS idx_fraud_blocks_created_at ON fraud_blocks(created_at);
+CREATE INDEX IF NOT EXISTS idx_fraud_blocks_remote_ip ON fraud_blocks(remote_ip);
+CREATE INDEX IF NOT EXISTS idx_fraud_blocks_country ON fraud_blocks(country);
