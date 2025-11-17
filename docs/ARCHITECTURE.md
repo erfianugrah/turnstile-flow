@@ -166,7 +166,7 @@ Frontend uses Astro SSG:
 
 ### Database Schema Design
 
-**Two Main Tables**:
+**Four Main Tables**:
 
 1. **submissions** (42 fields)
    - Form data (first_name, last_name, email, etc.)
@@ -181,6 +181,19 @@ Frontend uses Astro SSG:
    - Turnstile data (challenge_ts, hostname, action, ephemeral_id)
    - Request metadata (same as submissions)
    - Linking (submission_id foreign key, token_hash for replay protection)
+
+3. **fraud_blocks** (16 fields)
+   - Pre-Turnstile fraud detection (email fraud, etc.)
+   - Detection info (detection_type, block_reason, risk_score)
+   - Email fraud signals (pattern_type, markov_detected, ood_detected, disposable_domain, tld_risk_score)
+   - Request metadata (remote_ip, user_agent, country)
+   - Tracking (erfid, created_at)
+
+4. **fraud_blacklist** (13 fields)
+   - Active blocking cache (ephemeral_id, ip_address, ja4)
+   - Block metadata (block_reason, detection_confidence, detection_type)
+   - Timing (blocked_at, expires_at, last_seen_at)
+   - Progressive timeout tracking
 
 **Indexes**:
 - `token_hash` (unique) - Prevents token reuse

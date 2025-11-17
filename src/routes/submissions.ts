@@ -9,7 +9,7 @@ import {
 	checkEphemeralIdFraud,
 	createMockValidation,
 } from '../lib/turnstile';
-import { logValidation, createSubmission } from '../lib/database';
+import { logValidation, createSubmission, logFraudBlock } from '../lib/database';
 import logger from '../lib/logger';
 import { checkPreValidationBlock } from '../lib/fraud-prevalidation';
 import { checkJA4FraudPatterns } from '../lib/ja4-fraud-detection';
@@ -151,6 +151,16 @@ app.post('/', async (c) => {
 					},
 					'Email blocked by fraud detection'
 				);
+
+				// Log fraud block to database (Phase 1: Email Fraud Logging)
+				await logFraudBlock(c.env.DB, {
+					detectionType: 'email_fraud',
+					blockReason: `Email fraud: ${emailFraudResult.signals.patternType}`,
+					riskScore: emailFraudResult.riskScore,
+					metadata: metadata,
+					fraudSignals: emailFraudResult.signals,
+					erfid: erfid,
+				});
 
 				throw new ValidationError(
 					'Email rejected by fraud detection',

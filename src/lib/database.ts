@@ -101,6 +101,81 @@ export async function logValidation(
 }
 
 /**
+ * Log pre-Turnstile fraud block to database
+ * Used for fraud detection that happens BEFORE Turnstile validation
+ * (e.g., email fraud, IP reputation, etc.)
+ */
+export async function logFraudBlock(
+	db: D1Database,
+	data: {
+		detectionType: string;           // 'email_fraud', 'ip_reputation', etc.
+		blockReason: string;             // Human-readable reason
+		riskScore: number;               // 0-100 scale
+		metadata: RequestMetadata;       // Request metadata
+		fraudSignals?: Record<string, any>; // Detection-specific signals
+		erfid?: string;                  // Request tracking ID
+	}
+): Promise<void> {
+	try {
+		// Extract email fraud specific fields if present
+		const emailPatternType = data.fraudSignals?.patternType || null;
+		const emailMarkovDetected = data.fraudSignals?.markovDetected ? 1 : 0;
+		const emailOodDetected = data.fraudSignals?.oodDetected ? 1 : 0;
+		const emailDisposableDomain = data.fraudSignals?.isDisposableDomain ? 1 : 0;
+		const emailTldRiskScore = data.fraudSignals?.tldRiskScore || null;
+
+		await db
+			.prepare(
+				`INSERT INTO fraud_blocks (
+					detection_type, block_reason, risk_score,
+					remote_ip, user_agent, country,
+					email_pattern_type, email_markov_detected, email_ood_detected,
+					email_disposable_domain, email_tld_risk_score,
+					metadata_json, fraud_signals_json,
+					erfid
+				) VALUES (
+					?, ?, ?,
+					?, ?, ?,
+					?, ?, ?,
+					?, ?,
+					?, ?,
+					?
+				)`
+			)
+			.bind(
+				data.detectionType,
+				data.blockReason,
+				data.riskScore,
+				data.metadata.remoteIp,
+				data.metadata.userAgent || null,
+				data.metadata.country || null,
+				emailPatternType,
+				emailMarkovDetected,
+				emailOodDetected,
+				emailDisposableDomain,
+				emailTldRiskScore,
+				JSON.stringify(data.metadata),
+				data.fraudSignals ? JSON.stringify(data.fraudSignals) : null,
+				data.erfid || null
+			)
+			.run();
+
+		logger.info(
+			{
+				detection_type: data.detectionType,
+				risk_score: data.riskScore,
+				erfid: data.erfid,
+			},
+			'Fraud block logged to database'
+		);
+	} catch (error) {
+		logger.error({ error, detection_type: data.detectionType }, 'Error logging fraud block');
+		// Fail-open: Don't throw error, just log it
+		// The block should still happen even if logging fails
+	}
+}
+
+/**
  * Create form submission in database
  */
 export async function createSubmission(
@@ -931,14 +1006,14 @@ export async function detectFraudPatterns(db: D1Database): Promise<any> {
  */
 export async function getBlockedValidationStats(db: D1Database) {
 	try {
-		const stats = await db
+		// Get stats from turnstile_validations (post-Turnstile blocks)
+		const validationStats = await db
 			.prepare(
 				`SELECT
 					COUNT(*) as total_blocked,
 					COUNT(DISTINCT ephemeral_id) as unique_ephemeral_ids,
 					COUNT(DISTINCT remote_ip) as unique_ips,
-					AVG(risk_score) as avg_risk_score,
-					COUNT(DISTINCT block_reason) as unique_block_reasons
+					AVG(risk_score) as avg_risk_score
 				 FROM turnstile_validations
 				 WHERE allowed = 0`
 			)
@@ -947,10 +1022,37 @@ export async function getBlockedValidationStats(db: D1Database) {
 				unique_ephemeral_ids: number;
 				unique_ips: number;
 				avg_risk_score: number;
-				unique_block_reasons: number;
 			}>();
 
-		return stats;
+		// Get stats from fraud_blocks (pre-Turnstile blocks)
+		const fraudStats = await db
+			.prepare(
+				`SELECT
+					COUNT(*) as total_blocked,
+					COUNT(DISTINCT remote_ip) as unique_ips,
+					AVG(risk_score) as avg_risk_score
+				 FROM fraud_blocks`
+			)
+			.first<{
+				total_blocked: number;
+				unique_ips: number;
+				avg_risk_score: number;
+			}>();
+
+		// Combine stats
+		return {
+			total_blocked: (validationStats?.total_blocked || 0) + (fraudStats?.total_blocked || 0),
+			unique_ephemeral_ids: validationStats?.unique_ephemeral_ids || 0, // Only in validations
+			unique_ips: (validationStats?.unique_ips || 0) + (fraudStats?.unique_ips || 0),
+			avg_risk_score:
+				((validationStats?.avg_risk_score || 0) * (validationStats?.total_blocked || 0) +
+				 (fraudStats?.avg_risk_score || 0) * (fraudStats?.total_blocked || 0)) /
+				((validationStats?.total_blocked || 0) + (fraudStats?.total_blocked || 0)) || 0,
+			unique_block_reasons: 0, // Calculated separately in getBlockReasonDistribution
+			// Phase 1: Additional breakdown
+			validation_blocks: validationStats?.total_blocked || 0,
+			fraud_blocks: fraudStats?.total_blocked || 0,
+		};
 	} catch (error) {
 		logger.error({ error }, 'Error fetching blocked validation stats');
 		throw error;
@@ -959,6 +1061,7 @@ export async function getBlockedValidationStats(db: D1Database) {
 
 /**
  * Get block reason distribution
+ * Combines data from both turnstile_validations (post-Turnstile) and fraud_blocks (pre-Turnstile)
  */
 export async function getBlockReasonDistribution(db: D1Database) {
 	try {
@@ -966,14 +1069,40 @@ export async function getBlockReasonDistribution(db: D1Database) {
 			.prepare(
 				`SELECT
 					block_reason,
-					COUNT(*) as count,
-					COUNT(DISTINCT ephemeral_id) as unique_ephemeral_ids,
-					COUNT(DISTINCT remote_ip) as unique_ips,
-					AVG(risk_score) as avg_risk_score
-				 FROM turnstile_validations
-				 WHERE allowed = 0 AND block_reason IS NOT NULL
-				 GROUP BY block_reason
-				 ORDER BY count DESC`
+					SUM(count) as count,
+					SUM(unique_ephemeral_ids) as unique_ephemeral_ids,
+					SUM(unique_ips) as unique_ips,
+					SUM(total_risk_score) / SUM(count) as avg_risk_score,
+					source
+				FROM (
+					-- Post-Turnstile blocks (from turnstile_validations)
+					SELECT
+						block_reason,
+						COUNT(*) as count,
+						COUNT(DISTINCT ephemeral_id) as unique_ephemeral_ids,
+						COUNT(DISTINCT remote_ip) as unique_ips,
+						SUM(risk_score) as total_risk_score,
+						'validation' as source
+					FROM turnstile_validations
+					WHERE allowed = 0 AND block_reason IS NOT NULL
+					GROUP BY block_reason
+
+					UNION ALL
+
+					-- Pre-Turnstile blocks (from fraud_blocks)
+					SELECT
+						block_reason,
+						COUNT(*) as count,
+						0 as unique_ephemeral_ids,
+						COUNT(DISTINCT remote_ip) as unique_ips,
+						SUM(risk_score) as total_risk_score,
+						'fraud_block' as source
+					FROM fraud_blocks
+					WHERE block_reason IS NOT NULL
+					GROUP BY block_reason
+				)
+				GROUP BY block_reason, source
+				ORDER BY count DESC`
 			)
 			.all();
 
@@ -1084,21 +1213,62 @@ export async function getRecentBlockedValidations(db: D1Database, limit: number 
 				`SELECT
 					id,
 					ephemeral_id,
-					remote_ip AS ip_address,
+					ip_address,
 					country,
 					city,
 					block_reason,
-				detection_type,
+					detection_type,
 					risk_score,
 					bot_score,
 					user_agent,
 					ja4,
 					erfid,
-					REPLACE(created_at, ' ', 'T') || 'Z' AS challenge_ts
-				 FROM turnstile_validations
-				 WHERE allowed = 0
-				 ORDER BY created_at DESC
-				 LIMIT ?`
+					challenge_ts,
+					source
+				FROM (
+					-- Post-Turnstile blocks (from turnstile_validations)
+					SELECT
+						id,
+						ephemeral_id,
+						remote_ip AS ip_address,
+						country,
+						city,
+						block_reason,
+						detection_type,
+						risk_score,
+						bot_score,
+						user_agent,
+						ja4,
+						erfid,
+						REPLACE(created_at, ' ', 'T') || 'Z' AS challenge_ts,
+						created_at,
+						'validation' as source
+					FROM turnstile_validations
+					WHERE allowed = 0
+
+					UNION ALL
+
+					-- Pre-Turnstile blocks (from fraud_blocks)
+					SELECT
+						id,
+						NULL as ephemeral_id,
+						remote_ip AS ip_address,
+						country,
+						NULL as city,
+						block_reason,
+						detection_type,
+						risk_score,
+						NULL as bot_score,
+						user_agent,
+						NULL as ja4,
+						erfid,
+						REPLACE(created_at, ' ', 'T') || 'Z' AS challenge_ts,
+						created_at,
+						'fraud_block' as source
+					FROM fraud_blocks
+				)
+				ORDER BY created_at DESC
+				LIMIT ?`
 			)
 			.bind(limit)
 			.all();

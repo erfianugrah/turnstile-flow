@@ -20,13 +20,14 @@ import logger from './logger';
 import { addToBlacklist } from './fraud-prevalidation';
 import { calculateProgressiveTimeout } from './turnstile';
 import type { FraudDetectionConfig } from './config';
+import { normalizeJA4Score } from './scoring';
 
 // ============================================================================
 // Type Definitions
 // ============================================================================
 
 /**
- * JA4 Signals from Cloudflare (request.cf.ja4Signals)
+ * JA4 Signals from Cloudflare (request.cf.botManagement.ja4Signals)
  * Global intelligence about this JA4 fingerprint across all of Cloudflare's network
  */
 export interface JA4Signals {
@@ -370,14 +371,17 @@ async function analyzeJA4GlobalClustering(
 
 /**
  * Analyze velocity patterns
- * Signal 2: Detects rapid submissions (<60 minutes)
+ * Signal 2: Detects rapid submissions
+ *
+ * Phase 2: Updated to use configurable threshold (default 10 minutes)
  *
  * @param clustering Clustering analysis result
+ * @param config Fraud detection configuration
  * @returns Velocity analysis result
  */
-function analyzeVelocity(clustering: ClusteringAnalysis): VelocityAnalysis {
+function analyzeVelocity(clustering: ClusteringAnalysis, config: FraudDetectionConfig): VelocityAnalysis {
 	return {
-		isRapid: clustering.timeSpanMinutes < 60,
+		isRapid: clustering.timeSpanMinutes < config.detection.ja4Clustering.velocityThresholdMinutes,
 		timeSpanMinutes: clustering.timeSpanMinutes,
 	};
 }
@@ -517,7 +521,7 @@ async function blockForJA4Fraud(
 	const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
 
 	// Calculate risk score
-	const velocity = analyzeVelocity(clustering);
+	const velocity = analyzeVelocity(clustering, config);
 	const signals = compareGlobalSignals(clustering, config);
 	const rawScore = calculateCompositeRiskScore(clustering, velocity, signals);
 	const warnings = generateWarnings(clustering, velocity, signals);
@@ -634,8 +638,47 @@ export async function checkJA4FraudPatterns(
 		const clusteringIP = await analyzeJA4Clustering(remoteIp, ja4, db);
 
 		if (clusteringIP && clusteringIP.ephemeralCount >= config.detection.ja4Clustering.ipClusteringThreshold) {
-			// Block: Same device (JA4) + same location (IP/subnet) + multiple sessions
 			logger.info({ remoteIp, ja4, ephemeralCount: clusteringIP.ephemeralCount }, 'Layer 4a: IP clustering detected');
+
+			// Phase 2: Use risk scoring if enabled
+			if (config.detection.ja4Clustering.useRiskScoreThreshold) {
+				// Calculate multi-signal risk score
+				const velocity = analyzeVelocity(clusteringIP, config);
+				const signals = compareGlobalSignals(clusteringIP, config);
+				const rawScore = calculateCompositeRiskScore(clusteringIP, velocity, signals);
+				const normalizedScore = normalizeJA4Score(rawScore, config);
+				const warnings = generateWarnings(clusteringIP, velocity, signals);
+
+				logger.info(
+					{
+						remoteIp,
+						ja4,
+						ephemeralCount: clusteringIP.ephemeralCount,
+						timeSpanMinutes: clusteringIP.timeSpanMinutes,
+						rawScore,
+						normalizedScore,
+						blockThreshold: config.risk.blockThreshold,
+					},
+					'Layer 4a: Risk score calculated'
+				);
+
+				// Block only if score exceeds threshold
+				if (normalizedScore >= config.risk.blockThreshold) {
+					logger.warn({ remoteIp, ja4, normalizedScore }, 'Layer 4a: BLOCK - Risk score exceeds threshold');
+					return blockForJA4Fraud(clusteringIP, remoteIp, ja4, ephemeralId, db, 'ip_clustering', config, erfid);
+				}
+
+				// Allow but return risk score for transparency
+				logger.info({ remoteIp, ja4, normalizedScore }, 'Layer 4a: ALLOW - Risk score below threshold');
+				return {
+					allowed: true,
+					riskScore: normalizedScore,
+					rawScore,
+					warnings,
+				};
+			}
+
+			// Old behavior (backward compatibility): Block immediately
 			return blockForJA4Fraud(clusteringIP, remoteIp, ja4, ephemeralId, db, 'ip_clustering', config, erfid);
 		}
 
@@ -643,8 +686,47 @@ export async function checkJA4FraudPatterns(
 		const clusteringRapid = await analyzeJA4GlobalClustering(ja4, db, config.detection.ja4Clustering.rapidGlobalWindowMinutes);
 
 		if (clusteringRapid && clusteringRapid.ephemeralCount >= config.detection.ja4Clustering.rapidGlobalThreshold) {
-			// Block: Same device (JA4) + multiple sessions in rapid window (aggressive)
 			logger.info({ remoteIp, ja4, ephemeralCount: clusteringRapid.ephemeralCount }, 'Layer 4b: Rapid global clustering detected');
+
+			// Phase 2: Use risk scoring if enabled
+			if (config.detection.ja4Clustering.useRiskScoreThreshold) {
+				// Calculate multi-signal risk score
+				const velocity = analyzeVelocity(clusteringRapid, config);
+				const signals = compareGlobalSignals(clusteringRapid, config);
+				const rawScore = calculateCompositeRiskScore(clusteringRapid, velocity, signals);
+				const normalizedScore = normalizeJA4Score(rawScore, config);
+				const warnings = generateWarnings(clusteringRapid, velocity, signals);
+
+				logger.info(
+					{
+						remoteIp,
+						ja4,
+						ephemeralCount: clusteringRapid.ephemeralCount,
+						timeSpanMinutes: clusteringRapid.timeSpanMinutes,
+						rawScore,
+						normalizedScore,
+						blockThreshold: config.risk.blockThreshold,
+					},
+					'Layer 4b: Risk score calculated'
+				);
+
+				// Block only if score exceeds threshold
+				if (normalizedScore >= config.risk.blockThreshold) {
+					logger.warn({ remoteIp, ja4, normalizedScore }, 'Layer 4b: BLOCK - Risk score exceeds threshold');
+					return blockForJA4Fraud(clusteringRapid, remoteIp, ja4, ephemeralId, db, 'rapid_global', config, erfid);
+				}
+
+				// Allow but return risk score for transparency
+				logger.info({ remoteIp, ja4, normalizedScore }, 'Layer 4b: ALLOW - Risk score below threshold');
+				return {
+					allowed: true,
+					riskScore: normalizedScore,
+					rawScore,
+					warnings,
+				};
+			}
+
+			// Old behavior (backward compatibility): Block immediately
 			return blockForJA4Fraud(clusteringRapid, remoteIp, ja4, ephemeralId, db, 'rapid_global', config, erfid);
 		}
 
@@ -652,8 +734,47 @@ export async function checkJA4FraudPatterns(
 		const clusteringExtended = await analyzeJA4GlobalClustering(ja4, db, config.detection.ja4Clustering.extendedGlobalWindowMinutes);
 
 		if (clusteringExtended && clusteringExtended.ephemeralCount >= config.detection.ja4Clustering.extendedGlobalThreshold) {
-			// Block: Same device (JA4) + multiple sessions in extended window (slower attacks)
 			logger.info({ remoteIp, ja4, ephemeralCount: clusteringExtended.ephemeralCount }, 'Layer 4c: Extended global clustering detected');
+
+			// Phase 2: Use risk scoring if enabled
+			if (config.detection.ja4Clustering.useRiskScoreThreshold) {
+				// Calculate multi-signal risk score
+				const velocity = analyzeVelocity(clusteringExtended, config);
+				const signals = compareGlobalSignals(clusteringExtended, config);
+				const rawScore = calculateCompositeRiskScore(clusteringExtended, velocity, signals);
+				const normalizedScore = normalizeJA4Score(rawScore, config);
+				const warnings = generateWarnings(clusteringExtended, velocity, signals);
+
+				logger.info(
+					{
+						remoteIp,
+						ja4,
+						ephemeralCount: clusteringExtended.ephemeralCount,
+						timeSpanMinutes: clusteringExtended.timeSpanMinutes,
+						rawScore,
+						normalizedScore,
+						blockThreshold: config.risk.blockThreshold,
+					},
+					'Layer 4c: Risk score calculated'
+				);
+
+				// Block only if score exceeds threshold
+				if (normalizedScore >= config.risk.blockThreshold) {
+					logger.warn({ remoteIp, ja4, normalizedScore }, 'Layer 4c: BLOCK - Risk score exceeds threshold');
+					return blockForJA4Fraud(clusteringExtended, remoteIp, ja4, ephemeralId, db, 'extended_global', config, erfid);
+				}
+
+				// Allow but return risk score for transparency
+				logger.info({ remoteIp, ja4, normalizedScore }, 'Layer 4c: ALLOW - Risk score below threshold');
+				return {
+					allowed: true,
+					riskScore: normalizedScore,
+					rawScore,
+					warnings,
+				};
+			}
+
+			// Old behavior (backward compatibility): Block immediately
 			return blockForJA4Fraud(clusteringExtended, remoteIp, ja4, ephemeralId, db, 'extended_global', config, erfid);
 		}
 

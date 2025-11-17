@@ -159,6 +159,31 @@ const DEFAULT_CONFIG = {
 			 */
 			extendedGlobalThreshold: 5,
 			extendedGlobalWindowMinutes: 60,
+
+			/**
+			 * Velocity threshold: 10 minutes
+			 *
+			 * Rationale (Phase 2: Fix false positives):
+			 * - Submissions <10 min apart = rapid velocity (suspicious)
+			 * - Submissions ≥10 min apart = normal velocity (legitimate)
+			 * - Family scenario: Parent at 2:00 PM, child at 2:15 PM = 15 min = ALLOW
+			 * - Attack scenario: Bot at 2:00 PM, bot at 2:02 PM = 2 min = BLOCK
+			 * - 10 minutes balances security vs. usability
+			 * - Combined with other signals (clustering, global anomaly) for accuracy
+			 */
+			velocityThresholdMinutes: 10,
+
+			/**
+			 * Use risk score threshold instead of simple count blocking
+			 *
+			 * Rationale (Phase 2: Fix false positives):
+			 * - false: Block immediately when count threshold reached (old behavior)
+			 * - true: Calculate multi-signal risk score, block only if score ≥ blockThreshold (new behavior)
+			 * - Reduces false positives for families/offices using same browser
+			 * - Maintains security by combining 4 signals: clustering + velocity + global anomaly + bot pattern
+			 * - Feature flag for safe rollout and backward compatibility
+			 */
+			useRiskScoreThreshold: true,
 		},
 	},
 

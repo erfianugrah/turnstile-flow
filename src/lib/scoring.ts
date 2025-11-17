@@ -224,7 +224,8 @@ function normalizeIPScore(count: number, config: FraudDetectionConfig): number {
 }
 
 // Normalize JA4 composite score (0-230) to 0-100
-function normalizeJA4Score(rawScore: number, config: FraudDetectionConfig): number {
+// Exported for use in ja4-fraud-detection.ts (Phase 2)
+export function normalizeJA4Score(rawScore: number, config: FraudDetectionConfig): number {
 	if (rawScore === 0) return 0;
 	const blockThreshold = config.risk.blockThreshold;
 	if (rawScore <= blockThreshold) return rawScore; // Linear below threshold
