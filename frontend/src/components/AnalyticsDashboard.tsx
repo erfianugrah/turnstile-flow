@@ -237,27 +237,10 @@ export default function AnalyticsDashboard() {
 		dateRange.start.getTime() !== subDays(new Date(), 30).setHours(0, 0, 0, 0) ||
 		dateRange.end.getTime() !== new Date().setHours(23, 59, 59, 999);
 
-	// Loading and error states
-	if (analyticsData.loading) {
-		return (
-			<div className="flex items-center justify-center min-h-[400px]">
-				<p className="text-muted-foreground">Loading analytics...</p>
-			</div>
-		);
-	}
-
-	if (analyticsData.error) {
-		return (
-			<Alert variant="destructive">
-				<AlertDescription>{analyticsData.error}</AlertDescription>
-			</Alert>
-		);
-	}
-
 	return (
 		<>
-			{/* API Key Dialog */}
-			<Dialog open={showApiKeyDialog}>
+			{/* API Key Dialog - Always render to show when missing */}
+			<Dialog open={showApiKeyDialog} onOpenChange={setShowApiKeyDialog}>
 				<DialogContent className="sm:max-w-md">
 					<DialogHeader>
 						<DialogTitle>Enter Analytics API Key</DialogTitle>
@@ -293,7 +276,28 @@ export default function AnalyticsDashboard() {
 				</DialogContent>
 			</Dialog>
 
-			{/* Main Dashboard */}
+			{/* Show loading/error states only if API key is set */}
+			{!apiKey ? (
+				<div className="flex items-center justify-center min-h-[400px]">
+					<p className="text-muted-foreground">Please enter your API key to continue</p>
+				</div>
+			) : analyticsData.loading ? (
+				<div className="flex items-center justify-center min-h-[400px]">
+					<p className="text-muted-foreground">Loading analytics...</p>
+				</div>
+			) : analyticsData.error ? (
+				<Alert variant="destructive">
+					<AlertDescription>
+						{analyticsData.error}
+						<button
+							onClick={() => setShowApiKeyDialog(true)}
+							className="ml-2 underline hover:no-underline"
+						>
+							Update API Key
+						</button>
+					</AlertDescription>
+				</Alert>
+			) : (
 			<div className="space-y-6">
 				<GlobalControlsBar
 					onExportCSV={() => handleExport("csv")}
@@ -365,6 +369,7 @@ export default function AnalyticsDashboard() {
 					config={config}
 				/>
 			</div>
+			)}
 		</>
 	);
 }

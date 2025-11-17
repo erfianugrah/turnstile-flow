@@ -85,9 +85,14 @@ const TurnstileWidget = forwardRef<TurnstileWidgetHandle, TurnstileWidgetProps>(
 		// Get current theme
 		const theme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
 
+		// Prevent double-rendering in React Strict Mode (development)
+		let isRendering = false;
+
 		// Render widget when ready
 		window.turnstile.ready(() => {
-			if (!containerRef.current || widgetIdRef.current) return;
+			if (!containerRef.current || widgetIdRef.current || isRendering) return;
+
+			isRendering = true;
 
 			try {
 				const widgetId = window.turnstile!.render(containerRef.current, {
@@ -101,7 +106,7 @@ const TurnstileWidget = forwardRef<TurnstileWidgetHandle, TurnstileWidgetProps>(
 					'response-field': false, // Manual token handling
 					action,
 					callback: (token) => {
-						console.log('Turnstile validation successful');
+						console.log('Turnstile validation successful', { timestamp: Date.now() });
 						onValidated(token);
 					},
 					'error-callback': (err) => {
@@ -138,11 +143,13 @@ const TurnstileWidget = forwardRef<TurnstileWidgetHandle, TurnstileWidgetProps>(
 
 				widgetIdRef.current = widgetId;
 				setIsLoading(false);
-				console.log('Turnstile widget rendered:', widgetId);
+				console.log('Turnstile widget rendered:', widgetId, { timestamp: Date.now() });
 			} catch (err) {
 				console.error('Error rendering Turnstile:', err);
 				setError('Failed to load verification widget');
 				setIsLoading(false);
+			} finally {
+				isRendering = false;
 			}
 		});
 
@@ -150,6 +157,7 @@ const TurnstileWidget = forwardRef<TurnstileWidgetHandle, TurnstileWidgetProps>(
 		return () => {
 			if (widgetIdRef.current && window.turnstile) {
 				try {
+					console.log('Cleaning up Turnstile widget:', widgetIdRef.current);
 					window.turnstile.remove(widgetIdRef.current);
 					widgetIdRef.current = null;
 				} catch (err) {

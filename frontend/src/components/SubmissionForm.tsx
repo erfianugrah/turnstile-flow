@@ -54,6 +54,15 @@ export default function SubmissionForm() {
 	const hasSubmittedRef = useRef(false);
 	const pendingFormDataRef = useRef<FormData | null>(null);
 
+	// Debug logging on mount
+	useEffect(() => {
+		console.log('SubmissionForm mounted', {
+			timestamp: Date.now(),
+			hasSubmitResult: !!submitResult,
+			flowStep
+		});
+	}, []);
+
 	// Detect user's country on mount
 	useEffect(() => {
 		const detectCountry = async () => {
@@ -70,6 +79,36 @@ export default function SubmissionForm() {
 		};
 
 		detectCountry();
+	}, []);
+
+	// Clear state when page is restored from bfcache (browser back/forward)
+	useEffect(() => {
+		const handlePageShow = (event: PageTransitionEvent) => {
+			if (event.persisted) {
+				// Page was restored from bfcache, reset state
+				console.log('Page restored from bfcache, resetting form state');
+				setSubmitResult(null);
+				setRateLimitInfo(null);
+				setTurnstileToken(null);
+				setFlowStep('idle');
+				setFlowError(undefined);
+				hasSubmittedRef.current = false;
+				pendingFormDataRef.current = null;
+			}
+		};
+
+		window.addEventListener('pageshow', handlePageShow);
+		return () => window.removeEventListener('pageshow', handlePageShow);
+	}, []);
+
+	// Cleanup timeouts on unmount to prevent state updates on unmounted component
+	useEffect(() => {
+		return () => {
+			if (submitTimeoutRef.current) {
+				clearTimeout(submitTimeoutRef.current);
+				submitTimeoutRef.current = null;
+			}
+		};
 	}, []);
 
 	// Countdown timer for rate limiting
@@ -229,12 +268,20 @@ export default function SubmissionForm() {
 	};
 
 	const onSubmit = async (data: FormData) => {
+		console.log('onSubmit called', {
+			hasToken: !!turnstileToken,
+			hasPendingData: !!pendingFormDataRef.current,
+			hasSubmitted: hasSubmittedRef.current,
+			timestamp: Date.now()
+		});
+
 		setSubmitResult(null);
 		setFlowError(undefined);
 		setFlowStep('validating');
 
 		// Check if we already have a token
 		if (turnstileToken) {
+			console.log('Using existing Turnstile token');
 			// Already have token, submit directly
 			await submitWithToken(data, turnstileToken);
 			return;
@@ -252,14 +299,33 @@ export default function SubmissionForm() {
 			return;
 		}
 
+		console.log('Storing form data and executing Turnstile widget');
 		pendingFormDataRef.current = data;
 		setFlowStep('turnstile-challenge');
 		turnstileRef.current.execute();
 	};
 
 	const handleTurnstileValidated = (token: string) => {
+		console.log('handleTurnstileValidated called', {
+			hasSubmitted: hasSubmittedRef.current,
+			hasPendingFormData: !!pendingFormDataRef.current,
+			timestamp: Date.now()
+		});
+
 		// Prevent duplicate submissions
 		if (hasSubmittedRef.current) {
+			console.warn('Duplicate submission prevented - hasSubmittedRef already true');
+			return;
+		}
+
+		// Safety check: Only proceed if we have pending form data
+		if (!pendingFormDataRef.current) {
+			console.error('Turnstile validated but no pending form data - possible race condition or unexpected callback');
+			setFlowStep('error');
+			setSubmitResult({
+				type: 'error',
+				message: 'Unexpected validation state. Please refresh and try again.',
+			});
 			return;
 		}
 
@@ -277,8 +343,11 @@ export default function SubmissionForm() {
 		submitTimeoutRef.current = setTimeout(() => {
 			const formData = pendingFormDataRef.current;
 			if (formData) {
+				console.log('Auto-submitting form with Turnstile token');
 				pendingFormDataRef.current = null; // Clear after use
 				submitWithToken(formData, token); // Call submit with token directly
+			} else {
+				console.warn('No form data available in timeout callback');
 			}
 		}, 100);
 	};
