@@ -115,14 +115,39 @@ export default function SubmissionForm() {
 	useEffect(() => {
 		if (!rateLimitInfo) return;
 
+		// Validate expiresAt to prevent immediate clearing
+		const expiresAtTime = new Date(rateLimitInfo.expiresAt).getTime();
+		if (isNaN(expiresAtTime)) {
+			console.error('Invalid expiresAt timestamp:', rateLimitInfo.expiresAt);
+			return;
+		}
+
+		// Calculate initial remaining time
+		const initialRemaining = Math.max(0, Math.ceil((expiresAtTime - Date.now()) / 1000));
+
+		// If timer has already expired, clear immediately (but log it)
+		if (initialRemaining <= 0) {
+			console.warn('Rate limit timer already expired on mount', {
+				expiresAt: rateLimitInfo.expiresAt,
+				now: new Date().toISOString(),
+				difference: expiresAtTime - Date.now()
+			});
+			setRateLimitInfo(null);
+			setSubmitResult(null);
+			return;
+		}
+
 		// Update countdown every second
 		const interval = setInterval(() => {
-			const now = new Date().getTime();
+			const now = Date.now();
 			const expiresAt = new Date(rateLimitInfo.expiresAt).getTime();
 			const remaining = Math.max(0, Math.ceil((expiresAt - now) / 1000));
 
+			console.debug('Timer tick:', { remaining, expiresAt: rateLimitInfo.expiresAt, now: new Date(now).toISOString() });
+
 			if (remaining <= 0) {
 				// Rate limit expired, clear it
+				console.log('Rate limit expired, clearing timer');
 				setRateLimitInfo(null);
 				setSubmitResult(null);
 			} else {
@@ -202,10 +227,26 @@ export default function SubmissionForm() {
 				if (response.status === 429) {
 					// Extract rate limit information from response
 					const retryAfter = result.retryAfter || 3600; // Default to 1 hour
-					const expiresAt = result.expiresAt || new Date(Date.now() + retryAfter * 1000).toISOString();
+					let expiresAt = result.expiresAt || new Date(Date.now() + retryAfter * 1000).toISOString();
+
+					// Validate expiresAt timestamp
+					const expiresAtTime = new Date(expiresAt).getTime();
+					if (isNaN(expiresAtTime)) {
+						console.error('Invalid expiresAt from server:', { expiresAt, retryAfter, result });
+						// Use calculated expiry as fallback
+						expiresAt = new Date(Date.now() + retryAfter * 1000).toISOString();
+						console.log('Using calculated expiresAt as fallback:', expiresAt);
+					}
 
 					// Use server message if available, otherwise use default
 					userFriendlyMessage = result.message || 'You have made too many submission attempts. Please wait before trying again.';
+
+					console.log('Setting rate limit info:', {
+						retryAfter,
+						expiresAt,
+						timeRemaining: retryAfter,
+						serverResponse: { retryAfter: result.retryAfter, expiresAt: result.expiresAt }
+					});
 
 					// Set rate limit info for countdown timer
 					setRateLimitInfo({
