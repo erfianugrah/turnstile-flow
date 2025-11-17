@@ -128,26 +128,42 @@ if (emailFraudResult && emailFraudResult.decision === 'block') {
 
 ## Implementation Phases
 
-### Phase 1: Email Fraud Logging Gap (Quick Fix)
+### Phase 1: Email Fraud Logging Gap (Quick Fix) ✅ COMPLETED
 
 **Priority**: HIGH (fixes analytics visibility)
 **Risk**: LOW (adds logging, no behavior change)
-**Files Modified**: 1
+**Files Modified**: 4 (migration, schema, database.ts, submissions.ts)
+
+**Implementation Note**: Changed approach from logging to turnstile_validations (hacky) to creating dedicated fraud_blocks table (clean architecture).
 
 #### Tasks
 
-- [ ] **Modify `src/routes/submissions.ts` (lines 144-161)**
-  - Add `logValidation()` call before throwing ValidationError
-  - Include all email fraud signals in log
-  - Set `detectionType: 'email_fraud'`
-  - Handle null values for tokenHash/ephemeralId (not available yet)
+- [x] **Create `fraud_blocks` table** (migration + schema)
+  - Dedicated table for pre-Turnstile fraud detection
+  - Email fraud specific fields (pattern_type, markov_detected, ood_detected, etc.)
+  - Generic fields for future fraud types (metadata_json, fraud_signals_json)
+  - Proper indexes for performance
+- [x] **Implement `logFraudBlock()` function** (database.ts)
+  - Clean API for logging any pre-Turnstile fraud detection
+  - Fail-open error handling
+  - Structured logging with pino
+- [x] **Integrate email fraud logging** (submissions.ts)
+  - Call logFraudBlock() before throwing ValidationError
+  - Include all email fraud signals
+  - Pass erfid for request tracking
+- [x] **Update analytics to include fraud_blocks data**
+  - getBlockedValidationStats(): Combined counts with breakdown
+  - getBlockReasonDistribution(): UNION query with source field
+  - getRecentBlockedValidations(): UNION query for SecurityEvents
 
 #### Testing Requirements
 
-- [ ] Email fraud block appears in `turnstile_validations` table
-- [ ] Analytics dashboard SecurityEvents shows email fraud blocks
-- [ ] Error still thrown correctly (user-facing behavior unchanged)
-- [ ] Log includes all email fraud signals (pattern type, markov detected, etc.)
+- [x] Email fraud block logged to `fraud_blocks` table
+- [x] Analytics queries combine both tables correctly
+- [x] Error still thrown correctly (user-facing behavior unchanged)
+- [x] TypeScript compilation passes
+- [x] Remote D1 database migration successful
+- [x] UNION queries tested against remote database
 
 #### Verification
 
@@ -598,4 +614,10 @@ wrangler deploy
   - Migration applied successfully to local and remote databases
   - TypeScript compilation passes cleanly
   - Clean architecture: No hacks, separate concerns, future-proof
-- **Status**: Phase 1 Complete ✅ | Phase 2 Ready for Implementation
+- **2025-11-17**: Analytics fully updated to include fraud_blocks data
+  - Updated getBlockedValidationStats() to combine both tables with breakdown
+  - Updated getBlockReasonDistribution() with UNION query and source field
+  - Updated getRecentBlockedValidations() with UNION query for SecurityEvents
+  - All queries tested against remote D1 database
+  - TypeScript compilation verified
+- **Status**: Phase 1 Complete ✅ (including full analytics support) | Phase 2 Ready for Implementation
