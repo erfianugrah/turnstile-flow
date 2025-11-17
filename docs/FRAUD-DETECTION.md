@@ -22,7 +22,7 @@ The fraud detection system uses multi-layer behavioral analysis combined with pr
 
 - Behavior-based detection tracking patterns across time windows (1h, 24h)
 - Progressive mitigation with escalating timeouts (1h → 4h → 8h → 12h → 24h)
-- Fast-path optimization using pre-validation blacklist (85-90% API cost reduction)
+- Fast-path optimization using pre-validation blacklist
 - Fail-open design for service unavailability
 - Forensic logging of all attempts for analysis
 
@@ -59,12 +59,12 @@ flowchart TD
     TokenReplay -->|Yes| LogReplay[Log: risk=100<br/>token_replay]
     LogReplay --> Block3[❌ 400 Bad Request<br/>Token Already Used]
 
-    TokenReplay -->|No| Blacklist[Layer 0: Pre-Validation<br/>Blacklist Check ~10ms]
+    TokenReplay -->|No| Blacklist[Layer 0: Pre-Validation<br/>Blacklist Check]
     Blacklist --> BlacklistHit{In Blacklist?<br/>ephemeral_id<br/>ip_address<br/>ja4}
     BlacklistHit -->|Yes| LogBlacklist[Log: validation attempt<br/>Update last_seen_at]
     LogBlacklist --> Block4[❌ 429 Rate Limit<br/>Wait X hours]
 
-    BlacklistHit -->|No| CallTurnstile[Validate Turnstile<br/>API Call ~150ms]
+    BlacklistHit -->|No| CallTurnstile[Validate Turnstile<br/>API Call]
     CallTurnstile --> ExtractEID[Extract Ephemeral ID<br/>~7 day lifespan]
 
     ExtractEID --> EphemeralCheck[Layer 2: Ephemeral ID<br/>Fraud Detection]
@@ -134,8 +134,6 @@ flowchart TD
 
 Fast-path blocking before expensive Turnstile API calls.
 
-**Execution Time**: ~10ms (D1 lookup) vs ~150ms (Turnstile API)
-
 **Implementation** (`src/lib/fraud-prevalidation.ts`):
 
 ```sql
@@ -150,7 +148,7 @@ LIMIT 1
 - Found → Block immediately (429 Too Many Requests) + update `last_seen_at`
 - Not Found → Continue to Turnstile validation
 
-85-90% of repeat offender requests blocked in ~10ms without Turnstile API call.
+Most repeat offender requests blocked without Turnstile API call.
 
 ---
 
@@ -330,7 +328,7 @@ sequenceDiagram
     Note over Worker,Turnstile: Turnstile API call<br/>NEVER made
 ```
 
-Outcome: Blocked in ~10ms without calling Turnstile API, logged for forensics.
+Outcome: Blocked without calling Turnstile API, logged for forensics.
 
 ---
 
@@ -364,7 +362,7 @@ sequenceDiagram
     Incognito->>Worker: Same request
     Worker->>D1: Pre-validation check
     D1-->>Worker: JA4 blacklisted ❌
-    Worker-->>Incognito: ❌ 429 Rate Limit<br/>(~10ms response)
+    Worker-->>Incognito: ❌ 429 Rate Limit
 ```
 
 Outcome: Second attempt blocked by JA4 detection, third attempt blocked by pre-validation blacklist.
@@ -669,17 +667,14 @@ CREATE INDEX idx_submissions_email ON submissions(email);
 ### Latency Breakdown
 
 ```
-Pre-validation blacklist hit:  ~10ms   (85-90% of repeat attempts)
-Token replay check:            ~10ms   (D1 lookup)
-Email fraud RPC:               0.1-0.5ms (Worker-to-Worker)
-Turnstile API call:            ~150ms  (external service)
-Ephemeral ID fraud check:      ~10-20ms (D1 aggregations)
-JA4 fraud check:               ~5-10ms (D1 aggregation)
-
-Total (first-time user):       ~175-190ms
-Total (blacklisted):           ~10ms (94% faster)
+Pre-validation blacklist hit:  Fast (most repeat attempts)
+Token replay check:            D1 lookup
+Email fraud RPC:               Worker-to-Worker
+Turnstile API call:            External service (slowest)
+Ephemeral ID fraud check:      D1 aggregations
+JA4 fraud check:               D1 aggregation
 ```
 
 ### Performance Optimization
 
-Pre-validation blacklist blocks 85-90% of repeat attempts in ~10ms before calling Turnstile API.
+Pre-validation blacklist blocks most repeat attempts before calling Turnstile API.

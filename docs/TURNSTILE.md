@@ -69,7 +69,7 @@ const blacklist = await checkPreValidationBlock(ephemeralId, remoteIp, db);
 if (blacklist.blocked) return 403; // Previously flagged as fraudulent
 ```
 
-Fast D1 lookup (~10ms) before expensive Turnstile API call (~150ms). Blocks repeat offenders on `ephemeral_id`, `ip_address`, or `ja4` identifiers.
+Fast D1 lookup before expensive Turnstile API call. Blocks repeat offenders on `ephemeral_id`, `ip_address`, or `ja4` identifiers.
 
 **Token Replay Detection** (lines 58-87)
 ```typescript
@@ -448,21 +448,18 @@ Supports lookup by any combination of ephemeral_id, ip_address, or ja4 fingerpri
 ### Latency Characteristics
 
 ```
-Pre-validation blacklist hit:  ~10ms   (85-90% of repeat attempts)
-Token replay check:            ~10ms   (D1 lookup)
-Email fraud RPC:               0.1-0.5ms (Worker-to-Worker)
-Turnstile API call:            ~150ms  (external service)
-Ephemeral ID fraud check:      ~10-20ms (D1 aggregations)
-JA4 fraud check:               ~5-10ms (D1 aggregation)
-
-Total (first-time user):       ~175-190ms
-Total (blacklisted):           ~10ms (94% faster)
+Pre-validation blacklist hit:  Fast (most repeat attempts)
+Token replay check:            D1 lookup
+Email fraud RPC:               Worker-to-Worker
+Turnstile API call:            External service (slowest)
+Ephemeral ID fraud check:      D1 aggregations
+JA4 fraud check:               D1 aggregation
 ```
 
 ### Performance Optimization
 
 Pre-validation blacklist:
-- Blocks 85-90% of repeat attempts in ~10ms without calling Turnstile API
+- Blocks most repeat attempts without calling Turnstile API
 - Turnstile API only called for new/unknown requests
 - Progressive timeouts make attacks impractical
 

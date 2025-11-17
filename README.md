@@ -269,12 +269,12 @@ Auto-populated when risk score ≥70:
 ### 5-Layer Detection System
 
 **Layer 0: Pre-validation Blacklist**
-- Fast D1 lookup (~10ms) before Turnstile API (~150ms)
-- 85-90% reduction in API calls for repeat offenders
+- Fast D1 lookup before Turnstile API call
+- Significantly reduces API calls for repeat offenders
 - Checks ephemeral_id, ip_address, ja4 against fraud_blacklist table
 
 **Layer 1: Email Fraud Detection (Markov-Mail Integration)**
-- Worker-to-Worker RPC service binding (0.1-0.5ms latency)
+- Worker-to-Worker RPC service binding
 - Markov Chain pattern analysis (83% accuracy, 0% false positives)
 - Pattern classification: sequential, dated, formatted, gibberish
 - Out-of-Distribution (OOD) detection for unusual formats

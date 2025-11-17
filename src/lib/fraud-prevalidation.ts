@@ -1,7 +1,6 @@
 /**
  * Pre-validation fraud detection layer
  * Blocks known fraudulent ephemeral IDs and IPs before expensive Turnstile API calls
- * Expected impact: 85-90% reduction in API calls, 15x faster blocking (10ms vs 150ms)
  */
 
 /**

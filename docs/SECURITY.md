@@ -31,12 +31,12 @@ Only requests from configured allowed hostnames are accepted. Hostname validatio
 
 ### 5-Layer Detection System
 
-**Layer 0 - Pre-Validation Blacklist** (~10ms):
+**Layer 0 - Pre-Validation Blacklist**:
 - Fast D1 lookup before expensive Turnstile API call
-- 85-90% reduction in API calls for repeat offenders
+- Significantly reduces API calls for repeat offenders
 - Checks ephemeral_id, ip_address, ja4 against fraud_blacklist table
 
-**Layer 1 - Email Fraud Detection** (0.1-0.5ms):
+**Layer 1 - Email Fraud Detection**:
 - Worker-to-Worker RPC call to Markov-Mail service
 - Markov Chain pattern analysis (83% accuracy, 0% false positives)
 - Detects sequential, dated, formatted email patterns
@@ -126,8 +126,8 @@ HTML and potentially dangerous characters are stripped from user inputs before s
 ### Fraud Blacklist Cache
 
 - Pre-validation check against known fraudulent ephemeral IDs and IPs
-- 10x faster than Turnstile API (~10ms vs ~150ms)
-- Reduces API calls by 85-90%
+- Faster than Turnstile API (D1 lookup vs external service)
+- Significantly reduces API calls for repeat offenders
 - Automatic expiry based on progressive timeout
 
 ## CORS and CSRF Protection

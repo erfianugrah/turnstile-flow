@@ -20,23 +20,23 @@ Comprehensive technical documentation for **Forminator** - I'm collecting all yo
 
 ### System Architecture
 
-| Document | Description | Size |
-|----------|-------------|------|
-| [ARCHITECTURE.md](./ARCHITECTURE.md) | Complete system architecture and design decisions | ~15KB |
-| [SECURITY.md](./SECURITY.md) | Security implementation details and best practices | ~28KB |
-| [API-REFERENCE.md](./API-REFERENCE.md) | Exhaustive API documentation for all endpoints | ~35KB |
+| Document | Description |
+|----------|-------------|
+| [ARCHITECTURE.md](./ARCHITECTURE.md) | Complete system architecture and design decisions |
+| [SECURITY.md](./SECURITY.md) | Security implementation details and best practices |
+| [API-REFERENCE.md](./API-REFERENCE.md) | Exhaustive API documentation for all endpoints |
 
 ### Features & Components
 
-| Document | Description | Size |
-|----------|-------------|------|
-| [FORM-VALIDATION.md](./FORM-VALIDATION.md) | Exhaustive form validation system guide | ~30KB |
-| [PHONE-INPUT.md](./PHONE-INPUT.md) | Custom phone input implementation (70% smaller) | ~14KB |
-| [GEOLOCATION.md](./GEOLOCATION.md) | Country detection via Cloudflare | ~28KB |
-| [TURNSTILE.md](./TURNSTILE.md) | Turnstile integration and verification | ~18KB |
-| [FRAUD-DETECTION.md](./FRAUD-DETECTION.md) | Ephemeral ID fraud detection with progressive timeouts | ~28KB |
-| [../CONFIGURATION-SYSTEM.md](../CONFIGURATION-SYSTEM.md) | Fraud detection configuration and customization guide | ~12KB |
-| [DATABASE-OPERATIONS.md](./DATABASE-OPERATIONS.md) | Complete D1 database management guide | ~35KB |
+| Document | Description |
+|----------|-------------|
+| [FORM-VALIDATION.md](./FORM-VALIDATION.md) | Exhaustive form validation system guide |
+| [PHONE-INPUT.md](./PHONE-INPUT.md) | Custom phone input implementation |
+| [GEOLOCATION.md](./GEOLOCATION.md) | Country detection via Cloudflare |
+| [TURNSTILE.md](./TURNSTILE.md) | Turnstile integration and verification |
+| [FRAUD-DETECTION.md](./FRAUD-DETECTION.md) | Ephemeral ID fraud detection with progressive timeouts |
+| [../CONFIGURATION-SYSTEM.md](../CONFIGURATION-SYSTEM.md) | Fraud detection configuration and customization guide |
+| [DATABASE-OPERATIONS.md](./DATABASE-OPERATIONS.md) | Complete D1 database management guide |
 
 ## Document Summaries
 
@@ -537,10 +537,8 @@ When adding/updating a feature:
 - Added FORM-VALIDATION.md - Exhaustive validation guide (30KB)
 - Added PHONE-INPUT.md - Complete phone system (32KB)
 - Added GEOLOCATION.md - Comprehensive geo guide (28KB)
-- Added API-REFERENCE.md - Complete API docs (35KB)
+- Added API-REFERENCE.md - Complete API docs
 - Updated this index with comprehensive navigation
-
-**Total documentation:** ~235KB of exhaustive technical documentation
 
 ---
 
