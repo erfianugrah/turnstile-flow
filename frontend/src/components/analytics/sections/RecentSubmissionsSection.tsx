@@ -122,6 +122,8 @@ export function RecentSubmissionsSection({
 						totalCount={totalCount}
 						manualPagination={true}
 						manualSorting={true}
+						pagination={pagination}
+						sorting={sorting}
 						onPaginationChange={onPaginationChange}
 						onSortingChange={onSortingChange}
 					/>

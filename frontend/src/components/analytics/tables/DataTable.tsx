@@ -17,6 +17,8 @@ interface DataTableProps<TData> {
 	totalCount?: number;
 	manualPagination?: boolean;
 	manualSorting?: boolean;
+	pagination?: PaginationState;
+	sorting?: SortingState;
 	onPaginationChange?: (pagination: PaginationState) => void;
 	onSortingChange?: (sorting: SortingState) => void;
 	className?: string;
@@ -32,15 +34,21 @@ export function DataTable<TData>({
 	totalCount,
 	manualPagination = false,
 	manualSorting = false,
+	pagination: controlledPagination,
+	sorting: controlledSorting,
 	onPaginationChange,
 	onSortingChange,
 	className = '',
 }: DataTableProps<TData>) {
-	const [sorting, setSorting] = useState<SortingState>([]);
-	const [pagination, setPagination] = useState<PaginationState>({
+	const [internalSorting, setInternalSorting] = useState<SortingState>([]);
+	const [internalPagination, setInternalPagination] = useState<PaginationState>({
 		pageIndex: 0,
 		pageSize: 10,
 	});
+
+	// Use controlled state if provided (manual mode), otherwise use internal state
+	const sorting = manualSorting && controlledSorting ? controlledSorting : internalSorting;
+	const pagination = manualPagination && controlledPagination ? controlledPagination : internalPagination;
 
 	const table = useReactTable({
 		data,
@@ -51,17 +59,19 @@ export function DataTable<TData>({
 		},
 		pageCount: totalCount ? Math.ceil(totalCount / pagination.pageSize) : undefined,
 		onSortingChange: (updater) => {
-			setSorting(updater);
+			const newSorting = typeof updater === 'function' ? updater(sorting) : updater;
 			if (manualSorting && onSortingChange) {
-				const newSorting = typeof updater === 'function' ? updater(sorting) : updater;
 				onSortingChange(newSorting);
+			} else {
+				setInternalSorting(newSorting);
 			}
 		},
 		onPaginationChange: (updater) => {
-			setPagination(updater);
+			const newPagination = typeof updater === 'function' ? updater(pagination) : updater;
 			if (manualPagination && onPaginationChange) {
-				const newPagination = typeof updater === 'function' ? updater(pagination) : updater;
 				onPaginationChange(newPagination);
+			} else {
+				setInternalPagination(newPagination);
 			}
 		},
 		getCoreRowModel: getCoreRowModel(),
