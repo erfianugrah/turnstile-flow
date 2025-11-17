@@ -1,65 +1,43 @@
-# Fraud Detection System - Complete Architecture
-
-**Status**: ✅ Production-ready with 6-layer fraud detection and progressive mitigation
-
-**Configuration**: ✅ All thresholds and weights are configurable via environment variables. See [CONFIGURATION-SYSTEM.md](../CONFIGURATION-SYSTEM.md) for customization guide.
+# Fraud Detection System
 
 ## Table of Contents
 
 1. [System Overview](#system-overview)
-2. [Configuration System](#configuration-system)
-3. [Request Flow Diagram](#complete-request-flow)
-4. [Detection Layers](#detection-layers-detailed)
-5. [Attack Scenarios](#attack-scenarios-with-diagrams)
+2. [Configuration](#configuration)
+3. [Complete Request Flow](#complete-request-flow)
+4. [Detection Layers](#detection-layers)
+5. [Attack Scenarios](#attack-scenarios)
 6. [Risk Scoring System](#risk-scoring-system)
 7. [Progressive Timeout System](#progressive-timeout-system)
 8. [Database Schema](#database-schema)
+9. [Performance Characteristics](#performance-characteristics)
 
 ---
 
 ## System Overview
 
-This fraud detection system uses a **multi-layer behavioral analysis** approach combined with **progressive timeouts** to prevent abuse while minimizing false positives.
+The fraud detection system uses multi-layer behavioral analysis combined with progressive timeouts to prevent abuse while minimizing false positives.
 
-### Core Principles
+### Implementation Approach
 
-1. **Behavior-Based Detection**: Tracks patterns across time windows (1h, 24h)
-2. **Progressive Mitigation**: Escalating timeouts (1h → 4h → 8h → 12h → 24h)
-3. **Fast-Path Optimization**: Pre-validation blacklist reduces API costs by 85-90%
-4. **Fail-Open Design**: Service unavailability doesn't block legitimate users
-5. **Forensic Logging**: All attempts logged for analysis, even blocked ones
-
-### Key Metrics
-
-- **Detection Latency**: 5-20ms per request (D1 queries)
-- **Pre-validation Cache Hit**: ~10ms (vs ~150ms Turnstile API)
-- **False Positive Rate**: <1% (tested with legitimate NAT traffic)
-- **API Cost Reduction**: 85-90% (blacklist catches repeat offenders)
+- Behavior-based detection tracking patterns across time windows (1h, 24h)
+- Progressive mitigation with escalating timeouts (1h → 4h → 8h → 12h → 24h)
+- Fast-path optimization using pre-validation blacklist (85-90% API cost reduction)
+- Fail-open design for service unavailability
+- Forensic logging of all attempts for analysis
 
 ---
 
-## Configuration System
+## Configuration
 
-All fraud detection thresholds and risk scoring weights are **fully configurable** via environment variables.
+All fraud detection thresholds and risk scoring weights are configurable via environment variables. See [CONFIGURATION-SYSTEM.md](../CONFIGURATION-SYSTEM.md) for:
 
-**Default values** (shown throughout this document):
-- Block threshold: 70
-- Risk weights: tokenReplay (0.35), emailFraud (0.17), ephemeralId (0.18), etc.
-- Detection thresholds: 2 submissions, 3 validation attempts, 2 IPs, etc.
-
-**Customization**:
-```bash
-# Example: Change block threshold to 80
-echo '{"risk":{"blockThreshold":80}}' | wrangler secret put FRAUD_CONFIG
-```
-
-**Documentation**: See [CONFIGURATION-SYSTEM.md](../CONFIGURATION-SYSTEM.md) for:
 - Complete configuration reference
 - Usage examples and use cases
-- A/B testing, fine-tuning guidance
-- Deep merge behavior (partial overrides)
+- A/B testing and fine-tuning guidance
+- Deep merge behavior for partial overrides
 
-**Implementation Status**: ✅ Zero hardcoded values (verified 2025-11-16)
+Default thresholds referenced throughout this document can be customized via the `FRAUD_CONFIG` environment variable.
 
 ---
 
@@ -72,7 +50,7 @@ flowchart TD
     ExtractMeta --> ValidateSchema{Schema<br/>Valid?}
     ValidateSchema -->|No| Block1[❌ 400 Bad Request<br/>Validation Error]
 
-    ValidateSchema -->|Yes| EmailCheck[Layer 5: Email Fraud<br/>Markov-Mail RPC 0.1-0.5ms]
+    ValidateSchema -->|Yes| EmailCheck[Layer 1: Email Fraud<br/>Markov-Mail RPC 0.1-0.5ms]
     EmailCheck --> EmailDecision{Email Fraud<br/>Decision}
     EmailDecision -->|block| Block2[❌ 400 Bad Request<br/>Fraudulent Email Pattern]
 
@@ -150,15 +128,16 @@ flowchart TD
 
 ---
 
-## Detection Layers (Detailed)
+## Detection Layers
 
-### Layer 0: Pre-Validation Blacklist (Performance Optimization)
+### Layer 0: Pre-Validation Blacklist
 
-**Purpose**: Fast-path blocking before expensive Turnstile API calls
+Fast-path blocking before expensive Turnstile API calls.
 
 **Execution Time**: ~10ms (D1 lookup) vs ~150ms (Turnstile API)
 
-**How It Works**:
+**Implementation** (`src/lib/fraud-prevalidation.ts`):
+
 ```sql
 SELECT * FROM fraud_blacklist
 WHERE (ephemeral_id = ? OR ip_address = ? OR ja4 = ?)
@@ -168,42 +147,39 @@ LIMIT 1
 ```
 
 **Decision Flow**:
-- **Found** → Block immediately (429 Too Many Requests) + update `last_seen_at`
-- **Not Found** → Continue to Turnstile validation
+- Found → Block immediately (429 Too Many Requests) + update `last_seen_at`
+- Not Found → Continue to Turnstile validation
 
-**Impact**: 85-90% of repeat offender requests blocked in ~10ms without Turnstile API call
-
-**Implementation**: `src/lib/fraud-prevalidation.ts`
+85-90% of repeat offender requests blocked in ~10ms without Turnstile API call.
 
 ---
 
-### Token Replay Detection (Cost Optimization)
+### Token Replay Detection
 
-**Purpose**: Prevent wasting Turnstile API calls on replayed tokens
+Prevents wasting Turnstile API calls on replayed tokens.
 
-**How It Works**:
+**Implementation** (`src/lib/turnstile.ts:130-146`):
+
 1. Hash token with SHA256
 2. Check `turnstile_validations` table for existing `token_hash`
-3. If found → **Block before calling Turnstile API**
+3. If found → Block before calling Turnstile API
 4. Log attempt with risk_score=100 for forensics
 
-**Key Insight**: This is NOT fraud detection - Turnstile's API would reject replayed tokens anyway. This is a **cost optimization** that also provides a fraud signal.
+Cost optimization: Turnstile's API would reject replayed tokens anyway, but this blocks earlier to save API costs.
 
-**Important**: By the time a submission is created, token replay is always false (replayed tokens can't create submissions).
-
-**Implementation**: `src/lib/turnstile.ts:130-146`
+Note: Replayed tokens cannot create submissions, so this only appears in validation logs.
 
 ---
 
-### Layer 1: Email Fraud Detection (External Service)
+### Layer 1: Email Fraud Detection
 
-**Purpose**: Detect fraudulent email patterns using ML-based analysis
+ML-based email pattern analysis using external service.
 
 **Execution Time**: 0.1-0.5ms (Worker-to-Worker RPC)
 
-**How It Works**:
+**Implementation** (`src/lib/email-fraud-detection.ts`):
+
 ```typescript
-// RPC call to markov-mail service
 const result = await env.FRAUD_DETECTOR.validate({
   email,
   consumer: 'FORMINATOR',
@@ -212,120 +188,125 @@ const result = await env.FRAUD_DETECTOR.validate({
 ```
 
 **Detection Capabilities**:
-- **Markov Chain Analysis**: Patterns like user1, user2, user3 (sequential)
-- **OOD Detection**: Unusual email formats that don't match training data
-- **Disposable Domains**: 71K+ known disposable providers
-- **TLD Risk Profiling**: 143 TLDs analyzed for fraud patterns
-- **Accuracy**: 83% detection rate, 0% false positives
+- Markov Chain pattern analysis (sequential: user1, user2, user3)
+- Out-of-Distribution (OOD) detection for unusual formats
+- Disposable domain detection (71K+ domains)
+- TLD risk profiling (143 TLDs analyzed)
 
 **Decision Flow**:
-- **block** → Reject immediately (before Turnstile validation)
-- **warn** → Continue but contribute to risk score (17% weight)
-- **allow** → Continue with risk_score=0 for email component
-- **Service unavailable** → Fail open (allows submission)
-
-**Implementation**: `src/lib/email-fraud-detection.ts`
+- `block` → Reject immediately (before Turnstile validation)
+- `warn` → Continue but contribute to risk score (17% weight)
+- `allow` → Continue with risk_score=0 for email component
+- Service unavailable → Fail open (allows submission)
 
 ---
 
-### Layer 2: Ephemeral ID Fraud Detection (Behavior Analysis)
+### Layer 2: Ephemeral ID Fraud Detection
 
-**Purpose**: Detect repeat submissions from same device using ephemeral ID tracking
+Behavioral analysis detecting repeat submissions from same device.
 
 **Time Windows**:
-- Submissions: 24h window (should only submit ONCE for registration)
-- Validations: 1h window (catches rapid-fire before D1 replication)
-- IP diversity: 24h window (proxy rotation detection)
+- Submissions: 24h (registration forms should submit only once)
+- Validations: 1h (catches rapid-fire before D1 replication)
+- IP diversity: 24h (proxy rotation detection)
 
-**Detection Logic**:
+**Implementation** (`src/lib/turnstile.ts:212-387`):
 
 #### Layer 2a: Submission Count
+
 ```sql
 SELECT COUNT(*) FROM submissions
 WHERE ephemeral_id = ?
   AND created_at > datetime('now', '-24 hours')
 ```
-- **Threshold**: 2+ submissions → BLOCK
-- **Rationale**: Registration forms should only be submitted ONCE per user
+
+Threshold: 2+ submissions → Block (registration forms should only be submitted once per user)
 
 #### Layer 2b: Validation Frequency
+
 ```sql
 SELECT COUNT(*) FROM turnstile_validations
 WHERE ephemeral_id = ?
   AND created_at > datetime('now', '-1 hour')
 ```
-- **Threshold**: 3+ attempts → BLOCK, 2 attempts → WARNING
-- **Rationale**: Catches rapid-fire attacks before D1 replication lag
+
+Threshold: 3+ attempts → Block, 2 attempts → Warning (catches rapid-fire attacks before D1 replication lag)
 
 #### Layer 2c: IP Diversity
+
 ```sql
 SELECT COUNT(DISTINCT remote_ip) FROM submissions
 WHERE ephemeral_id = ?
   AND created_at > datetime('now', '-24 hours')
 ```
-- **Threshold**: 2+ unique IPs → BLOCK
-- **Rationale**: Same device from multiple IPs = proxy rotation
 
-**Mitigation**: Adds `ephemeral_id` to blacklist with progressive timeout
+Threshold: 2+ unique IPs → Block (same device from multiple IPs indicates proxy rotation)
 
-**Implementation**: `src/lib/turnstile.ts:212-387`
+Mitigation: Adds `ephemeral_id` to blacklist with progressive timeout.
 
 ---
 
-### Layer 4: JA4 Session Hopping Detection (TLS Fingerprinting)
+### Layer 4: JA4 Session Hopping Detection
 
-**Purpose**: Detect attacks that bypass ephemeral ID tracking by opening incognito/private windows or switching browsers
+TLS fingerprinting to detect attacks bypassing ephemeral ID tracking by opening incognito/private windows or switching browsers.
 
-**Key Concept**: JA4 fingerprint tracks the TLS client (browser + OS) which doesn't change even when cookies are cleared or incognito mode is used.
+JA4 fingerprint tracks the TLS client (browser + OS) which doesn't change when cookies are cleared or incognito mode is used.
 
-**Three Sub-Layers**:
+**Implementation** (`src/lib/ja4-fraud-detection.ts`):
 
 #### Layer 4a: IP Clustering (1h window)
+
 ```sql
 SELECT COUNT(DISTINCT ephemeral_id) FROM submissions
 WHERE ja4 = ? AND remote_ip IN (same /64 subnet)
   AND created_at > datetime('now', '-1 hour')
 ```
-- **Threshold**: 2+ ephemeral IDs from same IP/subnet + same JA4
-- **Detects**: Incognito mode, browser hopping from same location
 
-#### Layer 4b: Rapid Global (5min window, NO IP filter)
+Threshold: 2+ ephemeral IDs from same IP/subnet + same JA4
+
+Detects: Incognito mode, browser hopping from same location
+
+#### Layer 4b: Rapid Global (5min window, no IP filter)
+
 ```sql
 SELECT COUNT(DISTINCT ephemeral_id) FROM submissions
 WHERE ja4 = ?
   AND created_at > datetime('now', '-5 minutes')
 ```
-- **Threshold**: 3+ ephemeral IDs globally with same JA4
-- **Detects**: Aggressive network-switching attacks (VPN hopping, IPv4↔IPv6)
 
-#### Layer 4c: Extended Global (1h window, NO IP filter)
+Threshold: 3+ ephemeral IDs globally with same JA4
+
+Detects: Aggressive network-switching attacks (VPN hopping, IPv4↔IPv6)
+
+#### Layer 4c: Extended Global (1h window, no IP filter)
+
 ```sql
 SELECT COUNT(DISTINCT ephemeral_id) FROM submissions
 WHERE ja4 = ?
   AND created_at > datetime('now', '-1 hour')
 ```
-- **Threshold**: 5+ ephemeral IDs globally with same JA4
-- **Detects**: Slower distributed attacks across networks
+
+Threshold: 5+ ephemeral IDs globally with same JA4
+
+Detects: Slower distributed attacks across networks
 
 **Risk Scoring**:
 - JA4 clustering signal: +80 points (primary)
 - Rapid velocity (<60min): +60 points
 - Global anomaly (high distribution): +50 points
 - Bot pattern (high volume): +40 points
-- **Raw score**: 0-230 (normalized to 0-100)
+- Raw score: 0-230 (normalized to 0-100)
 
-**Mitigation**: Adds **three identifiers** to blacklist:
+**Mitigation**: Adds three identifiers to blacklist:
 - `ephemeral_id` (24h max)
 - `ja4` (24h max)
 - `ip_address` (progressive timeout)
 
-**Why This Works**: Subsequent attempts blocked by Layer 0 on ANY of the three identifiers.
-
-**Implementation**: `src/lib/ja4-fraud-detection.ts`
+Subsequent attempts blocked by Layer 0 on any of the three identifiers.
 
 ---
 
-## Attack Scenarios (With Diagrams)
+## Attack Scenarios
 
 ### Scenario 1: Token Replay Attack
 
@@ -346,10 +327,10 @@ sequenceDiagram
     Worker->>D1: Log attempt<br/>risk_score=100
     Worker-->>Attacker: ❌ 400 Bad Request<br/>"Token already used"
 
-    Note over Worker,Turnstile: Turnstile API call<br/>NEVER made<br/>(cost optimization)
+    Note over Worker,Turnstile: Turnstile API call<br/>NEVER made
 ```
 
-**Outcome**: Blocked in ~10ms, Turnstile API cost saved, logged for forensics
+Outcome: Blocked in ~10ms without calling Turnstile API, logged for forensics.
 
 ---
 
@@ -386,7 +367,7 @@ sequenceDiagram
     Worker-->>Incognito: ❌ 429 Rate Limit<br/>(~10ms response)
 ```
 
-**Outcome**: Second attempt blocked by JA4 detection, third attempt blocked by pre-validation blacklist
+Outcome: Second attempt blocked by JA4 detection, third attempt blocked by pre-validation blacklist.
 
 ---
 
@@ -416,39 +397,7 @@ sequenceDiagram
     Worker-->>Proxy2: ❌ 429 Rate Limit<br/>"Proxy rotation detected"
 ```
 
-**Outcome**: Layer 2c (IP Diversity) catches proxy rotation, adds ephemeral_id to blacklist
-
----
-
-### Scenario 4: Legitimate NAT Traffic (Should Allow)
-
-```mermaid
-sequenceDiagram
-    actor User1 as User 1<br/>(iPhone)
-    actor User2 as User 2<br/>(Android)
-    participant NAT as Office NAT<br/>IP: 1.1.1.1
-    participant Worker
-    participant D1
-
-    Note over User1,User2: Two users on<br/>same network
-    User1->>NAT: Submit form
-    NAT->>Worker: Submit with<br/>ephemeral_id=ABC<br/>ja4=APPLE<br/>remote_ip=1.1.1.1
-    Worker->>D1: Create submission
-    D1-->>Worker: Success
-    Worker-->>NAT: ✅ 201 Created
-    NAT-->>User1: Success
-
-    User2->>NAT: Submit form
-    NAT->>Worker: Submit with<br/>ephemeral_id=XYZ (DIFFERENT)<br/>ja4=ANDROID (DIFFERENT)<br/>remote_ip=1.1.1.1 (SAME)
-    Worker->>D1: Check JA4 clustering
-    D1-->>Worker: Different JA4<br/>Different ephemeral ID<br/>✅ No clustering
-    Worker->>D1: Create submission
-    D1-->>Worker: Success
-    Worker-->>NAT: ✅ 201 Created
-    NAT-->>User2: Success
-```
-
-**Outcome**: Both allowed - different devices = different JA4 + different ephemeral IDs
+Outcome: Layer 2c (IP Diversity) catches proxy rotation, adds ephemeral_id to blacklist.
 
 ---
 
@@ -456,16 +405,12 @@ sequenceDiagram
 
 ### Two Scoring Contexts
 
-**Important**: Risk scores exist in two different contexts:
+Risk scores exist in two different contexts:
 
-#### 1. Validation Logs (turnstile_validations table)
+#### Validation Logs (turnstile_validations table)
 
-These scores **include all 6 components** and are used for:
-- Forensic analysis of blocked attempts
-- Tracking token replay attempts
-- Analyzing attack patterns
+Includes all 6 components for forensic analysis of blocked attempts:
 
-**Component Weights**:
 ```
 Token Replay:         35%  (only for replayed tokens)
 Email Fraud:          17%  (Markov-Mail detection)
@@ -477,11 +422,10 @@ JA4 Session Hopping:   8%  (browser hopping)
 Total:               100%
 ```
 
-#### 2. Submission Records (submissions table)
+#### Submission Records (submissions table)
 
-These scores **exclude token replay** because replayed tokens can't create submissions:
+Excludes token replay because replayed tokens cannot create submissions:
 
-**Component Weights**:
 ```
 Email Fraud:          17%
 Ephemeral ID:         18%
@@ -498,7 +442,7 @@ When specific checks trigger blocks, minimum risk scores are enforced:
 
 ```typescript
 switch (blockTrigger) {
-  case 'token_replay':       total = 100  // Instant block
+  case 'token_replay':       total = 100
   case 'ip_diversity':       total = max(baseScore, 80)
   case 'ja4_session_hopping': total = max(baseScore, 75)
   case 'ephemeral_id_fraud': total = max(baseScore, 70)
@@ -508,9 +452,9 @@ switch (blockTrigger) {
 }
 ```
 
-**Block Threshold**: riskScore ≥ 70
+Block Threshold: riskScore ≥ 70
 
-### Risk Score Breakdown (Transparency)
+### Risk Score Breakdown
 
 All risk scores include component breakdown stored as JSON:
 
@@ -535,8 +479,7 @@ All risk scores include component breakdown stored as JSON:
       "weight": 0.18,
       "contribution": 12.6,
       "reason": "2 submissions (suspicious)"
-    },
-    // ... other components
+    }
   }
 }
 ```
@@ -559,16 +502,18 @@ Repeat offenders face exponentially increasing timeouts:
 5th+ offense: 86,400 seconds  (24 hours, maximum)
 ```
 
-### How It Works
+### Implementation
 
-1. **Count Offenses** (last 24h):
+**Count Offenses** (last 24h):
+
 ```sql
 SELECT COUNT(*) FROM fraud_blacklist
 WHERE (ephemeral_id = ? OR ip_address = ?)
   AND blocked_at > datetime('now', '-24 hours')
 ```
 
-2. **Calculate Timeout**:
+**Calculate Timeout** (`src/lib/turnstile.ts:164-177`):
+
 ```typescript
 function calculateProgressiveTimeout(offenseCount: number): number {
   const timeWindows = [3600, 14400, 28800, 43200, 86400];
@@ -577,7 +522,8 @@ function calculateProgressiveTimeout(offenseCount: number): number {
 }
 ```
 
-3. **Add to Blacklist**:
+**Add to Blacklist**:
+
 ```typescript
 await addToBlacklist(db, {
   ephemeralId,
@@ -590,15 +536,7 @@ await addToBlacklist(db, {
 });
 ```
 
-### Why 24h Maximum?
-
-- Ephemeral IDs have ~7 day lifespan
-- 24h max respects rotation period
-- Balances security vs user experience
-- Legitimate users affected minimally (1h timeout, then can resubmit)
-- Attackers face practical barriers (24h delays make attacks impractical)
-
-**Implementation**: `src/lib/turnstile.ts:164-177`
+Ephemeral IDs have ~7 day lifespan. The 24h maximum timeout respects this rotation period while making attacks impractical for attackers and minimizing impact on legitimate users.
 
 ---
 
@@ -606,7 +544,7 @@ await addToBlacklist(db, {
 
 ### fraud_blacklist Table
 
-**Purpose**: Fast pre-validation blocking cache
+Fast pre-validation blocking cache.
 
 ```sql
 CREATE TABLE fraud_blacklist (
@@ -643,9 +581,11 @@ CREATE INDEX idx_blacklist_ja4 ON fraud_blacklist(ja4, expires_at);
 CREATE INDEX idx_blacklist_expires ON fraud_blacklist(expires_at);
 ```
 
+---
+
 ### turnstile_validations Table
 
-**Purpose**: Forensic logging of all validation attempts
+Forensic logging of all validation attempts.
 
 ```sql
 CREATE TABLE turnstile_validations (
@@ -679,9 +619,11 @@ CREATE TABLE turnstile_validations (
 CREATE UNIQUE INDEX idx_token_hash ON turnstile_validations(token_hash);
 ```
 
+---
+
 ### submissions Table
 
-**Purpose**: Successful form submissions with full metadata
+Successful form submissions with full metadata.
 
 ```sql
 CREATE TABLE submissions (
@@ -699,7 +641,7 @@ CREATE TABLE submissions (
   ephemeral_id TEXT,
   risk_score_breakdown TEXT,  -- JSON
 
-  -- Email fraud detection (Phase 2)
+  -- Email fraud detection
   email_risk_score REAL,
   email_fraud_signals TEXT,  -- JSON
   email_pattern_type TEXT,
@@ -738,59 +680,6 @@ Total (first-time user):       ~175-190ms
 Total (blacklisted):           ~10ms (94% faster)
 ```
 
-### Cost Optimization
+### Performance Optimization
 
-**Without pre-validation blacklist**:
-- Every request calls Turnstile API (~150ms + API cost)
-- Repeat offenders waste API credits
-
-**With pre-validation blacklist**:
-- 85-90% of repeat attempts blocked in ~10ms
-- Turnstile API only called for new/unknown users
-- **Result**: 85-90% reduction in API costs
-
----
-
-## Summary
-
-### System Strengths
-
-1. **Multi-Layer Defense**: 6 independent detection layers
-2. **Behavioral Analysis**: Pattern recognition across time windows
-3. **Progressive Mitigation**: Escalating timeouts (1h → 24h)
-4. **Performance Optimized**: Pre-validation blacklist reduces costs by 85-90%
-5. **Low False Positives**: <1% false positive rate
-6. **Forensic Logging**: All attempts logged for analysis
-7. **Fail-Open Design**: Service unavailability doesn't block legitimate users
-
-### Known Limitations
-
-1. **D1 Eventual Consistency**: Mitigated by multi-layer approach
-2. **TLS-Terminating Proxies**: <5% edge case, existing detection still applies
-3. **Cloudflare Enterprise**: JA4 signals require Bot Management (degrades gracefully)
-
-### Monitoring Recommendations
-
-```sql
--- Active blacklist entries
-SELECT COUNT(*) FROM fraud_blacklist
-WHERE expires_at > datetime('now');
-
--- Block rate (should be <5% for legitimate traffic)
-SELECT
-  SUM(CASE WHEN allowed = 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as block_rate
-FROM turnstile_validations
-WHERE created_at > datetime('now', '-1 hour');
-
--- JA4 clustering events
-SELECT ja4, COUNT(DISTINCT ephemeral_id) as ids
-FROM submissions
-WHERE created_at > datetime('now', '-1 hour')
-GROUP BY ja4
-HAVING ids >= 2;
-```
-
----
-
-**Last Updated**: 2025-11-16
-**Version**: 2.0 (Complete accuracy review)
+Pre-validation blacklist blocks 85-90% of repeat attempts in ~10ms before calling Turnstile API.
