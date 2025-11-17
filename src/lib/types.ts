@@ -105,7 +105,7 @@ export interface AddressData {
 	city?: string;
 	state?: string;
 	postalCode?: string;
-	country: string;
+	country?: string;
 }
 
 // Form submission data

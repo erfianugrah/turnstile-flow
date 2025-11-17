@@ -7,12 +7,28 @@ const addressSchema = z.object({
 	city: z.string().max(100).optional(),
 	state: z.string().max(100).optional(),
 	postalCode: z.string().max(20).optional(),
-	country: z.string().min(2, 'Country is required'),
+	country: z.string().optional(),
 }).optional()
+	.refine((val) => {
+		// If no address data at all, that's fine
+		if (!val) return true;
+
+		// Check if any address fields have content
+		const hasAddressContent = val.street || val.street2 || val.city || val.state || val.postalCode;
+
+		// If address fields have content, country must be provided
+		if (hasAddressContent && (!val.country || val.country.length < 2)) {
+			return false;
+		}
+
+		return true;
+	}, {
+		message: 'Country is required when providing an address'
+	})
 	.transform((val) => {
-		// If address is provided but all fields are empty (only country set), return undefined
+		// Return undefined if all fields are empty
 		if (!val) return undefined;
-		const hasContent = val.street || val.street2 || val.city || val.state || val.postalCode;
+		const hasContent = val.street || val.street2 || val.city || val.state || val.postalCode || val.country;
 		return hasContent ? val : undefined;
 	});
 
@@ -91,7 +107,7 @@ export function sanitizeFormData(data: FormSubmissionInput) {
 			city: data.address.city ? sanitizeString(data.address.city) : undefined,
 			state: data.address.state ? sanitizeString(data.address.state) : undefined,
 			postalCode: data.address.postalCode ? sanitizeString(data.address.postalCode) : undefined,
-			country: sanitizeString(data.address.country),
+			country: data.address.country ? sanitizeString(data.address.country) : undefined,
 		} : undefined,
 		dateOfBirth: data.dateOfBirth ? sanitizeString(data.dateOfBirth) : undefined,
 		turnstileToken: data.turnstileToken, // Don't sanitize token

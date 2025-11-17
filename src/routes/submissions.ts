@@ -24,6 +24,7 @@ import {
 	DatabaseError,
 	ConflictError,
 	handleError,
+	formatZodErrors,
 } from '../lib/errors';
 
 /**
@@ -98,9 +99,12 @@ app.post('/', async (c) => {
 		const validationResult = formSubmissionSchema.safeParse(rawPayload);
 
 		if (!validationResult.success) {
-			throw new ValidationError('Form validation failed', {
-				errors: validationResult.error.errors,
-			});
+			const userMessage = formatZodErrors(validationResult.error);
+			throw new ValidationError(
+				'Form validation failed',
+				{ errors: validationResult.error.errors },
+				userMessage
+			);
 		}
 
 		const { turnstileToken } = validationResult.data;
@@ -127,10 +131,8 @@ app.post('/', async (c) => {
 
 				throw new ValidationError(
 					'Email rejected by fraud detection',
-					{
-						userMessage: 'This email address cannot be used. Please use a different email address',
-						signals: emailFraudResult.signals,
-					}
+					{ signals: emailFraudResult.signals },
+					'This email address cannot be used. Please use a different email address'
 				);
 			}
 		}
@@ -143,7 +145,11 @@ app.post('/', async (c) => {
 		if (!skipTurnstile) {
 			// Standard flow: validate Turnstile token
 			if (!turnstileToken) {
-				throw new ValidationError('Turnstile token required');
+				throw new ValidationError(
+					'Turnstile token required',
+					{},
+					'Security verification token is missing. Please complete the CAPTCHA challenge'
+				);
 			}
 
 			// Hash token for replay protection
@@ -185,10 +191,11 @@ app.post('/', async (c) => {
 					logger.error({ error: dbError }, 'Failed to log token reuse');
 				}
 
-				throw new ValidationError('Token replay attack', {
-					tokenHash,
-					userMessage: 'This verification has already been used. Please refresh the page and try again',
-				});
+				throw new ValidationError(
+					'Token replay attack',
+					{ tokenHash },
+					'This verification has already been used. Please refresh the page and try again'
+				);
 			}
 
 			// Validate Turnstile token
@@ -460,8 +467,8 @@ app.post('/', async (c) => {
 				{
 					errors: validation.errors,
 					errorCodes: validation.debugInfo?.codes,
-					userMessage,
-				}
+				},
+				userMessage
 			);
 		}
 

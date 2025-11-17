@@ -3,7 +3,24 @@
  */
 
 import type { Context } from 'hono';
+import type { ZodError } from 'zod';
 import logger from './logger';
+
+/**
+ * Format Zod validation errors into a human-readable message
+ */
+export function formatZodErrors(zodError: ZodError): string {
+	const errors = zodError.errors.map((err) => {
+		const field = err.path.join('.');
+		return `${field}: ${err.message}`;
+	});
+
+	if (errors.length === 1) {
+		return errors[0];
+	}
+
+	return `Validation failed:\n${errors.map(e => `• ${e}`).join('\n')}`;
+}
 
 /**
  * Base application error class
@@ -25,11 +42,11 @@ export class AppError extends Error {
  * Validation error (400)
  */
 export class ValidationError extends AppError {
-	constructor(message: string, context?: Record<string, any>) {
+	constructor(message: string, context?: Record<string, any>, userMessage?: string) {
 		super(
 			message,
 			400,
-			'Please check your form data and try again',
+			userMessage || 'Please check your form data and try again',
 			context
 		);
 	}
@@ -103,12 +120,13 @@ export class ExternalServiceError extends AppError {
 	constructor(
 		service: string,
 		message: string,
-		context?: Record<string, any>
+		context?: Record<string, any>,
+		userMessage?: string
 	) {
 		super(
 			`${service} error: ${message}`,
 			503,
-			'A required service is temporarily unavailable. Please try again in a moment',
+			userMessage || 'A required service is temporarily unavailable. Please try again in a moment',
 			{ service, ...context }
 		);
 	}
