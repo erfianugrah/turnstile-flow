@@ -103,7 +103,7 @@ export function useSubmissions(
 
 			const data = await res.json();
 			setSubmissions((data as any).data);
-			setTotalCount((data as any).total || 0);
+			setTotalCount((data as any).pagination?.total || 0);
 		} catch (err) {
 			console.error('Error loading submissions:', err);
 			const errorMessage = err instanceof Error
