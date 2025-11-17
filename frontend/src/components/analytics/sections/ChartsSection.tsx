@@ -65,6 +65,22 @@ export function ChartsSection({
 								countries.slice(0, 10).map((item, index) => {
 									const maxCount = countries[0]?.count || 1;
 									const percentage = (item.count / maxCount) * 100;
+
+									// Color gradient: vibrant colors cycling through palette
+									const colors = [
+										'hsl(213, 82%, 58%)',  // Bright blue
+										'hsl(193, 82%, 52%)',  // Cyan
+										'hsl(179, 72%, 48%)',  // Teal
+										'hsl(163, 72%, 45%)',  // Green-teal
+										'hsl(142, 72%, 48%)',  // Green
+										'hsl(88, 72%, 52%)',   // Yellow-green
+										'hsl(43, 82%, 58%)',   // Yellow
+										'hsl(28, 82%, 58%)',   // Orange
+										'hsl(14, 82%, 58%)',   // Red-orange
+										'hsl(353, 82%, 58%)',  // Red
+									];
+									const barColor = colors[index % colors.length];
+
 									return (
 										<div key={index} className="space-y-1">
 											<div className="flex justify-between items-center text-sm">
@@ -73,8 +89,11 @@ export function ChartsSection({
 											</div>
 											<div className="h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
 												<div
-													className="h-full bg-[hsl(213,32%,52%)] dark:bg-[hsl(213,32%,65%)] rounded-full transition-all"
-													style={{ width: `${percentage}%` }}
+													className="h-full rounded-full transition-all"
+													style={{
+														width: `${percentage}%`,
+														backgroundColor: barColor
+													}}
 												/>
 											</div>
 										</div>
@@ -105,6 +124,37 @@ export function ChartsSection({
 								botScores.map((item, index) => {
 									const total = botScores.reduce((sum, s) => sum + s.count, 0);
 									const percentage = (item.count / total) * 100;
+
+									// Determine color based on bot score
+									// 1 = heuristics, definite bot (red)
+									// 2-29 = probably bots (orange/yellow)
+									// 30-99 = higher score = more human-like (green)
+									let barColor: string;
+									const rangeStr = item.score_range.toLowerCase();
+
+									if (rangeStr.includes('90-100') || rangeStr.includes('80-89')) {
+										// Very human-like
+										barColor = 'hsl(142, 72%, 48%)'; // Green
+									} else if (rangeStr.includes('70-79') || rangeStr.includes('60-69')) {
+										// Probably human
+										barColor = 'hsl(88, 72%, 52%)'; // Yellow-green
+									} else if (rangeStr.includes('50-59') || rangeStr.includes('40-49')) {
+										// Suspicious
+										barColor = 'hsl(43, 82%, 58%)'; // Yellow
+									} else if (rangeStr.includes('30-39') || rangeStr.includes('2-29') || rangeStr.includes('20-29') || rangeStr.includes('10-19')) {
+										// Probably bot
+										barColor = 'hsl(28, 82%, 58%)'; // Orange
+									} else if (rangeStr.includes('1') || rangeStr.includes('0-9') || rangeStr === '1-9') {
+										// Definite bot
+										barColor = 'hsl(353, 82%, 58%)'; // Red
+									} else if (rangeStr.includes('null')) {
+										// Unknown / No bot score
+										barColor = 'hsl(213, 82%, 58%)'; // Blue
+									} else {
+										// Fallback
+										barColor = 'hsl(213, 82%, 58%)'; // Blue
+									}
+
 									return (
 										<div key={index} className="space-y-1">
 											<div className="flex justify-between items-center text-sm">
@@ -116,8 +166,11 @@ export function ChartsSection({
 											</div>
 											<div className="h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
 												<div
-													className="h-full bg-[hsl(213,32%,52%)] dark:bg-[hsl(213,32%,65%)] rounded-full transition-all"
-													style={{ width: `${percentage}%` }}
+													className="h-full rounded-full transition-all"
+													style={{
+														width: `${percentage}%`,
+														backgroundColor: barColor
+													}}
 												/>
 											</div>
 										</div>
