@@ -92,5 +92,4 @@
 - JA4 (100): 100 * 0.08 = 8 points
 - **Total**: 63.3 points → ❌ **Allowed** (under 70)
 
-**Impact**: ⚠️ **Potential change** - this edge case would be allowed instead of blocked
-**Note**: This scenario is *extremely* unlikely (all 5 signals at max, no blockTrigger). In practice, any single high signal would trigger blockTrigger logic.
+**Impact**: ⚠️ **Potential change** - this edge case would be allowed instead of blocked. This scenario is extremely unlikely (all 5 signals at max, no blockTrigger). In practice, any single high signal would trigger blockTrigger logic.

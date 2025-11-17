@@ -45,7 +45,7 @@ Only requests from configured allowed hostnames are accepted. Hostname validatio
 
 **Layer 2 - Ephemeral ID Fraud Detection** (24h window):
 - Blocks 2+ submissions from same ephemeral ID
-- Registration forms should only be submitted once per user
+- Registration forms typically submitted once per user
 
 **Layer 3 - Validation Frequency Monitoring** (1h window):
 - Blocks 3+ validation attempts from same ephemeral ID
@@ -176,7 +176,7 @@ Over 40 fields captured from Cloudflare's `request.cf` object:
 **Bot Signals**: bot score, client trust score, verified bot, detection IDs
 **Fingerprints**: JA3 hash, JA4 string, JA4 signals
 
-**Note**: Enterprise-only fields (bot_score, ja3_hash, ja4, detection_ids) require Cloudflare Bot Management.
+Enterprise-only fields (bot_score, ja3_hash, ja4, detection_ids) require Cloudflare Bot Management.
 
 ## Authentication
 
@@ -264,7 +264,7 @@ if (env.ALLOW_TESTING_BYPASS === 'true' && apiKey && apiKey === env['X-API-KEY']
 
 ### D1 Eventual Consistency
 
-D1 is eventually consistent. Fraud detection is pattern-based and tolerates this. For strict real-time guarantees, consider Durable Objects.
+D1 is eventually consistent. Fraud detection is pattern-based and tolerates this.
 
 ### Not Implemented
 

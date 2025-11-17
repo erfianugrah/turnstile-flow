@@ -139,14 +139,7 @@ cd ..
 wrangler dev --remote
 ```
 
-The `--remote` flag uses your production D1 database for testing. This ensures consistency and avoids local/remote data sync issues.
-
-### Why Remote D1 for Development?
-
-- **Consistency**: Same data as production
-- **No sync issues**: Local D1 can drift from remote
-- **Realistic testing**: Test with actual Cloudflare infrastructure
-- **Easier debugging**: All data in one place
+The `--remote` flag uses your production D1 database for testing.
 
 ## API Endpoints
 

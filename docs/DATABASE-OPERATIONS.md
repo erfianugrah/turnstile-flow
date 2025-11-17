@@ -444,7 +444,7 @@ wrangler d1 execute DB --command="
 
 ### Database Migrations
 
-**Important:** D1 doesn't support ALTER TABLE easily. For schema changes:
+D1 doesn't support ALTER TABLE easily. For schema changes:
 
 1. Create migration SQL file
 2. Test locally without `--remote`
