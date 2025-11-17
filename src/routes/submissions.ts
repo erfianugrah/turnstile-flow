@@ -47,7 +47,7 @@ function formatWaitTime(seconds: number): string {
 	}
 }
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<{ Bindings: Env; Variables: { erfid?: string } }>();
 
 // POST /api/submissions - Create new submission with Turnstile validation
 app.post('/', async (c) => {
@@ -73,6 +73,9 @@ app.post('/', async (c) => {
 
 		// Generate erfid for this request
 		const erfid = generateErfid(erfidConfig);
+
+		// Store erfid in context for error handling
+		c.set('erfid', erfid);
 
 		logger.info({ erfid }, 'Request erfid generated');
 

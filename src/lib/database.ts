@@ -238,7 +238,7 @@ export async function getRecentSubmissions(
 		const result = await db
 			.prepare(
 				`SELECT id, first_name, last_name, email, country, city, bot_score,
-				 created_at, remote_ip, user_agent, tls_version, asn, ja3_hash, ja4, ephemeral_id
+				 created_at, remote_ip, user_agent, tls_version, asn, ja3_hash, ja4, ephemeral_id, erfid
 				 FROM submissions
 				 ORDER BY created_at DESC
 				 LIMIT ? OFFSET ?`
@@ -375,8 +375,8 @@ export async function getSubmissions(
 			SELECT
 				s.id, s.first_name, s.last_name, s.email, s.country, s.city, s.bot_score,
 				s.created_at, s.remote_ip, s.user_agent, s.tls_version, s.asn,
-				s.ja3_hash, s.ja4, s.ephemeral_id, s.verified_bot,
-				tv.risk_score, tv.risk_score_breakdown
+				s.ja3_hash, s.ja4, s.ephemeral_id, s.verified_bot, s.erfid,
+				tv.risk_score, tv.risk_score_breakdown, tv.erfid as validation_erfid
 			FROM submissions s
 			LEFT JOIN turnstile_validations tv ON s.id = tv.submission_id
 			WHERE ${whereClause}
@@ -998,6 +998,7 @@ export async function getActiveBlacklistEntries(db: D1Database) {
 					COALESCE(fb.ja4, tv.ja4) as ja4,
 					fb.block_reason,
 					fb.detection_confidence,
+					fb.erfid,
 					REPLACE(fb.blocked_at, ' ', 'T') || 'Z' AS blocked_at,
 					REPLACE(fb.expires_at, ' ', 'T') || 'Z' AS expires_at,
 					fb.submission_count,
@@ -1092,6 +1093,7 @@ export async function getRecentBlockedValidations(db: D1Database, limit: number 
 					bot_score,
 					user_agent,
 					ja4,
+					erfid,
 					REPLACE(created_at, ' ', 'T') || 'Z' AS challenge_ts
 				 FROM turnstile_validations
 				 WHERE allowed = 0

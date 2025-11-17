@@ -151,6 +151,14 @@ export class DatabaseError extends AppError {
  * Converts errors to appropriate JSON responses
  */
 export function handleError(error: unknown, c: Context) {
+	// Extract erfid from context (if available)
+	const erfid = c.get('erfid') as string | undefined;
+
+	// Set erfid header if available
+	if (erfid) {
+		c.header('X-Request-Id', erfid);
+	}
+
 	// Handle known AppError instances
 	if (error instanceof RateLimitError) {
 		logger.warn(
@@ -159,6 +167,7 @@ export function handleError(error: unknown, c: Context) {
 				retryAfter: error.retryAfter,
 				expiresAt: error.expiresAt,
 				context: error.context,
+				erfid,
 			},
 			'Rate limit error'
 		);
@@ -169,6 +178,7 @@ export function handleError(error: unknown, c: Context) {
 				message: error.userMessage || error.message,
 				retryAfter: error.retryAfter,
 				expiresAt: error.expiresAt,
+				...(erfid && { erfid }),
 			},
 			error.statusCode as 429,
 			{
@@ -186,6 +196,7 @@ export function handleError(error: unknown, c: Context) {
 					statusCode: error.statusCode,
 					context: error.context,
 					stack: error.stack,
+					erfid,
 				},
 				`${error.name}: ${error.message}`
 			);
@@ -195,6 +206,7 @@ export function handleError(error: unknown, c: Context) {
 					error: error.message,
 					statusCode: error.statusCode,
 					context: error.context,
+					erfid,
 				},
 				`${error.name}: ${error.message}`
 			);
@@ -205,6 +217,7 @@ export function handleError(error: unknown, c: Context) {
 				error: error.name,
 				message: error.userMessage || error.message,
 				...(error.context && { details: error.context }),
+				...(erfid && { erfid }),
 			},
 			error.statusCode as any
 		);
@@ -219,6 +232,7 @@ export function handleError(error: unknown, c: Context) {
 			error: errorMessage,
 			stack: errorStack,
 			type: error instanceof Error ? error.constructor.name : typeof error,
+			erfid,
 		},
 		'Unexpected error'
 	);
@@ -227,6 +241,7 @@ export function handleError(error: unknown, c: Context) {
 		{
 			error: 'Internal server error',
 			message: 'An unexpected error occurred. Please try again',
+			...(erfid && { erfid }),
 		},
 		500
 	);
