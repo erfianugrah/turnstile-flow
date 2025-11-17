@@ -192,10 +192,12 @@ const result = await env.FRAUD_DETECTOR.validate({
 - TLD risk profiling (143 TLDs analyzed)
 
 **Decision Flow**:
-- `block` → Reject immediately (before Turnstile validation)
+- `block` → Reject immediately (before Turnstile validation), logged to `fraud_blocks` table
 - `warn` → Continue but contribute to risk score (17% weight)
 - `allow` → Continue with risk_score=0 for email component
 - Service unavailable → Fail open (allows submission)
+
+**Logging**: Email fraud blocks are logged to the `fraud_blocks` table for analytics visibility. This complements `turnstile_validations` which captures blocks that occur AFTER Turnstile validation.
 
 ---
 
@@ -260,7 +262,26 @@ WHERE ja4 = ? AND remote_ip IN (same /64 subnet)
   AND created_at > datetime('now', '-1 hour')
 ```
 
-Threshold: 2+ ephemeral IDs from same IP/subnet + same JA4
+**Threshold**: 2+ ephemeral IDs from same IP/subnet + same JA4
+
+**Detection**: Multi-signal risk scoring (Phase 2):
+- Count threshold triggers risk assessment (not immediate block)
+- Calculates composite score from 4 signals:
+  - Clustering (+80 points)
+  - Velocity (<10 min apart: +60 points)
+  - Global anomaly (+50 points)
+  - Bot pattern (+40 points)
+- Normalizes raw score (0-230) to 0-100 scale
+- **Blocks only if normalized score ≥ 70**
+- Returns risk score for transparency when below threshold
+
+**Examples**:
+- **Family/Office**: 2 users, Chrome, 30 min apart → Score ~57 → **ALLOW**
+- **Attack**: 2 users, Chrome, 2 min apart → Score ~87 → **BLOCK**
+
+**Feature Flag**: `useRiskScoreThreshold` (default: true)
+- `true`: Use multi-signal risk scoring (reduces false positives)
+- `false`: Block immediately when count threshold reached (old behavior)
 
 Detects: Incognito mode, browser hopping from same location
 
@@ -272,7 +293,9 @@ WHERE ja4 = ?
   AND created_at > datetime('now', '-5 minutes')
 ```
 
-Threshold: 3+ ephemeral IDs globally with same JA4
+**Threshold**: 3+ ephemeral IDs globally with same JA4
+
+**Detection**: Same multi-signal risk scoring as Layer 4a (blocks only if score ≥ 70)
 
 Detects: Aggressive network-switching attacks (VPN hopping, IPv4↔IPv6)
 
@@ -284,16 +307,19 @@ WHERE ja4 = ?
   AND created_at > datetime('now', '-1 hour')
 ```
 
-Threshold: 5+ ephemeral IDs globally with same JA4
+**Threshold**: 5+ ephemeral IDs globally with same JA4
+
+**Detection**: Same multi-signal risk scoring as Layer 4a (blocks only if score ≥ 70)
 
 Detects: Slower distributed attacks across networks
 
-**Risk Scoring**:
+**Risk Scoring** (Phase 2):
 - JA4 clustering signal: +80 points (primary)
-- Rapid velocity (<60min): +60 points
+- Rapid velocity (<10min): +60 points (configurable: `velocityThresholdMinutes`)
 - Global anomaly (high distribution): +50 points
 - Bot pattern (high volume): +40 points
 - Raw score: 0-230 (normalized to 0-100)
+- Block threshold: ≥70 (configurable: `risk.blockThreshold`)
 
 **Mitigation**: Adds three identifiers to blacklist:
 - `ephemeral_id` (24h max)
