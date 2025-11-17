@@ -175,6 +175,7 @@ export interface Env {
 			email: string;
 			consumer?: string;
 			flow?: string;
+			headers?: Record<string, string | null>; // v2.5: Pass request.cf metadata
 		}): Promise<{
 			valid: boolean;
 			riskScore: number; // 0.0-1.0
