@@ -26,6 +26,7 @@ import {
 	handleError,
 	formatZodErrors,
 } from '../lib/errors';
+import { generateErfid, type ErfidConfig } from '../lib/erfid';
 
 /**
  * Format wait time in seconds to human-readable string
@@ -56,6 +57,24 @@ app.post('/', async (c) => {
 
 		// Load fraud detection configuration
 		const config = getConfig(c.env);
+
+		// ========== GENERATE ERFID (Request Tracking ID) ==========
+		// Parse erfid configuration from environment
+		let erfidConfig: ErfidConfig | undefined;
+		if (c.env.ERFID_CONFIG) {
+			try {
+				erfidConfig = typeof c.env.ERFID_CONFIG === 'string'
+					? JSON.parse(c.env.ERFID_CONFIG)
+					: c.env.ERFID_CONFIG;
+			} catch (parseError) {
+				logger.warn({ error: parseError }, 'Failed to parse ERFID_CONFIG, using defaults');
+			}
+		}
+
+		// Generate erfid for this request
+		const erfid = generateErfid(erfidConfig);
+
+		logger.info({ erfid }, 'Request erfid generated');
 
 		// ========== TESTING BYPASS CHECK ==========
 		// Check if testing bypass is enabled and valid API key provided
@@ -186,6 +205,7 @@ app.post('/', async (c) => {
 						allowed: false,
 						blockReason: 'Token replay attack detected',
 						detectionType: 'token_replay',
+						erfid,
 					});
 				} catch (dbError) {
 					// Non-critical: log but don't fail the request
@@ -265,6 +285,7 @@ app.post('/', async (c) => {
 						allowed: false,
 						blockReason: ephemeralIdBlacklist.reason || 'Ephemeral ID blacklisted',
 						detectionType: 'ephemeral_id_fraud',
+						erfid,
 					});
 				} catch (dbError) {
 					// Non-critical: log but don't fail the request
@@ -318,6 +339,7 @@ app.post('/', async (c) => {
 						allowed: false,
 						blockReason: fraudCheck.reason,
 						detectionType,
+						erfid,
 					});
 				} catch (dbError) {
 					// Non-critical: log but don't fail the request
@@ -376,6 +398,7 @@ app.post('/', async (c) => {
 						allowed: false,
 						blockReason: ja4FraudCheck.reason,
 						detectionType: ja4FraudCheck.detectionType || 'ja4_session_hopping',  // Phase 1.8: Layer-specific (ja4_ip_clustering, ja4_rapid_global, ja4_extended_global)
+						erfid,
 					});
 				} catch (dbError) {
 					// Non-critical: log but don't fail the request
@@ -453,6 +476,7 @@ app.post('/', async (c) => {
 					allowed: false,
 					blockReason: validation.reason,
 					detectionType: 'turnstile_failed',
+					erfid,
 				});
 			} catch (dbError) {
 				// Non-critical: log but don't fail the request
@@ -504,6 +528,7 @@ app.post('/', async (c) => {
 					allowed: false,
 					blockReason: 'Duplicate email address',
 					detectionType: 'duplicate_email',
+					erfid,
 				});
 			} catch (dbError) {
 				// Non-critical: log but don't fail the request
@@ -538,7 +563,8 @@ app.post('/', async (c) => {
 			emailFraudResult, // Phase 2: Include email fraud detection results
 			rawPayload, // Phase 3: Store raw payload
 			extractedEmail, // Phase 3: Store extracted email
-			extractedPhone // Phase 3: Store extracted phone
+			extractedPhone, // Phase 3: Store extracted phone
+			erfid // Request tracking ID
 		);
 
 		// Log successful validation
@@ -549,6 +575,7 @@ app.post('/', async (c) => {
 			riskScore: normalizedRiskScore.total,
 			allowed: true,
 			submissionId,
+			erfid,
 		});
 
 		logger.info(
@@ -557,14 +584,19 @@ app.post('/', async (c) => {
 				email: sanitized.email,
 				riskScore: normalizedRiskScore.total,
 				breakdown: normalizedRiskScore.components,
+				erfid,
 			},
 			'Submission created successfully'
 		);
+
+		// Set erfid in response header for client-side tracking
+		c.header('X-Request-Id', erfid);
 
 		return c.json(
 			{
 				success: true,
 				submissionId,
+				erfid,
 				message: 'Form submitted successfully',
 			},
 			201

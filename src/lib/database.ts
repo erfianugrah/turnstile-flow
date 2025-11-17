@@ -29,6 +29,7 @@ export async function logValidation(
 		submissionId?: number;
 		detectionType?: string;  // Phase 1.5: Which fraud check triggered
 		riskScoreBreakdown?: RiskScoreBreakdown;  // Phase 1.5: Normalized breakdown
+		erfid?: string;  // Request tracking ID
 	}
 ): Promise<void> {
 	try {
@@ -41,12 +42,12 @@ export async function logValidation(
 					continent, is_eu_country, asn, as_organization, colo, http_protocol,
 					tls_version, bot_score, client_trust_score, verified_bot, js_detection_passed,
 					detection_ids, ja3_hash, ja4, ja4_signals,
-					detection_type, risk_score_breakdown
+					detection_type, risk_score_breakdown, erfid
 				) VALUES (
 					?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
 					?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
 					?, ?, ?, ?, ?, ?, ?, ?, ?,
-					?, ?
+					?, ?, ?
 				)`
 			)
 			.bind(
@@ -86,7 +87,9 @@ export async function logValidation(
 				data.metadata.ja4Signals ? JSON.stringify(data.metadata.ja4Signals) : null,
 				// Phase 1.5: Detection type and risk score breakdown
 				data.detectionType || null,
-				data.riskScoreBreakdown ? JSON.stringify(data.riskScoreBreakdown) : null
+				data.riskScoreBreakdown ? JSON.stringify(data.riskScoreBreakdown) : null,
+				// Request tracking ID
+				data.erfid || null
 			)
 			.run();
 
@@ -110,7 +113,8 @@ export async function createSubmission(
 	// Phase 3: Payload-agnostic forms
 	rawPayload?: Record<string, any> | null,
 	extractedEmail?: string | null,
-	extractedPhone?: string | null
+	extractedPhone?: string | null,
+	erfid?: string | null  // Request tracking ID
 ): Promise<number> {
 	try {
 		const result = await db
@@ -125,7 +129,7 @@ export async function createSubmission(
 					email_risk_score, email_fraud_signals, email_pattern_type,
 					email_markov_detected, email_ood_detected,
 					risk_score_breakdown,
-					form_data, extracted_email, extracted_phone
+					form_data, extracted_email, extracted_phone, erfid
 				) VALUES (
 					?, ?, ?, ?, ?, ?,
 					?, ?, ?, ?, ?, ?,
@@ -135,7 +139,7 @@ export async function createSubmission(
 					?, ?, ?,
 					?, ?, ?, ?, ?,
 					?,
-					?, ?, ?
+					?, ?, ?, ?
 				)`
 			)
 			.bind(
@@ -179,7 +183,9 @@ export async function createSubmission(
 				// Phase 3: Store raw payload and extracted fields
 				rawPayload ? JSON.stringify(rawPayload) : null,
 				extractedEmail || null,
-				extractedPhone || null
+				extractedPhone || null,
+				// Request tracking ID
+				erfid || null
 			)
 			.run();
 

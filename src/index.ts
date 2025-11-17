@@ -29,6 +29,7 @@ app.use('*', async (c, next) => {
 		origin: allowedOrigins,
 		allowMethods: ['GET', 'POST', 'OPTIONS'],
 		allowHeaders: ['Content-Type', 'X-API-KEY'],
+		exposeHeaders: ['X-Request-Id'], // Expose erfid header to clients
 		maxAge: 86400,
 	});
 

@@ -17,7 +17,8 @@
 			"binding": "DB",
 			"database_name": "DB",
 			"database_id": "f36739a7-badb-456f-bbab-da0732722cae",
-			"remote": true
+			"remote": true,
+			"migrations_dir": "migrations"
 		}
 	],
 	// Service bindings (Worker-to-Worker RPC)
