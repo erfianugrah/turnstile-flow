@@ -168,8 +168,7 @@ const phoneValue = watch('phone');  // Subscribe to phone field changes
   value={phoneValue}
   onChange={(phone) => setValue('phone', phone, { shouldValidate: true })}
   disabled={isSubmitting}
-  inputClassName={errors.phone ? 'border-destructive' : ''}
-  className={errors.phone ? 'react-international-phone-error' : ''}
+  error={!!errors.phone}
 />
 ```
 
@@ -413,7 +412,7 @@ Turnstile token provides CSRF protection:
 
 ## Testing
 
-Playwright tests in `/tests/form-submission.spec.ts`:
+**Note**: Test files are configured in package.json but not yet implemented. Below are example Playwright tests for validation:
 
 ```typescript
 test('should show validation errors for empty fields', async ({ page }) => {

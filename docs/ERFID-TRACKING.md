@@ -182,7 +182,7 @@ wrangler d1 migrations apply DB --remote
    - Validation and parsing utilities
 
 2. **Database Schema**
-   - Migration 0001: Add erfid columns to all 3 tables
+   - Migration 0001: Add erfid columns to all tables (submissions, turnstile_validations, fraud_blacklist, fraud_blocks)
    - Indexes for fast lookups (idx_submissions_erfid, idx_validations_erfid, idx_blacklist_erfid)
    - Backward compatible (nullable columns for existing records)
    - schema.sql synced with migration
@@ -359,7 +359,7 @@ SELECT id, erfid, block_reason FROM fraud_blacklist ORDER BY blocked_at DESC LIM
 
 **Results**:
 
-- ✅ erfid column exists in all 3 tables
+- ✅ erfid column exists in all tables (submissions, turnstile_validations, fraud_blacklist, fraud_blocks)
 - ✅ Indexes created for fast lookups
 - ✅ All existing records have erfid=NULL (expected)
 
@@ -367,7 +367,7 @@ SELECT id, erfid, block_reason FROM fraud_blacklist ORDER BY blocked_at DESC LIM
 
 | Component              | Status  | Notes                               |
 | ---------------------- | ------- | ----------------------------------- |
-| Database Schema        | ✅ Pass | erfid columns exist in all 3 tables |
+| Database Schema        | ✅ Pass | erfid columns exist in all tables   |
 | Error Responses        | ✅ Pass | erfid in JSON + X-Request-Id header |
 | CORS Configuration     | ✅ Pass | X-Request-Id exposed to clients     |
 | Analytics Endpoints    | ✅ Pass | erfid fields in all queries         |

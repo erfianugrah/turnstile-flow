@@ -25,7 +25,7 @@ geo.get('/', (c) => {
   const countryCode = c.req.header('CF-IPCountry') || 'US';
   return c.json({
     success: true,
-    countryCode: countryCode.toLowerCase(), // react-international-phone expects lowercase
+    countryCode: countryCode.toLowerCase(), // Lowercase format for consistency
   });
 });
 ```

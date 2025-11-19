@@ -35,8 +35,16 @@ Comprehensive technical documentation for **Forminator** - I'm collecting all yo
 | [GEOLOCATION.md](./GEOLOCATION.md) | Country detection via Cloudflare |
 | [TURNSTILE.md](./TURNSTILE.md) | Turnstile integration and verification |
 | [FRAUD-DETECTION.md](./FRAUD-DETECTION.md) | Ephemeral ID fraud detection with progressive timeouts |
-| [./CONFIGURATION-SYSTEM.md](./CONFIGURATION-SYSTEM.md) | Fraud detection configuration and customization guide |
+| [CONFIGURATION-SYSTEM.md](./CONFIGURATION-SYSTEM.md) | Fraud detection configuration and customization guide |
 | [DATABASE-OPERATIONS.md](./DATABASE-OPERATIONS.md) | Complete D1 database management guide |
+| [FRONTEND-COMPONENTS.md](./FRONTEND-COMPONENTS.md) | Frontend architecture, UI/UX features, and component structure |
+
+### Development & Operations
+
+| Document | Description |
+|----------|-------------|
+| [COMMANDS.md](./COMMANDS.md) | Complete npm and wrangler commands reference |
+| [DEPLOYMENT.md](./DEPLOYMENT.md) | Production deployment guide with checklist |
 
 ## Document Summaries
 
@@ -146,7 +154,7 @@ Comprehensive technical documentation for **Forminator** - I'm collecting all yo
 **Complete guide to the international phone input system**
 
 **You'll learn:**
-- react-international-phone library integration
+- Custom phone input component implementation
 - Automatic country detection via geolocation API
 - 200+ country support with flags and dial codes
 - Auto-formatting per country rules
@@ -296,6 +304,81 @@ Comprehensive technical documentation for **Forminator** - I'm collecting all yo
 
 ---
 
+### [FRONTEND-COMPONENTS.md](./FRONTEND-COMPONENTS.md)
+**Frontend architecture, UI/UX features, and component structure**
+
+**You'll learn:**
+- Technology stack (Astro, React, Tailwind v4, shadcn/ui)
+- CSS custom properties theming system
+- Dark/light mode with specific HSL values
+- Component directory structure (22+ analytics components)
+- Analytics dashboard architecture (7 sections, 5 hooks)
+- Custom hooks for data fetching
+- Form components (SubmissionForm, TurnstileWidget)
+- 4-stage submission flow indicator
+- Responsive design patterns
+- SVG flags and searchable dropdowns
+
+**Read this if:**
+- You're working on frontend components
+- Want to understand analytics dashboard structure
+- Need to customize UI/UX
+- Adding new dashboard sections
+- Implementing custom themes
+- Understanding component relationships
+
+---
+
+### [COMMANDS.md](./COMMANDS.md)
+**Complete npm and wrangler commands reference**
+
+**You'll learn:**
+- All development commands (npm install, wrangler dev)
+- Testing commands (7 test variations with Playwright)
+- Building commands (frontend build, worker deploy)
+- Database commands (quick reference)
+- Monitoring commands (wrangler tail)
+- Troubleshooting common command issues
+- Package.json scripts breakdown
+- Environment-specific commands (local, staging, production)
+- Wrangler CLI reference
+
+**Read this if:**
+- You need command examples
+- Setting up development environment
+- Running tests or deployments
+- Managing database via CLI
+- Troubleshooting build/deploy issues
+- Quick command reference needed
+
+---
+
+### [DEPLOYMENT.md](./DEPLOYMENT.md)
+**Production deployment guide with checklist**
+
+**You'll learn:**
+- Complete pre-deployment checklist (8 items)
+- Step-by-step deployment process
+- Configuration files explained (wrangler.jsonc, .dev.vars, frontend/.env)
+- Setting secrets via CLI or Dashboard
+- D1 database initialization
+- Custom domain setup
+- Post-deployment verification steps
+- Rollback procedures
+- Troubleshooting deployment issues
+- Development workflow best practices
+
+**Read this if:**
+- You're deploying to production for the first time
+- Need deployment checklist
+- Configuring custom domains
+- Setting up secrets and environment variables
+- Troubleshooting deployment failures
+- Understanding configuration files
+- Planning rollback strategy
+
+---
+
 ### [TURNSTILE-ENHANCEMENTS.md](./TURNSTILE-ENHANCEMENTS.md)
 **Optional enhancement opportunities**
 
@@ -333,21 +416,28 @@ Comprehensive technical documentation for **Forminator** - I'm collecting all yo
 | Understand the architecture | [ARCHITECTURE.md](./ARCHITECTURE.md) |
 | Security audit required | [SECURITY.md](./SECURITY.md) |
 | Fraud detection too aggressive | [FRAUD-DETECTION.md](./FRAUD-DETECTION.md) → Risk Score section |
-| Customize fraud detection thresholds | [./CONFIGURATION-SYSTEM.md](./CONFIGURATION-SYSTEM.md) |
+| Customize fraud detection thresholds | [CONFIGURATION-SYSTEM.md](./CONFIGURATION-SYSTEM.md) |
 | Test API endpoints | [API-REFERENCE.md](./API-REFERENCE.md) → Testing section |
 | Clear database or view data | [DATABASE-OPERATIONS.md](./DATABASE-OPERATIONS.md) → Common Operations |
 | Manage fraud blacklist | [DATABASE-OPERATIONS.md](./DATABASE-OPERATIONS.md) → Fraud Management |
 | Database query errors | [DATABASE-OPERATIONS.md](./DATABASE-OPERATIONS.md) → Troubleshooting |
+| Find command examples | [COMMANDS.md](./COMMANDS.md) → Quick Command Cheatsheet |
+| Deploy to production | [DEPLOYMENT.md](./DEPLOYMENT.md) → Production Checklist |
+| Customize analytics dashboard | [FRONTEND-COMPONENTS.md](./FRONTEND-COMPONENTS.md) → Analytics Dashboard section |
+| Change theme colors | [FRONTEND-COMPONENTS.md](./FRONTEND-COMPONENTS.md) → Color System section |
+| Add dashboard chart | [FRONTEND-COMPONENTS.md](./FRONTEND-COMPONENTS.md) → Quick Reference section |
 
 ### By System Component
 
 | Component | Documentation |
 |-----------|---------------|
 | **Frontend** | |
-| React components | [ARCHITECTURE.md](./ARCHITECTURE.md) → Frontend section |
+| React components | [FRONTEND-COMPONENTS.md](./FRONTEND-COMPONENTS.md) → Component Structure |
+| Analytics dashboard | [FRONTEND-COMPONENTS.md](./FRONTEND-COMPONENTS.md) → Analytics Dashboard |
 | Form validation (client) | [FORM-VALIDATION.md](./FORM-VALIDATION.md) → Client-Side section |
 | Phone input component | [PHONE-INPUT.md](./PHONE-INPUT.md) → Component Structure |
-| Dark mode | [PHONE-INPUT.md](./PHONE-INPUT.md) → Dark Mode Styling |
+| Dark mode | [FRONTEND-COMPONENTS.md](./FRONTEND-COMPONENTS.md) → Color System |
+| Custom hooks | [FRONTEND-COMPONENTS.md](./FRONTEND-COMPONENTS.md) → Custom Hooks |
 | **Backend** | |
 | API endpoints | [API-REFERENCE.md](./API-REFERENCE.md) |
 | Form validation (server) | [FORM-VALIDATION.md](./FORM-VALIDATION.md) → Server-Side section |
@@ -362,6 +452,9 @@ Comprehensive technical documentation for **Forminator** - I'm collecting all yo
 | Geolocation headers | [GEOLOCATION.md](./GEOLOCATION.md) → Cloudflare Geolocation |
 | Turnstile integration | [TURNSTILE.md](./TURNSTILE.md) |
 | Bot Management | [FRAUD-DETECTION.md](./FRAUD-DETECTION.md) → Ephemeral IDs |
+| **Development** | |
+| Commands reference | [COMMANDS.md](./COMMANDS.md) |
+| Deployment guide | [DEPLOYMENT.md](./DEPLOYMENT.md) |
 
 ### By Error Message
 
@@ -516,29 +609,9 @@ When adding/updating a feature:
 | Architecture | ARCHITECTURE.md | Complete |
 | Security | SECURITY.md | Complete |
 | Database | DATABASE-OPERATIONS.md | Complete |
-| Analytics UI | Not documented | Needs doc |
-| Deployment | README only | Needs doc |
-
-### Recent Updates
-
-**2025-11-16:** Configuration system documentation
-- Added CONFIGURATION-SYSTEM.md - Complete fraud detection configuration guide (12KB)
-- Updated API-REFERENCE.md - Added /api/config endpoint documentation
-- Updated FRAUD-DETECTION.md - Added configuration system section
-- Updated SCORING-ANALYSIS.md - Note that thresholds are configurable
-- Updated this index with configuration system navigation
-
-**2025-11-13:** Database operations & fraud detection updates
-- Added DATABASE-OPERATIONS.md - Complete D1 management guide (35KB)
-- Updated FRAUD-DETECTION.md - Progressive timeout system (1h → 24h)
-- Updated this index with database operations navigation
-
-**2024-11-12:** Major documentation expansion
-- Added FORM-VALIDATION.md - Exhaustive validation guide (30KB)
-- Added PHONE-INPUT.md - Complete phone system (32KB)
-- Added GEOLOCATION.md - Comprehensive geo guide (28KB)
-- Added API-REFERENCE.md - Complete API docs
-- Updated this index with comprehensive navigation
+| Frontend/Analytics UI | FRONTEND-COMPONENTS.md | Complete |
+| Commands reference | COMMANDS.md | Complete |
+| Deployment | DEPLOYMENT.md | Complete |
 
 ---
 

@@ -16,9 +16,9 @@ forminator/
 │   ├── src/
 │   │   ├── components/         # React components (shadcn/ui)
 │   │   │   ├── SubmissionForm.tsx
-│   │   │   ├── AnalyticsDashboard.tsx (modular - 330 lines)
-│   │   │   └── analytics/     # Analytics components (20 files)
-│   │   ├── hooks/              # Custom React hooks (4 files)
+│   │   │   ├── AnalyticsDashboard.tsx (modular design)
+│   │   │   └── analytics/     # Analytics components
+│   │   ├── hooks/              # Custom React hooks
 │   │   ├── layouts/            # Astro layouts
 │   │   ├── pages/              # Astro pages (NO API routes)
 │   │   └── styles/             # Global CSS
