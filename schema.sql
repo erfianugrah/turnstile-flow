@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS turnstile_validations (
 	ja4 TEXT,
 	ja4_signals TEXT, -- JSON object with h2h3_ratio_1h, heuristic_ratio_1h, etc.
 	-- Detection metadata (Phase 2)
-	detection_type TEXT, -- Layer-specific detection type (e.g., ja4_ip_clustering, ephemeral_id_fraud)
+	detection_type TEXT, -- Primary detection layer: email_fraud_detection, ephemeral_id_tracking, ja4_fingerprinting, token_replay_protection, turnstile_validation
 	risk_score_breakdown TEXT, -- JSON: component scores for transparency
 	-- Request tracking
 	erfid TEXT, -- Unique request identifier for lifecycle tracking
@@ -127,7 +127,7 @@ CREATE TABLE IF NOT EXISTS fraud_blacklist (
 	last_seen_at DATETIME,
 	-- Pattern metadata (JSON)
 	detection_metadata TEXT,
-	-- Detection type (Phase 1.5+: layer-specific fraud detection types)
+	-- Detection type: Primary detection layer that triggered blacklisting
 	detection_type TEXT,
 	-- Request tracking
 	erfid TEXT, -- Unique request identifier that triggered this blacklist entry
@@ -142,7 +142,7 @@ CREATE TABLE IF NOT EXISTS fraud_blacklist (
 CREATE TABLE IF NOT EXISTS fraud_blocks (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	-- Detection information
-	detection_type TEXT NOT NULL,           -- 'email_fraud', 'ip_reputation', etc.
+	detection_type TEXT NOT NULL,           -- Primary detection layer: email_fraud_detection, pre_validation_blacklist, etc.
 	block_reason TEXT NOT NULL,             -- Human-readable reason
 	risk_score REAL NOT NULL,               -- 0-100 scale
 	-- Request metadata (minimal, can expand as needed)

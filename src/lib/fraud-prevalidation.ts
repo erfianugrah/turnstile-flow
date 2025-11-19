@@ -48,7 +48,7 @@ interface AddToBlacklistParams {
 	expiresIn: number; // seconds
 	submissionCount?: number;
 	detectionMetadata?: Record<string, any>;
-	detectionType?: string;  // Phase 1.5: Detection type (ephemeral_id_fraud, ja4_session_hopping, etc.)
+	detectionType?: string;  // Primary detection layer (email_fraud_detection, ephemeral_id_tracking, ja4_fingerprinting, etc.)
 	erfid?: string | null;  // Request tracking ID that triggered this blacklist entry
 }
 

@@ -558,9 +558,9 @@ async function blockForJA4Fraud(
 		confidence: 'high',
 		expiresIn,
 		submissionCount: clustering.ephemeralCount,
-		detectionType: specificDetectionType,  // Phase 1.8: Layer-specific type
+		detectionType: 'ja4_fingerprinting',  // Primary detection layer (specific sub-layer stored in metadata)
 		detectionMetadata: {
-			detection_type: specificDetectionType,
+			detection_type: specificDetectionType,  // Specific sub-layer preserved for forensics
 			detection_layer: detectionLayer,
 			risk_score: rawScore,
 			warnings,
@@ -665,7 +665,7 @@ export async function collectJA4Signals(
 
 			return {
 				rawScore,
-				detectionType: 'ja4_ip_clustering',
+				detectionType: 'ja4_fingerprinting', // Primary detection layer (sub-layer: 4a)
 				detectionLayer: '4a',
 				signals: {
 					clustering: clusteringIP,
@@ -703,7 +703,7 @@ export async function collectJA4Signals(
 
 			return {
 				rawScore,
-				detectionType: 'ja4_rapid_global',
+				detectionType: 'ja4_fingerprinting', // Primary detection layer (sub-layer: 4b)
 				detectionLayer: '4b',
 				signals: {
 					clustering: clusteringRapid,
@@ -741,7 +741,7 @@ export async function collectJA4Signals(
 
 			return {
 				rawScore,
-				detectionType: 'ja4_extended_global',
+				detectionType: 'ja4_fingerprinting', // Primary detection layer (sub-layer: 4c)
 				detectionLayer: '4c',
 				signals: {
 					clustering: clusteringExtended,

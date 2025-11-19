@@ -24,7 +24,7 @@ type SecurityEvent = {
 	identifierType: 'ephemeral' | 'ip';
 	blockReason: string;
 	riskScore: number;
-	detectionType: 'token_replay' | 'ephemeral_id_fraud' | 'ja4_ip_clustering' | 'ja4_rapid_global' | 'ja4_extended_global' | 'ja4_session_hopping' | 'ip_diversity' | 'validation_frequency' | 'turnstile_failed' | 'duplicate_email' | 'email_fraud' | 'other' | null;
+	detectionType: 'email_fraud_detection' | 'ephemeral_id_tracking' | 'ja4_fingerprinting' | 'token_replay_protection' | 'turnstile_validation' | 'pre_validation_blacklist' | 'other' | null;
 	country?: string | null;
 	city?: string | null;
 	ja4?: string | null;
@@ -158,70 +158,40 @@ export function SecurityEvents({ activeBlocks, recentDetections, onLoadDetail, a
 
 	const getDetectionTypeBadge = (detectionType: string | null) => {
 		switch (detectionType) {
-			case 'token_replay':
+			case 'token_replay_protection':
 				return (
 					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
-						Token Replay
+						Token Replay Protection
 					</span>
 				);
-			case 'email_fraud':
+			case 'email_fraud_detection':
 				return (
 					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300">
-						Email Fraud
+						Email Fraud Detection (Layer 1)
 					</span>
 				);
-			case 'ephemeral_id_fraud':
+			case 'ephemeral_id_tracking':
 				return (
 					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300">
-						Ephemeral ID
+						Ephemeral ID Tracking (Layer 2)
 					</span>
 				);
-			case 'ja4_ip_clustering':
+			case 'ja4_fingerprinting':
 				return (
 					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
-						JA4 IP Clustering
+						JA4 Fingerprinting (Layer 4)
 					</span>
 				);
-			case 'ja4_rapid_global':
-				return (
-					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
-						JA4 Rapid Global
-					</span>
-				);
-			case 'ja4_extended_global':
-				return (
-					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
-						JA4 Extended Global
-					</span>
-				);
-			case 'ja4_session_hopping':
-				return (
-					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
-						Behavioral Risk Block
-					</span>
-				);
-			case 'ip_diversity':
-				return (
-					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300">
-						IP Diversity
-					</span>
-				);
-			case 'validation_frequency':
-				return (
-					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300">
-						Validation Frequency
-					</span>
-				);
-			case 'turnstile_failed':
+			case 'turnstile_validation':
 				return (
 					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300">
-						Turnstile Failed
+						Turnstile Validation
 					</span>
 				);
-			case 'duplicate_email':
+			case 'pre_validation_blacklist':
 				return (
-					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300">
-						Duplicate Email
+					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+						Pre-Validation Blacklist (Layer 0)
 					</span>
 				);
 			default:
@@ -555,43 +525,37 @@ export function SecurityEvents({ activeBlocks, recentDetections, onLoadDetail, a
 	);
 }
 
-function inferDetectionType(blockReason: string): 'token_replay' | 'ephemeral_id_fraud' | 'ja4_ip_clustering' | 'ja4_rapid_global' | 'ja4_extended_global' | 'ja4_session_hopping' | 'ip_diversity' | 'validation_frequency' | 'turnstile_failed' | 'duplicate_email' | 'email_fraud' | 'other' {
+function inferDetectionType(blockReason: string): 'email_fraud_detection' | 'ephemeral_id_tracking' | 'ja4_fingerprinting' | 'token_replay_protection' | 'turnstile_validation' | 'pre_validation_blacklist' | 'other' {
 	const reason = blockReason.toLowerCase();
+
+	// Token replay protection
 	if (reason.includes('token') && reason.includes('replay')) {
-		return 'token_replay';
+		return 'token_replay_protection';
 	}
-	if (reason.includes('email') && reason.includes('fraud')) {
-		return 'email_fraud';
+
+	// Email fraud detection (Layer 1)
+	if (reason.includes('email') && (reason.includes('fraud') || reason.includes('random') || reason.includes('sequential') || reason.includes('dated'))) {
+		return 'email_fraud_detection';
 	}
-	// Phase 1.8: Layer-specific JA4 detection types
-	if (reason.includes('ja4') && reason.includes('ip_clustering')) {
-		return 'ja4_ip_clustering';
-	}
-	if (reason.includes('ja4') && reason.includes('rapid_global')) {
-		return 'ja4_rapid_global';
-	}
-	if (reason.includes('ja4') && reason.includes('extended_global')) {
-		return 'ja4_extended_global';
-	}
-	// Fallback to legacy type for old JA4 blocks
+
+	// JA4 fingerprinting (Layer 4) - covers all JA4-based detection
 	if (reason.includes('ja4') || reason.includes('session hopping')) {
-		return 'ja4_session_hopping';
+		return 'ja4_fingerprinting';
 	}
-	if (reason.includes('ephemeral') || reason.includes('automated') || reason.includes('multiple submissions')) {
-		return 'ephemeral_id_fraud';
+
+	// Ephemeral ID tracking (Layer 2) - covers submission count, validation frequency, IP diversity, duplicate email
+	if (reason.includes('ephemeral') || reason.includes('automated') || reason.includes('multiple submissions') ||
+	    reason.includes('validation') || reason.includes('frequency') ||
+	    reason.includes('ip') && reason.includes('diversity') || reason.includes('multiple ip') ||
+	    reason.includes('duplicate') && reason.includes('email')) {
+		return 'ephemeral_id_tracking';
 	}
-	if (reason.includes('ip') && (reason.includes('diversity') || reason.includes('multiple ip'))) {
-		return 'ip_diversity';
-	}
-	if (reason.includes('validation') && reason.includes('frequency')) {
-		return 'validation_frequency';
-	}
+
+	// Turnstile validation
 	if (reason.includes('turnstile')) {
-		return 'turnstile_failed';
+		return 'turnstile_validation';
 	}
-	if (reason.includes('duplicate') && reason.includes('email')) {
-		return 'duplicate_email';
-	}
+
 	return 'other';
 }
 

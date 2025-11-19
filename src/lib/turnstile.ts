@@ -444,7 +444,7 @@ export async function checkEphemeralIdFraud(
 				confidence,
 				expiresIn,
 				submissionCount: effectiveCount,
-				detectionType: 'ephemeral_id_fraud',
+				detectionType: 'ephemeral_id_tracking',  // Primary detection layer
 				detectionMetadata: {
 					warnings,
 					submissions_1h: effectiveCount,

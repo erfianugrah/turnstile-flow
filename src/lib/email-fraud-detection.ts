@@ -42,6 +42,8 @@ export async function checkEmailFraud(
 			// Basic headers
 			headers['cf-connecting-ip'] = request.headers.get('cf-connecting-ip');
 			headers['user-agent'] = request.headers.get('user-agent');
+			headers['cf-asn'] = cf?.asn ? String(cf.asn) : null;
+			headers['cf-device-type'] = request.headers.get('cf-device-type') || (cf?.deviceType ? String(cf.deviceType) : null);
 
 			// Geographic headers
 			headers['cf-ipcountry'] = request.headers.get('cf-ipcountry') || (cf?.country ? String(cf.country) : null);
@@ -52,12 +54,26 @@ export async function checkEmailFraud(
 			headers['cf-iplatitude'] = request.headers.get('cf-iplatitude') || (cf?.latitude ? String(cf.latitude) : null);
 			headers['cf-iplongitude'] = request.headers.get('cf-iplongitude') || (cf?.longitude ? String(cf.longitude) : null);
 			headers['cf-ipcontinent'] = request.headers.get('cf-ipcontinent') || (cf?.continent ? String(cf.continent) : null);
+			headers['cf-is-eu-country'] = cf?.isEUCountry ? String(cf.isEUCountry) : null;
+
+			// Network headers
+			headers['cf-as-organization'] = cf?.asOrganization ? String(cf.asOrganization) : null;
+			headers['cf-colo'] = cf?.colo ? String(cf.colo) : null;
+			headers['cf-http-protocol'] = cf?.httpProtocol ? String(cf.httpProtocol) : null;
+			headers['cf-tls-version'] = cf?.tlsVersion ? String(cf.tlsVersion) : null;
+			headers['cf-tls-cipher'] = cf?.tlsCipher ? String(cf.tlsCipher) : null;
+			headers['cf-client-trust-score'] = cf?.clientTrustScore ? String(cf.clientTrustScore) : null;
 
 			// Bot detection headers
 			headers['cf-bot-score'] = request.headers.get('cf-bot-score') || (cf?.botManagement?.score ? String(cf.botManagement.score) : null);
 			headers['cf-verified-bot'] = request.headers.get('cf-verified-bot') || (cf?.botManagement?.verifiedBot ? 'true' : 'false');
 			headers['cf-ja3-hash'] = request.headers.get('cf-ja3-hash') || cf?.botManagement?.ja3Hash || null;
 			headers['cf-ja4'] = request.headers.get('cf-ja4') || cf?.botManagement?.ja4 || null;
+
+			// Bot detection advanced (Bot Management signals)
+			headers['cf-js-detection-passed'] = cf?.botManagement?.jsDetection?.passed ? 'true' : 'false';
+			headers['cf-detection-ids'] = cf?.botManagement?.detectionIds ? JSON.stringify(cf.botManagement.detectionIds) : null;
+			headers['cf-ja4-signals'] = cf?.botManagement?.ja4Signals ? JSON.stringify(cf.botManagement.ja4Signals) : null;
 		}
 
 		// Call markov-mail via RPC with enhanced headers

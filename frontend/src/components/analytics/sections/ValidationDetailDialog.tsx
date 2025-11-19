@@ -49,6 +49,19 @@ export interface ValidationDetail {
 	created_at: string;
 }
 
+// Helper function to format detection layer names for display
+function formatDetectionLayer(layer: string): string {
+	const layerMap: Record<string, string> = {
+		'email_fraud_detection': 'Email Fraud Detection (Layer 1)',
+		'ephemeral_id_tracking': 'Ephemeral ID Tracking (Layer 2)',
+		'ja4_fingerprinting': 'JA4 Fingerprinting (Layer 4)',
+		'token_replay_protection': 'Token Replay Protection',
+		'turnstile_validation': 'Turnstile Validation',
+		'pre_validation_blacklist': 'Pre-Validation Blacklist (Layer 0)',
+	};
+	return layerMap[layer] || layer;
+}
+
 interface ValidationDetailDialogProps {
 	validation: ValidationDetail | null;
 	loading: boolean;
@@ -93,8 +106,10 @@ export function ValidationDetailDialog({ validation, loading, onClose, config }:
 										</p>
 									</div>
 									<div>
-										<span className="text-muted-foreground">Detection Type:</span>
-										<p className="font-medium">{validation.detection_type || 'N/A'}</p>
+										<span className="text-muted-foreground">Detection Layer:</span>
+										<p className="font-medium">
+											{validation.detection_type ? formatDetectionLayer(validation.detection_type) : 'N/A'}
+										</p>
 									</div>
 									<div>
 										<span className="text-muted-foreground">Submission ID:</span>

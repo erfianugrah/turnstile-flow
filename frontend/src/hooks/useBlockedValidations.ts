@@ -10,7 +10,7 @@ export interface BlockedValidation {
 	risk_score: number;
 	challenge_ts: string;
 	ja4: string | null;
-	detection_type: 'token_replay' | 'ephemeral_id_fraud' | 'ja4_session_hopping' | 'ip_diversity' | 'validation_frequency' | 'turnstile_failed' | 'duplicate_email' | 'email_fraud' | 'other' | null;
+	detection_type: 'email_fraud_detection' | 'ephemeral_id_tracking' | 'ja4_fingerprinting' | 'token_replay_protection' | 'turnstile_validation' | 'pre_validation_blacklist' | 'other' | null;
 }
 
 export interface UseBlockedValidationsReturn {

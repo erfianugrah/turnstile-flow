@@ -230,7 +230,7 @@ app.post('/', async (c) => {
 					riskScoreBreakdown: replayRiskScore,
 					allowed: false,
 					blockReason: 'Token replay attack detected',
-					detectionType: 'token_replay',
+					detectionType: 'token_replay_protection', // Special: Token validation layer
 					erfid,
 				});
 
@@ -267,7 +267,7 @@ app.post('/', async (c) => {
 				riskScoreBreakdown: failedScore,
 				allowed: false,
 				blockReason: validation.reason,
-				detectionType: 'turnstile_failed',
+				detectionType: 'turnstile_validation', // Special: Turnstile CAPTCHA layer
 				erfid,
 			});
 
@@ -360,27 +360,28 @@ app.post('/', async (c) => {
 		}, config);
 
 		// 3.2: Determine blockTrigger if any specific threshold exceeded
+		// detectionType now represents the PRIMARY DETECTION LAYER that caught the fraud
 		let blockTrigger: 'email_fraud' | 'ephemeral_id_fraud' | 'ja4_session_hopping' | 'ip_diversity' | 'validation_frequency' | 'duplicate_email' | undefined = undefined;
 		let detectionType: string | null = null;
 
 		if (emailFraudResult && emailFraudResult.decision === 'block') {
 			blockTrigger = 'email_fraud';
-			detectionType = 'email_fraud';
+			detectionType = 'email_fraud_detection'; // Layer 1: Email pattern analysis
 		} else if (ephemeralSignals && ephemeralSignals.submissionCount >= config.detection.ephemeralIdSubmissionThreshold) {
 			blockTrigger = 'ephemeral_id_fraud';
-			detectionType = 'ephemeral_id_fraud';
+			detectionType = 'ephemeral_id_tracking'; // Layer 2: Device tracking (submission count)
 		} else if (ephemeralSignals && ephemeralSignals.validationCount >= config.detection.validationFrequencyBlockThreshold) {
 			blockTrigger = 'validation_frequency';
-			detectionType = 'validation_frequency';
+			detectionType = 'ephemeral_id_tracking'; // Layer 2: Device tracking (validation frequency)
 		} else if (ephemeralSignals && ephemeralSignals.uniqueIPCount >= config.detection.ipDiversityThreshold) {
 			blockTrigger = 'ip_diversity';
-			detectionType = 'ip_diversity';
+			detectionType = 'ephemeral_id_tracking'; // Layer 2: Device tracking (IP diversity)
 		} else if (ja4Signals && ja4Signals.detectionType) {
 			blockTrigger = 'ja4_session_hopping';
-			detectionType = ja4Signals.detectionType;
+			detectionType = 'ja4_fingerprinting'; // Layer 4: TLS fingerprinting
 		} else if (isDuplicate) {
 			blockTrigger = 'duplicate_email';
-			detectionType = 'duplicate_email';
+			detectionType = 'ephemeral_id_tracking'; // Layer 2: Device tracking (duplicate detection)
 		}
 
 		// 3.3: Recalculate with blockTrigger for proper minimum scores
