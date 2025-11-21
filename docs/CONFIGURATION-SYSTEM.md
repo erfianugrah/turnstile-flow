@@ -203,7 +203,7 @@ Progressive penalty system for repeat offenders.
 
 - **Type**: Integer (seconds)
 - **Purpose**: Absolute maximum timeout duration
-- **Rationale**: 24h respects ~7 day ephemeral ID lifespan. Long enough to deter, short enough to not permanently block
+- **Rationale**: 24h respects few-day ephemeral ID lifespan. Long enough to deter, short enough to not permanently block
 - **Common Values**: `43200` (12h, lenient), `86400` (24h, balanced), `604800` (7 days, very strict)
 
 ---

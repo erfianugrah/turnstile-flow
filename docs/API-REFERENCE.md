@@ -1281,10 +1281,10 @@ X-API-KEY: your_api_key_here
 | recent_blocks | array | Recently blacklisted identifiers |
 
 **Pattern detection criteria:**
-- 5+ submissions in 7 days: +30 risk
-- 10+ submissions in 7 days: +40 risk
-- 10+ validations in 1 hour: +25 risk
-- 3+ submissions from different IPs (proxy rotation): +40 risk
+- 3+ submissions in 1 hour: High risk (rapid submission)
+- 3+ different IPs in 1 hour (proxy rotation): High risk
+- 10+ validations in 1 hour: High risk (rapid token generation)
+- 2+ submissions in 24 hours: Block (ephemeral ID fraud)
 - Block threshold: risk_score ≥ 70
 
 ---

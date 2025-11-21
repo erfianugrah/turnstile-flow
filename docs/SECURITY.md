@@ -86,7 +86,7 @@ Repeat offenders receive escalating timeout periods:
 ### Detection Modes
 
 **Ephemeral ID** (Enterprise feature):
-- Tracks users across ~7 days without cookies
+- Tracks users across a few days without cookies
 - Device-based fraud detection
 
 **IP-based fallback** (when ephemeral ID unavailable):

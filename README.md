@@ -283,7 +283,7 @@ Auto-populated when risk score ≥70:
 - Fail-open design: allows submissions if service unavailable
 
 **Layer 2: Ephemeral ID Fraud Detection**
-- Tracks same device across ~7 days without cookies
+- Tracks same device across a few days without cookies
 - 2+ submissions in 24h window: Block immediately
 - Detects repeat registration attempts
 

@@ -700,7 +700,7 @@ await addToBlacklist(db, {
 });
 ```
 
-Ephemeral IDs have ~7 day lifespan. The 24h maximum timeout respects this rotation period while making attacks impractical for attackers and minimizing impact on legitimate users.
+Ephemeral IDs have a few days lifespan. The 24h maximum timeout respects this rotation period while making attacks impractical for attackers and minimizing impact on legitimate users.
 
 ---
 
