@@ -52,6 +52,53 @@ forminator/
 
 ## Tech Stack
 
+```mermaid
+graph TB
+    subgraph Client["Client Layer (Browser)"]
+        A[Astro 5.x<br/>Static Site Generation]
+        B[React 19<br/>Component Framework]
+        C[shadcn/ui<br/>UI Components]
+        D[Tailwind CSS 4<br/>Styling]
+        E[Zod<br/>Client Validation]
+    end
+
+    subgraph Edge["Edge Layer (Cloudflare Workers)"]
+        F[Hono 4.x<br/>Routing Framework]
+        G[Pino<br/>Structured Logging]
+        H[Zod<br/>Server Validation]
+    end
+
+    subgraph Security["Security Layer"]
+        I[Turnstile<br/>CAPTCHA Alternative]
+        J[Ephemeral IDs<br/>Bot Management]
+        K[SHA256 Hashing<br/>Token Replay Protection]
+        L[Input Sanitization<br/>XSS Prevention]
+    end
+
+    subgraph Data["Data Layer"]
+        M[D1 Database<br/>SQLite at Edge]
+        N[KV Storage<br/>Key-Value Store]
+        O[Markov-Mail<br/>Worker RPC]
+    end
+
+    A --> F
+    B --> F
+    C --> D
+    E --> H
+    F --> I
+    F --> J
+    F --> K
+    F --> L
+    F --> M
+    F --> O
+    I --> J
+
+    style Client fill:#5e81ac,color:#fff
+    style Edge fill:#88c0d0,color:#000
+    style Security fill:#a3be8c,color:#000
+    style Data fill:#ebcb8b,color:#000
+```
+
 ### Frontend
 - **Astro 5.x**: Static site generation
 - **React 19**: Component framework
@@ -75,55 +122,74 @@ forminator/
 
 ## Request Flow
 
+```mermaid
+sequenceDiagram
+    participant Browser as Client Browser<br/>(form.erfi.dev)
+    participant Worker as Cloudflare Worker<br/>(Hono App)
+    participant Turnstile as Turnstile API<br/>(siteverify)
+    participant D1 as D1 Database
+
+    Note over Browser: Static Astro pages (UI)<br/>TurnstileWidget<br/>SubmissionForm<br/>AnalyticsDashboard
+
+    Browser->>Worker: POST /api/submissions<br/>{formData, turnstileToken}
+
+    Note over Worker: 1. Extract request metadata<br/>(IP, geo, bot signals)
+    Note over Worker: 2. Validate form data (Zod)
+    Note over Worker: 3. Sanitize inputs (HTML strip)
+    Note over Worker: 4. Hash token (SHA256)
+
+    Worker->>D1: 5. Check token reuse
+    D1-->>Worker: Token status
+
+    Worker->>Turnstile: 6. Validate token (siteverify)
+    Note over Turnstile: Returns:<br/>• success<br/>• challenge_ts<br/>• hostname<br/>• action<br/>• metadata.ephemeral_id
+    Turnstile-->>Worker: Validation result
+
+    Note over Worker: 7. Fraud detection<br/>(ephemeral ID or IP-based)
+
+    Worker->>D1: 8. Create submission
+    Worker->>D1: 9. Log validation attempt
+
+    Note over D1: Tables:<br/>• submissions (42 fields)<br/>• turnstile_validations (35 fields)<br/><br/>Metadata:<br/>• Geographic (country, city, etc)<br/>• Network (ASN, colo, TLS)<br/>• Bot signals (scores, JA3, JA4)<br/>• Detection IDs, JA4 signals
+
+    Worker->>Browser: 10. Return success/error
 ```
-┌──────────────────────────────────────────────────────────────┐
-│  Client Browser                                              │
-│  ┌────────────────────────────────────────────────────────┐  │
-│  │ https://form.erfi.dev/                                  │  │
-│  │  • Static Astro pages (UI)                              │  │
-│  │  • TurnstileWidget (React component)                    │  │
-│  │  • SubmissionForm                                       │  │
-│  │  • AnalyticsDashboard                                   │  │
-│  └────────────────────────────────────────────────────────┘  │
-└───────┬──────────────────────────────────────────────────────┘
-        │ POST /api/submissions { ...formData, turnstileToken }
-        │
-┌───────▼──────────────────────────────────────────────────────┐
-│  Cloudflare Worker (form.erfi.dev)                           │
-│  ┌────────────────────────────────────────────────────────┐  │
-│  │ Hono App (src/index.ts)                                 │  │
-│  │  • Serves static assets from /frontend/dist (ASSETS)   │  │
-│  │  • Routes /api/* to API handlers                        │  │
-│  └────────────────────────────────────────────────────────┘  │
-│                                                               │
-│  ┌────────────────────────────────────────────────────────┐  │
-│  │ POST /api/submissions (Single-Step Validation)         │  │
-│  │                                                          │  │
-│  │ 1. Extract request metadata (IP, geo, bot signals)      │  │
-│  │ 2. Validate form data (Zod schema)                      │  │
-│  │ 3. Sanitize inputs (HTML stripping)                     │  │
-│  │ 4. Hash Turnstile token (SHA256)                        │  │
-│  │ 5. Check token reuse (D1 lookup)                        │  │
-│  │ 6. Validate with Turnstile API (siteverify)            │  │
-│  │ 7. Fraud detection (ephemeral ID or IP-based)          │  │
-│  │ 8. Create submission in D1                              │  │
-│  │ 9. Log validation attempt                               │  │
-│  │ 10. Return success/error                                │  │
-│  └────────────────────────────────────────────────────────┘  │
-└───────┬──────────────┬───────────────────────────────────────┘
-        │              │
-┌───────▼──────────┐    ┌──────────▼──────────────────────────┐
-│ Turnstile API    │    │ D1 Database                          │
-│ siteverify       │    │  • submissions (42 fields + metadata)│
-│                  │    │  • turnstile_validations (35 fields) │
-│ Returns:         │    │                                       │
-│ • success        │    │ Rich metadata captured:               │
-│ • challenge_ts   │    │  - Geographic (country, city, etc)   │
-│ • hostname       │    │  - Network (ASN, colo, TLS)          │
-│ • action         │    │  - Bot signals (scores, JA3, JA4)    │
-│ • metadata       │    │  - Detection IDs, JA4 signals        │
-│   • ephemeral_id │    │  - Request.cf properties             │
-└──────────────────┘    └──────────────────────────────────────┘
+
+### Request Processing Pipeline
+
+```mermaid
+flowchart TD
+    Start([POST /api/submissions]) --> Extract[Extract Request Metadata<br/>IP, geo, bot signals from request.cf]
+    Extract --> Validate[Validate Form Data<br/>Zod schema validation]
+    Validate --> Sanitize[Sanitize Inputs<br/>HTML stripping for XSS prevention]
+    Sanitize --> Hash[Hash Turnstile Token<br/>SHA256 hashing]
+    Hash --> CheckReuse{Check Token<br/>Reuse in D1}
+
+    CheckReuse -->|Replay Detected| RejectReplay[Reject: Token replay attack<br/>risk_score=100]
+    CheckReuse -->|New Token| CallTurnstile[Call Turnstile API<br/>siteverify endpoint]
+
+    CallTurnstile --> TurnstileResult{Turnstile<br/>Success?}
+    TurnstileResult -->|Failed| RejectTurnstile[Reject: Turnstile validation failed]
+    TurnstileResult -->|Success| FraudCheck[Fraud Detection<br/>Ephemeral ID or IP-based]
+
+    FraudCheck --> RiskScore{Risk Score<br/>≥ 70?}
+    RiskScore -->|Yes| RejectFraud[Reject: Fraud detected<br/>Auto-blacklist]
+    RiskScore -->|No| CreateSubmission[Create Submission in D1<br/>42 fields + metadata]
+
+    CreateSubmission --> LogValidation[Log Validation Attempt<br/>35 fields]
+    LogValidation --> Success([Return Success])
+
+    RejectReplay --> LogRejection[Log Rejection]
+    RejectTurnstile --> LogRejection
+    RejectFraud --> LogRejection
+    LogRejection --> Error([Return Error])
+
+    style Start fill:#5e81ac
+    style Success fill:#a3be8c
+    style Error fill:#bf616a
+    style RejectReplay fill:#bf616a
+    style RejectTurnstile fill:#bf616a
+    style RejectFraud fill:#bf616a
 ```
 
 ## Key Implementation Details
@@ -153,6 +219,57 @@ Frontend uses Astro SSG:
 
 ### Fraud Detection Strategy
 
+```mermaid
+flowchart TD
+    Start([Form Submission]) --> Layer0{Layer 0:<br/>Pre-Validation<br/>Blacklist}
+
+    Layer0 -->|In Blacklist| BlockFast[❌ Block: Fast reject<br/>~10ms lookup<br/>85-90% API reduction]
+    Layer0 -->|Not in Blacklist| TokenReplay{Token Replay<br/>Detection}
+
+    TokenReplay -->|Replay| Block1[❌ Block: Token replay<br/>risk_score=100<br/>35% weight]
+    TokenReplay -->|New Token| Layer1{Layer 1:<br/>Email Fraud<br/>Markov-Mail RPC}
+
+    Layer1 -->|Fraud Detected| Block2[❌ Block: Email fraud<br/>Pattern/OOD/Disposable<br/>17% weight<br/>+ Add to blacklist 1h]
+    Layer1 -->|Pass/Fail-open| Layer2{Layer 2:<br/>Ephemeral ID<br/>Submission Count}
+
+    Layer2 -->|≥2 submissions<br/>in 24h| Block3[❌ Block: Duplicate device<br/>risk_score≥70<br/>18% weight]
+    Layer2 -->|Pass| Layer3{Layer 3:<br/>Validation<br/>Frequency}
+
+    Layer3 -->|≥3 attempts<br/>in 1h| Block4[❌ Block: Rate limit<br/>risk_score≥70<br/>13% weight]
+    Layer3 -->|Pass| Layer4{Layer 4:<br/>IP Diversity}
+
+    Layer4 -->|≥2 IPs<br/>in 24h| Block5[❌ Block: Proxy rotation<br/>risk_score≥80<br/>9% weight]
+    Layer4 -->|Pass| Layer5{Layer 5:<br/>JA4 Session<br/>Hopping}
+
+    Layer5 -->|Clustering<br/>Rapid/Extended| Block6[❌ Block: Browser hopping<br/>risk_score≥75<br/>8% weight]
+    Layer5 -->|Pass| RiskCalc[Calculate Total<br/>Risk Score<br/>0-100 normalized]
+
+    RiskCalc --> FinalCheck{Risk Score<br/>≥ 70?}
+    FinalCheck -->|Yes| BlockFinal[❌ Block + Auto-Blacklist<br/>Progressive timeout:<br/>1h→4h→8h→12h→24h]
+    FinalCheck -->|No| Allow[✅ Allow Submission<br/>Log to D1]
+
+    BlockFast --> End([End])
+    Block1 --> End
+    Block2 --> End
+    Block3 --> End
+    Block4 --> End
+    Block5 --> End
+    Block6 --> End
+    BlockFinal --> End
+    Allow --> End
+
+    style Start fill:#5e81ac
+    style Allow fill:#a3be8c
+    style BlockFast fill:#bf616a
+    style Block1 fill:#bf616a
+    style Block2 fill:#bf616a
+    style Block3 fill:#bf616a
+    style Block4 fill:#bf616a
+    style Block5 fill:#bf616a
+    style Block6 fill:#bf616a
+    style BlockFinal fill:#bf616a
+```
+
 **Ephemeral ID Detection**:
 - Enterprise Bot Management feature
 - 7-day detection window (IDs rotate after a few days)
@@ -165,6 +282,98 @@ Frontend uses Astro SSG:
 - Lower risk scores to reduce false positives on shared IPs
 
 ### Database Schema Design
+
+```mermaid
+erDiagram
+    submissions ||--o{ turnstile_validations : "has many"
+
+    submissions {
+        int id PK
+        string first_name
+        string last_name
+        string email
+        string phone
+        string address
+        date date_of_birth
+        string ephemeral_id "Indexed"
+        string remote_ip
+        string user_agent
+        string country "Indexed"
+        string region
+        string city
+        string postal_code
+        float latitude
+        float longitude
+        string timezone
+        string continent
+        bool is_eu_country
+        int asn
+        string as_organization
+        string colo
+        string http_protocol
+        string tls_version
+        string tls_cipher
+        int bot_score "Indexed - Enterprise"
+        int client_trust_score
+        bool verified_bot
+        string ja3_hash "Indexed - Enterprise"
+        string ja4 "Indexed - Enterprise"
+        json ja4_signals "Enterprise"
+        json detection_ids "Enterprise"
+        datetime created_at "Indexed"
+    }
+
+    turnstile_validations {
+        int id PK
+        string token_hash UK "SHA256, Unique Index"
+        int submission_id FK "NULL for blocks"
+        bool success
+        bool allowed
+        string block_reason
+        int risk_score
+        string challenge_ts
+        string hostname
+        string action
+        string ephemeral_id "From Turnstile API"
+        string remote_ip
+        string user_agent
+        string country
+        json metadata "40+ fields from request.cf"
+        datetime created_at
+    }
+
+    fraud_blocks {
+        int id PK
+        string detection_type
+        string block_reason
+        int risk_score
+        string email
+        string pattern_type "Email fraud"
+        bool markov_detected
+        bool ood_detected
+        bool disposable_domain
+        float tld_risk_score
+        string remote_ip
+        string user_agent
+        string country
+        string erfid "Ephemeral ID (if available)"
+        datetime created_at
+    }
+
+    fraud_blacklist {
+        int id PK
+        string ephemeral_id "Indexed with expires_at"
+        string ip_address "Indexed with expires_at"
+        string ja4
+        string block_reason
+        int detection_confidence
+        string detection_type
+        datetime blocked_at
+        datetime expires_at "Indexed - Auto-expiry"
+        datetime last_seen_at
+        int offense_count "Progressive timeout"
+    }
+```
 
 **Four Main Tables**:
 
@@ -195,7 +404,7 @@ Frontend uses Astro SSG:
    - Timing (blocked_at, expires_at, last_seen_at)
    - Progressive timeout tracking
 
-**Indexes**:
+**Key Indexes**:
 - `token_hash` (unique) - Prevents token reuse
 - `ephemeral_id` - Fast fraud detection queries
 - `created_at` - Time-based analytics
@@ -397,7 +606,39 @@ npm run build      # Build frontend only
 wrangler deploy    # Deploy worker only
 ```
 
-**Deployment Flow**:
+### Deployment Flow
+
+```mermaid
+flowchart LR
+    subgraph Local["Local Development"]
+        A[npm run build] --> B[cd frontend &&<br/>npm run build]
+        B --> C[Astro SSG<br/>Generates static files]
+        C --> D[frontend/dist/<br/>HTML, CSS, JS]
+    end
+
+    subgraph Deploy["Deployment"]
+        E[wrangler deploy] --> F[Bundle Worker code<br/>src/index.ts + routes + lib]
+        F --> G[Upload to<br/>Cloudflare]
+    end
+
+    subgraph Production["Production (form.erfi.dev)"]
+        H[Worker Runtime] --> I[ASSETS binding<br/>serves frontend/dist/]
+        H --> J[API routes<br/>/api/*]
+        H --> K[D1 Database<br/>submissions + validations]
+    end
+
+    D --> E
+    G --> H
+
+    style A fill:#5e81ac
+    style E fill:#5e81ac
+    style H fill:#a3be8c
+    style I fill:#88c0d0
+    style J fill:#88c0d0
+    style K fill:#88c0d0
+```
+
+**Flow Breakdown**:
 1. `npm run build` executes `cd frontend && npm run build && cd ..`
 2. Astro generates static files to `frontend/dist/`
 3. `wrangler deploy` bundles Worker code + uploads
