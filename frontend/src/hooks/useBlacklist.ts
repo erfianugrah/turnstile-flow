@@ -8,12 +8,16 @@ export interface BlacklistEntry {
 	country: string | null;
 	city: string | null;
 	detection_type?: string | null;
+	detection_confidence?: 'high' | 'medium' | 'low' | null;
 	block_reason: string;
 	risk_score: number;
 	offense_count: number;
 	blocked_at: string;
 	expires_at: string;
 	erfid: string | null;
+	submission_count?: number | null;
+	last_seen_at?: string | null;
+	detection_metadata?: string | null;
 }
 
 export interface UseBlacklistReturn {

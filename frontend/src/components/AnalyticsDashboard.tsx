@@ -8,6 +8,7 @@ import { FraudAlert } from './analytics/cards/FraudAlert';
 import { OverviewStats } from './analytics/sections/OverviewStats';
 import type { SubmissionDetail } from './analytics/sections/SubmissionDetailDialog';
 import type { ValidationDetail } from './analytics/sections/ValidationDetailDialog';
+import type { BlacklistEntry } from '../hooks/useBlacklist';
 import { useAnalytics } from '../hooks/useAnalytics';
 import { useSubmissions, type UseSubmissionsFilters } from '../hooks/useSubmissions';
 import { useBlacklist } from '../hooks/useBlacklist';
@@ -39,6 +40,10 @@ const ValidationDetailDialog = lazy(async () => {
 	return { default: mod.ValidationDetailDialog };
 });
 
+const BlacklistDetailDialog = lazy(async () => {
+	const mod = await import('./analytics/sections/BlacklistDetailDialog');
+	return { default: mod.BlacklistDetailDialog };
+});
 export default function AnalyticsDashboard() {
 	// Fetch fraud detection configuration
 	const { config } = useConfig();
@@ -55,6 +60,7 @@ export default function AnalyticsDashboard() {
 	// Validation detail modal state
 	const [selectedValidation, setSelectedValidation] = useState<ValidationDetail | null>(null);
 	const [validationModalLoading, setValidationModalLoading] = useState(false);
+	const [selectedBlacklistEntry, setSelectedBlacklistEntry] = useState<BlacklistEntry | null>(null);
 
 	// Filter states
 	const [searchQuery, setSearchQuery] = useState('');
@@ -383,6 +389,7 @@ export default function AnalyticsDashboard() {
 						activeBlocks={blacklistData.entries}
 						recentDetections={blockedValidationsData.validations}
 						onLoadDetail={loadValidationDetail}
+						onLoadBlacklistDetail={setSelectedBlacklistEntry}
 						apiKey={apiKey}
 					/>
 				</Suspense>
@@ -417,6 +424,15 @@ export default function AnalyticsDashboard() {
 							loading={validationModalLoading}
 							onClose={() => setSelectedValidation(null)}
 							config={config}
+						/>
+					)}
+				</Suspense>
+
+				<Suspense fallback={null}>
+					{selectedBlacklistEntry && (
+						<BlacklistDetailDialog
+							entry={selectedBlacklistEntry}
+							onClose={() => setSelectedBlacklistEntry(null)}
 						/>
 					)}
 				</Suspense>

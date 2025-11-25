@@ -12,6 +12,7 @@ interface SecurityEventsProps {
 	activeBlocks: BlacklistEntry[];
 	recentDetections: BlockedValidation[];
 	onLoadDetail: (id: number) => void;
+	onLoadBlacklistDetail?: (entry: BlacklistEntry) => void;
 	apiKey: string;
 }
 
@@ -24,7 +25,21 @@ type SecurityEvent = {
 	identifierType: 'ephemeral' | 'ip';
 	blockReason: string;
 	riskScore: number;
-	detectionType: 'email_fraud_detection' | 'ephemeral_id_tracking' | 'ja4_fingerprinting' | 'token_replay_protection' | 'turnstile_validation' | 'pre_validation_blacklist' | 'duplicate_email' | 'holistic_risk' | 'other' | null;
+	detectionType:
+		| 'email_fraud_detection'
+		| 'ephemeral_id_tracking'
+		| 'ja4_fingerprinting'
+		| 'token_replay_protection'
+		| 'turnstile_validation'
+		| 'pre_validation_blacklist'
+		| 'duplicate_email'
+		| 'holistic_risk'
+		| 'header_fingerprint_reuse'
+		| 'tls_fingerprint_anomaly'
+		| 'latency_mismatch'
+		| 'fingerprint_anomaly'
+		| 'other'
+		| null;
 	country?: string | null;
 	city?: string | null;
 	ja4?: string | null;
@@ -32,9 +47,10 @@ type SecurityEvent = {
 	// For active blocks
 	expiresAt?: string;
 	offenseCount?: number;
+	blacklistEntry?: BlacklistEntry;
 };
 
-export function SecurityEvents({ activeBlocks, recentDetections, onLoadDetail, apiKey }: SecurityEventsProps) {
+export function SecurityEvents({ activeBlocks, recentDetections, onLoadDetail, onLoadBlacklistDetail, apiKey }: SecurityEventsProps) {
 	// Filter states
 	const [statusFilter, setStatusFilter] = useState<string>('all');
 	const [riskLevelFilter, setRiskLevelFilter] = useState<string>('all');
@@ -65,6 +81,7 @@ export function SecurityEvents({ activeBlocks, recentDetections, onLoadDetail, a
 		country: entry.country,
 		city: entry.city,
 		ja4: entry.ja4,
+		blacklistEntry: entry,
 	}));
 
 	// Convert recent detections to unified format, but exclude detections that have active blocks
@@ -204,6 +221,24 @@ export function SecurityEvents({ activeBlocks, recentDetections, onLoadDetail, a
 				return (
 					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
 						Holistic Risk (Layer 3)
+					</span>
+				);
+			case 'header_fingerprint_reuse':
+				return (
+					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300">
+						Header Fingerprint Reuse
+					</span>
+				);
+			case 'tls_fingerprint_anomaly':
+				return (
+					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300">
+						TLS Fingerprint Anomaly
+					</span>
+				);
+			case 'latency_mismatch':
+				return (
+					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-lime-100 text-lime-800 dark:bg-lime-900/30 dark:text-lime-300">
+						Latency / Device Mismatch
 					</span>
 				);
 			default:
@@ -372,30 +407,38 @@ export function SecurityEvents({ activeBlocks, recentDetections, onLoadDetail, a
 														if (!isNaN(numericId)) {
 															onLoadDetail(numericId);
 														}
-													} else if (event.erfid) {
-														// For active blocks, look up validation by erfid
-														try {
-															const response = await fetch(`/api/analytics/validations/by-erfid/${event.erfid}`, {
-																headers: {
-																	'X-API-KEY': apiKey
-																}
-															});
+													} else if (event.type === 'active_block') {
+														if (onLoadBlacklistDetail && event.blacklistEntry) {
+															onLoadBlacklistDetail(event.blacklistEntry);
+															return;
+														}
+														if (event.erfid) {
+															// Fallback: attempt validation lookup by erfid
+															try {
+																const response = await fetch(`/api/analytics/validations/by-erfid/${event.erfid}`, {
+																	headers: {
+																		'X-API-KEY': apiKey
+																	}
+																});
 
-															if (response.ok) {
-																const data = await response.json() as { success: boolean; data?: { id: number } };
-																if (data.success && data.data && data.data.id) {
-																	onLoadDetail(data.data.id);
+																if (response.ok) {
+																	const data = await response.json() as { success: boolean; data?: { id: number } };
+																	if (data.success && data.data && data.data.id) {
+																		onLoadDetail(data.data.id);
+																	} else {
+																		console.error('Invalid validation data received');
+																		alert('Could not load validation details');
+																	}
 																} else {
-																	console.error('Invalid validation data received');
-																	alert('Could not load validation details');
+																	console.error('Failed to fetch validation by erfid');
+																	alert('Could not find validation record for this block');
 																}
-															} else {
-																console.error('Failed to fetch validation by erfid');
-																alert('Could not find validation record for this block');
+															} catch (error) {
+																console.error('Error fetching validation by erfid:', error);
+																alert('Error loading validation details');
 															}
-														} catch (error) {
-															console.error('Error fetching validation by erfid:', error);
-															alert('Error loading validation details');
+														} else {
+															alert('No validation record or blacklist details available for this block');
 														}
 													}
 												}}
