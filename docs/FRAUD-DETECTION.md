@@ -199,7 +199,7 @@ Replayed tokens cannot create submissions, so this only appears in validation lo
 IP-based behavioral signal detecting browser-switching attacks.
 
 **Philosophy**: Behavioral signal, not hard block
-- Contributes 8% to total risk score
+- Contributes 7% to total risk score
 - Combined with other signals for holistic decision
 - Prevents false positives from shared IPs (offices, universities)
 
@@ -251,7 +251,7 @@ detection: {
 }
 risk: {
   weights: {
-    ipRateLimit: 0.08  // 8% weight
+    ipRateLimit: 0.07  // 7% weight
   }
 }
 ```
@@ -260,16 +260,16 @@ risk: {
 
 Scenario 1 (Office - Legitimate):
 ```
-IP: 3 submissions (50% × 8% = 4%)
+IP: 3 submissions (50% × 7% = 3.5%)
 Email: 3 different domains (0%)
 Total: 4% → ✅ ALLOWED
 ```
 
 Scenario 2 (Attack - Fraud Patterns):
 ```
-IP: 3 submissions (50% × 8% = 4%)
-Email: Sequential (80% × 16% = 13%)
-Ephemeral: 2 submissions (100% × 17% = 17%)
+IP: 3 submissions (50% × 7% = 3.5%)
+Email: Sequential (80% × 14% = 11.2%)
+Ephemeral: 2 submissions (100% × 15% = 15%)
 Total: 34%+ → Combined signals → 75% → 🚫 BLOCKED
 ```
 
@@ -301,7 +301,7 @@ const result = await env.FRAUD_DETECTOR.validate({
 
 **Decision Flow**:
 - `block` → Reject immediately (before Turnstile validation)
-- `warn` → Continue but contribute to risk score (17% weight)
+- `warn` → Continue but contribute to risk score (15% weight)
 - `allow` → Continue with risk_score=0 for email component
 - Service unavailable → Fail open (allows submission)
 
@@ -767,16 +767,19 @@ Risk scores exist in two different contexts:
 
 #### Validation Logs (turnstile_validations table)
 
-Includes all 7 components for forensic analysis of blocked attempts:
+Includes all 10 components for forensic analysis of blocked attempts:
 
 ```
-Token Replay:         32%  (only for replayed tokens)
-Email Fraud:          16%  (Markov-Mail detection)
-Ephemeral ID:         17%  (device tracking)
-Validation Frequency: 12%  (attempt rate)
-IP Diversity:          8%  (proxy rotation)
-JA4 Session Hopping:   7%  (browser hopping)
-IP Rate Limit:         8%  (browser switching) [NEW]
+Token Replay:         28%  (instant replay detection)
+Email Fraud:          14%  (Markov-Mail pattern score)
+Ephemeral ID:         15%  (device tracking)
+Validation Frequency: 10%  (attempt rate)
+IP Diversity:          7%  (proxy rotation)
+JA4 Session Hopping:   6%  (browser hopping)
+IP Rate Limit:         7%  (browser switching)
+Header Fingerprint:    7%  (shared header stacks)
+TLS Anomaly:           4%  (unknown ClientHello)
+Latency Mismatch:      2%  (impossible RTT/device combo)
 ─────────────────────────
 Total:               100%
 ```
@@ -786,14 +789,17 @@ Total:               100%
 Excludes token replay because replayed tokens cannot create submissions:
 
 ```
-Email Fraud:          16%
-Ephemeral ID:         17%
-Validation Frequency: 12%
-IP Diversity:          8%
-JA4 Session Hopping:   7%
-IP Rate Limit:         8%  [NEW]
+Email Fraud:          14%
+Ephemeral ID:         15%
+Validation Frequency: 10%
+IP Diversity:          7%
+JA4 Session Hopping:   6%
+IP Rate Limit:         7%
+Header Fingerprint:    7%
+TLS Anomaly:           4%
+Latency Mismatch:      2%
 ─────────────────────────
-Total:                68%  (remaining 32% never triggered)
+Total:                72%  (the token-replay 28% only appears in validation logs)
 ```
 
 ### Block Triggers
@@ -821,6 +827,15 @@ switch (blockTrigger) {
   case 'validation_frequency':
   case 'email_fraud':
   case 'ip_rate_limit':
+    total = Math.max(baseScore, blockThreshold);
+    break;
+  case 'header_fingerprint':
+    total = Math.max(baseScore, blockThreshold + 5);
+    break;
+  case 'tls_anomaly':
+    total = Math.max(baseScore, blockThreshold + 5);
+    break;
+  case 'latency_mismatch':
     total = Math.max(baseScore, blockThreshold);
     break;
   case 'turnstile_failed':
