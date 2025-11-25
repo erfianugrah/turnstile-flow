@@ -30,6 +30,12 @@ interface RecentSubmissionsSectionProps {
 	onAllowedStatusChange: (status: 'all' | 'allowed' | 'blocked') => void;
 	dateRange: { start: Date; end: Date };
 	onDateRangeChange: (range: { start: Date; end: Date }) => void;
+	fingerprintFlags: {
+		headerReuse: boolean;
+		tlsAnomaly: boolean;
+		latencyMismatch: boolean;
+	};
+	onFingerprintFlagsChange: (flags: { headerReuse: boolean; tlsAnomaly: boolean; latencyMismatch: boolean }) => void;
 	// Pagination/sorting states
 	pagination: PaginationState;
 	onPaginationChange: (updater: PaginationState | ((old: PaginationState) => PaginationState)) => void;
@@ -53,6 +59,8 @@ export function RecentSubmissionsSection({
 	onAllowedStatusChange,
 	dateRange,
 	onDateRangeChange,
+	fingerprintFlags,
+	onFingerprintFlagsChange,
 	pagination,
 	onPaginationChange,
 	sorting,
@@ -107,6 +115,32 @@ export function RecentSubmissionsSection({
 							label="Bot Score Range"
 							step={1}
 						/>
+					</div>
+					<div className="flex flex-wrap gap-4 text-sm">
+						<label className="flex items-center gap-2">
+							<input
+								type="checkbox"
+								checked={fingerprintFlags.headerReuse}
+								onChange={(e) => onFingerprintFlagsChange({ ...fingerprintFlags, headerReuse: e.target.checked })}
+							/>
+							<span>Header Fingerprint Reuse</span>
+						</label>
+						<label className="flex items-center gap-2">
+							<input
+								type="checkbox"
+								checked={fingerprintFlags.tlsAnomaly}
+								onChange={(e) => onFingerprintFlagsChange({ ...fingerprintFlags, tlsAnomaly: e.target.checked })}
+							/>
+							<span>TLS Anomaly</span>
+						</label>
+						<label className="flex items-center gap-2">
+							<input
+								type="checkbox"
+								checked={fingerprintFlags.latencyMismatch}
+								onChange={(e) => onFingerprintFlagsChange({ ...fingerprintFlags, latencyMismatch: e.target.checked })}
+							/>
+							<span>Latency Mismatch</span>
+						</label>
 					</div>
 				</div>
 

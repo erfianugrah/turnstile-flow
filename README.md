@@ -33,7 +33,8 @@ forminator/
 - **Single-step Validation**: Token validation + fraud check + submission in one atomic operation
 - **Token Replay Protection**: SHA256 hashing with unique index
 - **Multi-layer Fraud Detection**: Pre-validation blacklist, IP behavioral signals, email RPC, ephemeral ID, validation frequency, JA4 session hopping, IP diversity
-- **Normalized Risk Scoring**: Mathematical 0-100 scale with 7 weighted components (token replay, email fraud, ephemeral IDs, validation frequency, IP diversity, JA4 session hopping, IP rate limit)
+- **Normalized Risk Scoring**: Mathematical 0-100 scale with 10 weighted components (core layers + header fingerprint reuse, TLS anomalies, and latency mismatches)
+- **Fingerprint Enforcement**: Header signature reuse detection, TLS ClientHello anomaly checks, and RTT/platform mismatch scoring stacked on top of Cloudflare metadata
 - **Progressive Timeout System**: Auto-blacklist with escalating timeouts (1h → 24h)
 - **Email Fraud Detection**: Worker-to-Worker RPC with Markov Chain analysis (83% accuracy, 0% false positives)
 - **JA4 Session Hopping**: Detects incognito/browser switching attacks via TLS fingerprinting
@@ -50,6 +51,8 @@ Captures 40+ fields from `request.cf` and headers:
 - **Bot Management**: Bot score, client trust score, verified bot flag, JS detection
 - **Fingerprints**: JA3 hash, JA4 string, JA4 signals (h2h3_ratio, heuristic_ratio, etc.)
 - **Detection**: Detection IDs array from Bot Management
+- **HTTP Signals**: `sec-ch-ua*` client hints, `sec-fetch-*`, Accept-Language/Encoding, DNT, HTTP/2 priority, header fingerprint snapshot
+- **TLS Internals**: ClientHello length, ClientRandom, TLS extension hashes, exported authenticator, client-auth metadata, client RTT, CF Ray, device type
 
 ### UI & Analytics
 - **Dark Mode**: Full support with enhanced accent colors and shadows

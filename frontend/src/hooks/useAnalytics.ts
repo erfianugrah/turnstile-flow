@@ -8,6 +8,9 @@ export interface ValidationStats {
 	unique_ephemeral_ids: number;
 	ja4_fraud_blocks: number;
 	active_blacklist: number;
+	header_fingerprint_blocks?: number;
+	tls_anomaly_blocks?: number;
+	latency_mismatch_blocks?: number;
 	email_fraud?: {
 		total_with_email_check: number;
 		markov_detected: number;

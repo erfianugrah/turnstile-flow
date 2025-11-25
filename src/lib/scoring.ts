@@ -4,13 +4,16 @@
  * Implements weighted component system to normalize risk scores to 0-100 scale
  *
  * Component Weights (configurable, defaults sum to 100%):
- * - Token Replay: 32% (instant block, highest priority)
- * - Email Fraud: 16% (pattern detection via markov-mail)
- * - Ephemeral ID: 17% (device tracking, core fraud signal)
- * - Validation Frequency: 12% (attempt rate monitoring)
- * - IP Diversity: 8% (proxy rotation detection)
- * - JA4 Session Hopping: 7% (browser hopping detection)
- * - IP Rate Limit: 8% (browser switching detection)
+ * - Token Replay: 28% (instant block, highest priority)
+ * - Email Fraud: 14% (pattern detection via markov-mail)
+ * - Ephemeral ID: 15% (device tracking, core fraud signal)
+ * - Validation Frequency: 10% (attempt rate monitoring)
+ * - IP Diversity: 7% (proxy rotation detection)
+ * - JA4 Session Hopping: 6% (browser hopping detection)
+ * - IP Rate Limit: 7% (browser switching detection)
+ * - Header Fingerprint Reuse: 7% (shared header stacks across IPs/JA4s)
+ * - TLS Anomaly: 4% (spoofed ClientHello fingerprints)
+ * - Latency Mismatch: 2% (impossible RTT/platform combos)
  *
  * All thresholds and weights are configurable via src/lib/config.ts
  * Block Threshold: Default 70/100 (configurable)
@@ -34,6 +37,9 @@ export interface RiskScoreBreakdown {
 	ipDiversity: number;
 	ja4SessionHopping: number;
 	ipRateLimit: number;
+	headerFingerprint: number;
+	tlsAnomaly: number;
+	latencyMismatch: number;
 	total: number;
 	components: Record<string, RiskComponent>;
 }
@@ -47,7 +53,10 @@ export function calculateNormalizedRiskScore(
 		uniqueIPCount: number;
 		ja4RawScore: number; // 0-230
 		ipRateLimitScore?: number; // 0-100
-		blockTrigger?: 'token_replay' | 'email_fraud' | 'ephemeral_id_fraud' | 'ja4_session_hopping' | 'ip_diversity' | 'validation_frequency' | 'ip_rate_limit' | 'duplicate_email' | 'turnstile_failed';
+		headerFingerprintScore?: number; // 0-100
+		tlsAnomalyScore?: number; // 0-100
+		latencyMismatchScore?: number; // 0-100
+		blockTrigger?: 'token_replay' | 'email_fraud' | 'ephemeral_id_fraud' | 'ja4_session_hopping' | 'ip_diversity' | 'validation_frequency' | 'ip_rate_limit' | 'header_fingerprint' | 'tls_anomaly' | 'latency_mismatch' | 'duplicate_email' | 'turnstile_failed';
 	},
 	config: FraudDetectionConfig
 ): RiskScoreBreakdown {
@@ -158,7 +167,52 @@ export function calculateNormalizedRiskScore(
 						? 'Multiple submissions from IP'
 						: ipRateLimitScore >= 25
 							? 'Legitimate retry from IP'
-							: 'First submission from IP',
+					: 'First submission from IP',
+	};
+
+	// Header Fingerprint Reuse (0-100 provided by collector)
+	const headerFingerprintScore = clampScore(checks.headerFingerprintScore || 0);
+	const headerWeight = config.risk.weights.headerFingerprint || 0;
+	components.headerFingerprint = {
+		score: headerFingerprintScore,
+		weight: headerWeight,
+		contribution: headerFingerprintScore * headerWeight,
+		reason:
+			headerFingerprintScore >= config.risk.blockThreshold
+				? 'Shared header fingerprint across networks'
+				: headerFingerprintScore > 0
+					? 'Repeated header fingerprint observed'
+					: 'Unique header fingerprint',
+	};
+
+	// TLS Anomaly
+	const tlsAnomalyScore = clampScore(checks.tlsAnomalyScore || 0);
+	const tlsWeight = config.risk.weights.tlsAnomaly || 0;
+	components.tlsAnomaly = {
+		score: tlsAnomalyScore,
+		weight: tlsWeight,
+		contribution: tlsAnomalyScore * tlsWeight,
+		reason:
+			tlsAnomalyScore >= config.risk.blockThreshold
+				? 'JA4 presented with spoofed TLS fingerprint'
+				: tlsAnomalyScore > 0
+					? 'Unexpected TLS fingerprint for this JA4'
+					: 'TLS fingerprint matches baseline',
+	};
+
+	// Latency / Device mismatch
+	const latencyMismatchScore = clampScore(checks.latencyMismatchScore || 0);
+	const latencyWeight = config.risk.weights.latencyMismatch || 0;
+	components.latencyMismatch = {
+		score: latencyMismatchScore,
+		weight: latencyWeight,
+		contribution: latencyMismatchScore * latencyWeight,
+		reason:
+			latencyMismatchScore >= config.risk.blockThreshold
+				? 'Impossible RTT for claimed platform'
+				: latencyMismatchScore > 0
+					? 'Suspicious RTT/platform combination'
+					: 'RTT consistent with platform',
 	};
 
 	// Calculate total (weighted sum, capped at 100)
@@ -200,7 +254,19 @@ export function calculateNormalizedRiskScore(
 				// IP rate limit exceeded - medium-high risk
 				total = Math.max(baseScore, blockThreshold);
 				break;
-			case 'duplicate_email':
+		case 'header_fingerprint':
+			// Shared header fingerprint across multiple identities - high risk
+			total = Math.max(baseScore, blockThreshold + 5);
+			break;
+		case 'tls_anomaly':
+			// Spoofed TLS fingerprint - high risk
+			total = Math.max(baseScore, blockThreshold + 5);
+			break;
+		case 'latency_mismatch':
+			// Device claim inconsistent with RTT - medium risk
+			total = Math.max(baseScore, blockThreshold);
+			break;
+		case 'duplicate_email':
 				// Email already used - medium risk
 				total = Math.max(baseScore, blockThreshold - 10);
 				break;
@@ -226,9 +292,19 @@ export function calculateNormalizedRiskScore(
 		ipDiversity: components.ipDiversity.score,
 		ja4SessionHopping: components.ja4SessionHopping.score,
 		ipRateLimit: components.ipRateLimit.score,
+		headerFingerprint: components.headerFingerprint.score,
+		tlsAnomaly: components.tlsAnomaly.score,
+		latencyMismatch: components.latencyMismatch.score,
 		total,
 		components,
 	};
+}
+
+function clampScore(score: number): number {
+	if (Number.isNaN(score)) {
+		return 0;
+	}
+	return Math.max(0, Math.min(100, score));
 }
 
 // Normalize ephemeral ID submission count to 0-100

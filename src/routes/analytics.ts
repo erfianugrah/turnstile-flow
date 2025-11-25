@@ -127,6 +127,9 @@ app.get('/submissions', async (c) => {
 		const hasJa4Str = c.req.query('hasJa4');
 		const hasJa4 = hasJa4Str !== undefined ? hasJa4Str === 'true' : undefined;
 		const search = c.req.query('search');
+		const fingerprintHeader = c.req.query('fingerprintHeader') === 'true';
+		const fingerprintTls = c.req.query('fingerprintTls') === 'true';
+		const fingerprintLatency = c.req.query('fingerprintLatency') === 'true';
 
 		// Validate bot score range
 		if (botScoreMin !== undefined && (botScoreMin < 0 || botScoreMin > 100)) {
@@ -165,6 +168,14 @@ app.get('/submissions', async (c) => {
 			hasJa3,
 			hasJa4,
 			search,
+			fingerprintFlags:
+				fingerprintHeader || fingerprintTls || fingerprintLatency
+					? {
+							headerReuse: fingerprintHeader,
+							tlsAnomaly: fingerprintTls,
+							latencyMismatch: fingerprintLatency,
+					  }
+					: undefined,
 		};
 
 		// Fetch submissions with filters
@@ -181,6 +192,13 @@ app.get('/submissions', async (c) => {
 		if (hasJa3 !== undefined) appliedFilters.hasJa3 = hasJa3;
 		if (hasJa4 !== undefined) appliedFilters.hasJa4 = hasJa4;
 		if (search) appliedFilters.search = search;
+		if (fingerprintHeader || fingerprintTls || fingerprintLatency) {
+			appliedFilters.fingerprintFlags = {
+				headerReuse: fingerprintHeader,
+				tlsAnomaly: fingerprintTls,
+				latencyMismatch: fingerprintLatency,
+			};
+		}
 		if (sortBy) appliedFilters.sortBy = sortBy;
 		if (sortOrder) appliedFilters.sortOrder = sortOrder;
 

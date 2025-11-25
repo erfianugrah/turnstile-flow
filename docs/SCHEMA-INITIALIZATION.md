@@ -48,7 +48,7 @@ wrangler d1 execute DB --command="SELECT name FROM sqlite_master WHERE type='tab
 
 **Version**: 1.0 (Production Ready)
 **Last Updated**: 2025-11-17
-**Columns**: 52 total
+**Columns**: 54 total
 
 | Category      | Columns                                                                                              |
 | ------------- | ---------------------------------------------------------------------------------------------------- |
@@ -58,6 +58,8 @@ wrangler d1 execute DB --command="SELECT name FROM sqlite_master WHERE type='tab
 | Bot Detection | bot_score, client_trust_score, verified_bot, detection_ids                                           |
 | Fingerprints  | ja3_hash, ja4, ja4_signals                                                                           |
 | Email Fraud   | email_risk_score, email_fraud_signals, email_pattern_type, email_markov_detected, email_ood_detected |
+| Request Snapshots | form_data, request_headers, extended_metadata                                                       |
+| Fingerprint Cache | fingerprint_baselines (type, fingerprint_key, ja4_bucket, asn_bucket, hit_count, last_seen)        |
 
 **Indexes**: 14 indexes for performance
 

@@ -65,6 +65,11 @@ export default function AnalyticsDashboard() {
 		start: subDays(new Date(), 30),
 		end: new Date(),
 	});
+	const [fingerprintFlags, setFingerprintFlags] = useState({
+		headerReuse: false,
+		tlsAnomaly: false,
+		latencyMismatch: false,
+	});
 
 	// Pagination and sorting states
 	const [pagination, setPagination] = useState<PaginationState>({
@@ -90,7 +95,7 @@ export default function AnalyticsDashboard() {
 	// Reset pagination when filters change
 	useEffect(() => {
 		setPagination((prev) => ({ ...prev, pageIndex: 0 }));
-	}, [searchQuery, selectedCountries.join(','), botScoreRange.join(','), allowedStatus, dateRange.start.toISOString(), dateRange.end.toISOString()]);
+	}, [searchQuery, selectedCountries.join(','), botScoreRange.join(','), allowedStatus, dateRange.start.toISOString(), dateRange.end.toISOString(), fingerprintFlags.headerReuse, fingerprintFlags.tlsAnomaly, fingerprintFlags.latencyMismatch]);
 
 	// Use hooks for data fetching
 	const analyticsData = useAnalytics(apiKey, autoRefresh, refreshInterval);
@@ -103,6 +108,7 @@ export default function AnalyticsDashboard() {
 		botScoreRange,
 		dateRange,
 		allowedStatus,
+		fingerprintFlags,
 	};
 	const submissionsData = useSubmissions(apiKey, filters, pagination, sorting);
 
@@ -247,6 +253,11 @@ export default function AnalyticsDashboard() {
 			start: subDays(new Date(), 30),
 			end: new Date(),
 		});
+		setFingerprintFlags({
+			headerReuse: false,
+			tlsAnomaly: false,
+			latencyMismatch: false,
+		});
 	};
 
 	// Check if filters are active
@@ -256,6 +267,9 @@ export default function AnalyticsDashboard() {
 		botScoreRange[0] !== 0 ||
 		botScoreRange[1] !== 100 ||
 		allowedStatus !== 'all' ||
+		fingerprintFlags.headerReuse ||
+		fingerprintFlags.tlsAnomaly ||
+		fingerprintFlags.latencyMismatch ||
 		dateRange.start.getTime() !== subDays(new Date(), 30).setHours(0, 0, 0, 0) ||
 		dateRange.end.getTime() !== new Date().setHours(23, 59, 59, 999);
 
@@ -355,6 +369,8 @@ export default function AnalyticsDashboard() {
 						onAllowedStatusChange={setAllowedStatus}
 						dateRange={dateRange}
 						onDateRangeChange={setDateRange}
+						fingerprintFlags={fingerprintFlags}
+						onFingerprintFlagsChange={setFingerprintFlags}
 						pagination={pagination}
 						onPaginationChange={setPagination}
 						sorting={sorting}

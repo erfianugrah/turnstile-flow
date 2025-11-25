@@ -50,6 +50,8 @@ CREATE TABLE IF NOT EXISTS submissions (
 	form_data TEXT, -- Complete raw JSON payload
 	extracted_email TEXT, -- Extracted email for querying
 	extracted_phone TEXT, -- Extracted phone for querying
+	request_headers TEXT, -- JSON snapshot of request headers (sans secrets)
+	extended_metadata TEXT, -- JSON blob of full RequestMetadata for fingerprinting
 	-- Request tracking
 	erfid TEXT, -- Unique request identifier for lifecycle tracking
 	-- Timestamps
@@ -100,6 +102,8 @@ CREATE TABLE IF NOT EXISTS turnstile_validations (
 	-- Detection metadata (Phase 2)
 	detection_type TEXT, -- Primary detection layer: email_fraud_detection, ephemeral_id_tracking, ja4_fingerprinting, token_replay_protection, turnstile_validation
 	risk_score_breakdown TEXT, -- JSON: component scores for transparency
+	request_headers TEXT, -- JSON snapshot of request headers (sans secrets)
+	extended_metadata TEXT, -- JSON blob of full RequestMetadata for fingerprinting
 	-- Request tracking
 	erfid TEXT, -- Unique request identifier for lifecycle tracking
 	-- Timestamps
@@ -163,6 +167,21 @@ CREATE TABLE IF NOT EXISTS fraud_blocks (
 	-- Timestamps
 	created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Fingerprint baselines table: caches known-safe header/TLS fingerprints
+CREATE TABLE IF NOT EXISTS fingerprint_baselines (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	type TEXT NOT NULL, -- 'header' or 'tls'
+	fingerprint_key TEXT NOT NULL,
+	ja4_bucket TEXT NOT NULL,
+	asn_bucket INTEGER NOT NULL,
+	hit_count INTEGER DEFAULT 1,
+	last_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
+	metadata TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_fingerprint_baselines_unique
+	ON fingerprint_baselines(type, fingerprint_key, ja4_bucket, asn_bucket);
 
 -- Indexes for performance
 CREATE UNIQUE INDEX IF NOT EXISTS idx_token_hash ON turnstile_validations(token_hash);

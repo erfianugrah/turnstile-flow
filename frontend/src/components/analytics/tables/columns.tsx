@@ -95,6 +95,36 @@ export function createSubmissionColumns(
 			},
 		},
 		{
+			id: 'fingerprint_flags',
+			header: 'Fingerprint Flags',
+			cell: ({ row }) => {
+				const flags = row.original.fingerprint_flags || {
+					headerReuse: false,
+					tlsAnomaly: false,
+					latencyMismatch: false,
+				};
+				const activeFlags = [
+					flags.headerReuse ? 'Header' : null,
+					flags.tlsAnomaly ? 'TLS' : null,
+					flags.latencyMismatch ? 'Latency' : null,
+				].filter(Boolean);
+
+				if (activeFlags.length === 0) {
+					return <span className="text-xs text-muted-foreground">None</span>;
+				}
+
+				return (
+					<div className="flex flex-wrap gap-1">
+						{activeFlags.map((flag) => (
+							<Badge key={flag} variant="outline" className="text-xs">
+								{flag}
+							</Badge>
+						))}
+					</div>
+				);
+			},
+		},
+		{
 			accessorKey: 'created_at',
 			header: 'Date',
 			cell: ({ row }) => (

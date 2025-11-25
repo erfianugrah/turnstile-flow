@@ -26,12 +26,16 @@ export function OverviewStats({ stats }: OverviewStatsProps) {
 	const highRiskRate = stats && stats.total > 0
 		? ((stats.total - stats.allowed) / stats.total) * 100
 		: 0;
+	const headerBlocks = stats?.header_fingerprint_blocks || 0;
+	const tlsBlocks = stats?.tls_anomaly_blocks || 0;
+	const latencyBlocks = stats?.latency_mismatch_blocks || 0;
+	const fingerprintBlocks = headerBlocks + tlsBlocks + latencyBlocks;
 
 	const allowedStatus = getAllowedRateStatus(allowedRate);
 	const riskStatus = getRiskScoreStatus(avgRiskScore);
 
 	return (
-		<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 w-full">
+		<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 w-full">
 			<Card className="min-w-0">
 				<CardHeader className="pb-2">
 					<CardTitle className="text-sm font-medium text-muted-foreground">
@@ -102,6 +106,24 @@ export function OverviewStats({ stats }: OverviewStatsProps) {
 					<p className="text-xs text-muted-foreground mt-1 break-words">
 						Validations with elevated risk
 					</p>
+				</CardContent>
+			</Card>
+
+			<Card className="min-w-0">
+				<CardHeader className="pb-2">
+					<CardTitle className="text-sm font-medium text-muted-foreground break-words" title="Fingerprint Blocks">
+						Fingerprint Blocks
+					</CardTitle>
+				</CardHeader>
+				<CardContent>
+					<div className={`text-3xl font-bold ${fingerprintBlocks > 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
+						{fingerprintBlocks}
+					</div>
+					<div className="text-xs text-muted-foreground mt-2 space-y-1">
+						<div>Header reuse: <span className="font-semibold">{headerBlocks}</span></div>
+						<div>TLS anomaly: <span className="font-semibold">{tlsBlocks}</span></div>
+						<div>Latency mismatch: <span className="font-semibold">{latencyBlocks}</span></div>
+					</div>
 				</CardContent>
 			</Card>
 		</div>

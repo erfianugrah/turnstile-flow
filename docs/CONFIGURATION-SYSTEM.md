@@ -48,34 +48,16 @@ Controls overall risk scoring and blocking behavior.
 
 Component weights for normalized risk scoring. **Must sum to 1.0**.
 
-- **`tokenReplay`** (default: `0.32`): Token replay attack weight (32%)
-  - Highest weight because replays are definitive fraud
-  - Instant block indicator
-
-- **`emailFraud`** (default: `0.16`): Email pattern fraud weight (16%)
-  - Markov-Mail detection: sequential, dated, formatted patterns
-  - 83% accuracy, 0% false positives
-
-- **`ephemeralId`** (default: `0.17`): Device tracking weight (17%)
-  - Multiple submissions from same device
-  - Core fraud signal
-
-- **`validationFrequency`** (default: `0.12`): Validation attempt rate weight (12%)
-  - Rapid-fire submission attempts
-  - Catches attacks before D1 replication
-
-- **`ipDiversity`** (default: `0.08`): Proxy rotation detection weight (8%)
-  - Same device from multiple IPs
-  - Lower weight due to legitimate VPN usage
-
-- **`ja4SessionHopping`** (default: `0.07`): Browser hopping detection weight (7%)
-  - Incognito mode / browser switching attacks
-  - Lower weight due to complexity
-
-- **`ipRateLimit`** (default: `0.08`): IP rate limiting weight (8%)
-  - Browser switching attacks (Firefox→Chrome→Safari)
-  - Behavioral signal, not hard block
-  - Prevents false positives for shared IPs
+- **`tokenReplay`** (default: `0.28`): Instant block for Turnstile token reuse.
+- **`emailFraud`** (default: `0.14`): Markov-Mail signal for patterned/disposable email addresses.
+- **`ephemeralId`** (default: `0.15`): Multiple submissions per device (core fraud driver).
+- **`validationFrequency`** (default: `0.10`): Rapid-fire Turnstile attempts.
+- **`ipDiversity`** (default: `0.07`): Same device across many IPs (proxy rotation).
+- **`ja4SessionHopping`** (default: `0.06`): TLS/session-hopping score from `collectJA4Signals`.
+- **`ipRateLimit`** (default: `0.07`): Behavioral IP velocity (shared IP safe because it’s weighted, not absolute).
+- **`headerFingerprint`** (default: `0.07`): Reused request-header signatures across different JA4/IP/email combinations.
+- **`tlsAnomaly`** (default: `0.04`): JA4 presented with a TLS extension hash we’ve never seen before (likely spoofed ClientHello).
+- **`latencyMismatch`** (default: `0.02`): Claimed mobile devices with impossible RTTs/device types (caught via Cloudflare `clientTcpRtt`).
 
 ### JA4 Signal Configuration (`ja4`)
 
@@ -122,6 +104,33 @@ Thresholds for Cloudflare Bot Management JA4 fingerprint signals. Requires Enter
 - **Purpose**: Cacheable response ratio threshold
 - **Rationale**: Bots often have different caching patterns than browsers
 - **Range**: 0.3-0.7 (use case dependent)
+
+### Fingerprint Heuristics (`fingerprint`)
+
+Server-side fingerprint heuristics derived from Cloudflare metadata and stored in `extended_metadata`.
+
+#### `fingerprint.headerReuse`
+
+- **`windowMinutes`** (default: `60`): Look-back window when counting how often a header fingerprint appears.
+- **`minRequests`** (default: `3`): Minimum matching requests required before flagging reuse.
+- **`minDistinctIps`** (default: `2`): Require multiple IPs to avoid penalizing NAT’d users.
+- **`minDistinctJa4`** (default: `2`): Ensure the same header stack accompanies different JA4 strings (strong automation sign).
+
+#### `fingerprint.tlsAnomaly`
+
+- **`baselineHours`** (default: `24`): Compare TLS hashes against the last 24 hours of legitimate traffic.
+- **`minJa4Observations`** (default: `5`): Don’t flag anomalies until we have a solid baseline for that JA4.
+
+#### `fingerprint.latency`
+
+- **`mobileRttThresholdMs`** (default: `6`): Claimed mobile devices with RTT below this threshold are suspicious.
+- **`inspectPlatforms`** (default: `['Android','iOS']`): `sec-ch-ua-platform` values that trigger the latency check.
+
+#### `fingerprint.datacenterAsns`
+
+- **Type**: Array<number>
+- **Purpose**: Reference list of hosting-provider ASNs that should never present mobile RTT/platform combinations.
+- **Default**: `[16509, 14618, 8075, 15169, 13335, 9009, 61317, 49544]` (AWS, Azure, GCP, Cloudflare, M247, Leaseweb, OVH)
 
 ### Detection Thresholds (`detection`)
 

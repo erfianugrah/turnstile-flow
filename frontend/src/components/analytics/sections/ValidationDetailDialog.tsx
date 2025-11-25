@@ -18,7 +18,21 @@ export interface ValidationDetail {
 	risk_score_breakdown: string | null;
 	error_codes: string | null;
 	submission_id: number | null;
-	detection_type: 'email_fraud_detection' | 'ephemeral_id_tracking' | 'ja4_fingerprinting' | 'token_replay_protection' | 'turnstile_validation' | 'pre_validation_blacklist' | 'duplicate_email' | 'holistic_risk' | 'other' | null;
+	detection_type:
+		| 'email_fraud_detection'
+		| 'ephemeral_id_tracking'
+		| 'ja4_fingerprinting'
+		| 'token_replay_protection'
+		| 'turnstile_validation'
+		| 'pre_validation_blacklist'
+		| 'duplicate_email'
+		| 'holistic_risk'
+		| 'header_fingerprint_reuse'
+		| 'tls_fingerprint_anomaly'
+		| 'latency_mismatch'
+		| 'fingerprint_anomaly'
+		| 'other'
+		| null;
 	// Geographic data
 	remote_ip: string;
 	country: string | null;
@@ -51,16 +65,20 @@ export interface ValidationDetail {
 
 // Helper function to format detection layer names for display
 function formatDetectionLayer(layer: string): string {
-	const layerMap: Record<string, string> = {
-		'email_fraud_detection': 'Email Fraud Detection (Layer 1)',
-		'ephemeral_id_tracking': 'Ephemeral ID Tracking (Layer 2)',
-		'ja4_fingerprinting': 'JA4 Fingerprinting (Layer 4)',
-		'token_replay_protection': 'Token Replay Protection',
-		'turnstile_validation': 'Turnstile Validation',
-		'pre_validation_blacklist': 'Pre-Validation Blacklist (Layer 0)',
-		'duplicate_email': 'Duplicate Email Enforcement',
-		'holistic_risk': 'Holistic Risk (Layer 3)',
-	};
+const layerMap: Record<string, string> = {
+	'email_fraud_detection': 'Email Fraud Detection (Layer 1)',
+	'ephemeral_id_tracking': 'Ephemeral ID Tracking (Layer 2)',
+	'ja4_fingerprinting': 'JA4 Fingerprinting (Layer 4)',
+	'token_replay_protection': 'Token Replay Protection',
+	'turnstile_validation': 'Turnstile Validation',
+	'pre_validation_blacklist': 'Pre-Validation Blacklist (Layer 0)',
+	'duplicate_email': 'Duplicate Email Enforcement',
+	'holistic_risk': 'Holistic Risk (Layer 3)',
+	'header_fingerprint_reuse': 'Header Fingerprint Reuse (Layer 4.5)',
+	'tls_fingerprint_anomaly': 'TLS Fingerprint Anomaly (Layer 4.5)',
+	'latency_mismatch': 'Latency / Device Mismatch (Layer 4.5)',
+	'fingerprint_anomaly': 'Fingerprint Anomaly (Layer 4.5)',
+};
 	return layerMap[layer] || layer;
 }
 

@@ -16,7 +16,7 @@ const DEFAULT_CONFIG = {
 	/**
 	 * Risk Score Configuration
 	 */
-	risk: {
+		risk: {
 		/** Block threshold - submissions with risk >= this value are blocked */
 		blockThreshold: 70,
 
@@ -33,13 +33,16 @@ const DEFAULT_CONFIG = {
 		 * Adjusted to include IP rate limiting as behavioral signal
 		 */
 		weights: {
-			tokenReplay: 0.32,          // 32% (reduced from 35%)
-			emailFraud: 0.16,            // 16% (reduced from 17%)
-			ephemeralId: 0.17,           // 17% (reduced from 18%)
-			validationFrequency: 0.12,   // 12% (reduced from 13%)
-			ipDiversity: 0.08,           // 8%  (reduced from 9%)
-			ja4SessionHopping: 0.07,     // 7%  (reduced from 8%)
-			ipRateLimit: 0.08,           // 8%  (NEW - catches browser switching)
+			tokenReplay: 0.28,          // 28% (still the highest priority)
+			emailFraud: 0.14,           // 14%
+			ephemeralId: 0.15,          // 15%
+			validationFrequency: 0.10,  // 10%
+			ipDiversity: 0.07,          // 7%
+			ja4SessionHopping: 0.06,    // 6%
+			ipRateLimit: 0.07,          // 7%
+			headerFingerprint: 0.07,    // 7% (new - shared header signature reuse)
+			tlsAnomaly: 0.04,           // 4% (new - spoofed TLS fingerprints)
+			latencyMismatch: 0.02,      // 2% (new - impossible RTT/platform combos)
 		},
 	},
 
@@ -83,6 +86,36 @@ const DEFAULT_CONFIG = {
 
 		/** Cache ratio threshold: 0.5 (50% cacheable) */
 		cacheRatioThreshold: 0.5,
+	},
+
+	/**
+	 * Fingerprint-specific heuristics (Phase 4)
+	 */
+	fingerprint: {
+		headerReuse: {
+			windowMinutes: 60,        // Look back 60 minutes for reuse analysis
+			minRequests: 3,           // Require at least 3 matching requests
+			minDistinctIps: 2,        // ...coming from 2+ IPs
+			minDistinctJa4: 2,        // ...and 2+ JA4 fingerprints
+		},
+		tlsAnomaly: {
+			baselineHours: 24,        // Compare against last 24h of traffic
+			minJa4Observations: 5,    // Only flag when we have 5+ legit samples for that JA4
+		},
+		latency: {
+			mobileRttThresholdMs: 6,  // Mobile claims with RTT < 6ms are suspicious
+			inspectPlatforms: ['Android', 'iOS'],
+		},
+		datacenterAsns: [           // Common hosting providers for quick heuristics
+			16509, // AWS
+			14618, // AWS
+			8075,  // Microsoft
+			15169, // Google Cloud
+			13335, // Cloudflare
+			9009,  // M247
+			61317, // Leaseweb NL
+			49544, // OVH
+		],
 	},
 
 	/**
@@ -327,6 +360,26 @@ function mergeConfig(
 				...defaults.detection.ja4Clustering,
 				...custom.detection.ja4Clustering,
 			},
+		};
+	}
+
+	if (custom.fingerprint) {
+		merged.fingerprint = {
+			...defaults.fingerprint,
+			...custom.fingerprint,
+			headerReuse: {
+				...defaults.fingerprint.headerReuse,
+				...custom.fingerprint.headerReuse,
+			},
+			tlsAnomaly: {
+				...defaults.fingerprint.tlsAnomaly,
+				...custom.fingerprint.tlsAnomaly,
+			},
+			latency: {
+				...defaults.fingerprint.latency,
+				...custom.fingerprint.latency,
+			},
+			datacenterAsns: custom.fingerprint.datacenterAsns ?? defaults.fingerprint.datacenterAsns,
 		};
 	}
 

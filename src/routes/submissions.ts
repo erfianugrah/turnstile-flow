@@ -19,6 +19,7 @@ import { calculateNormalizedRiskScore } from '../lib/scoring';
 import { checkEmailFraud } from '../lib/email-fraud-detection';
 import { extractField } from '../lib/field-mapper';
 import { getConfig } from '../lib/config';
+import { collectFingerprintSignals } from '../lib/fingerprint-signals';
 import {
 	ValidationError,
 	RateLimitError,
@@ -353,6 +354,18 @@ app.post('/', async (c) => {
 			'IP rate limit signals collected'
 		);
 
+		// 2.5: Fingerprint-level signals (header reuse, TLS anomalies, latency mismatches)
+		const fingerprintSignals = await collectFingerprintSignals(metadata, db, config);
+		if (fingerprintSignals.warnings.length > 0) {
+			logger.warn(
+				{
+					fingerprint_warnings: fingerprintSignals.warnings,
+					fingerprint_trigger: fingerprintSignals.trigger,
+				},
+				'Fingerprint anomalies detected'
+			);
+		}
+
 		// 2.5: Duplicate email check (hybrid approach)
 		const existingSubmission = await db
 			.prepare('SELECT id, created_at FROM submissions WHERE email = ? LIMIT 1')
@@ -467,12 +480,15 @@ app.post('/', async (c) => {
 			uniqueIPCount: ephemeralSignals?.uniqueIPCount || 1,
 			ja4RawScore: ja4Signals?.rawScore || 0,
 			ipRateLimitScore: ipRateLimitSignals.riskScore,
+			headerFingerprintScore: fingerprintSignals.headerFingerprintScore,
+			tlsAnomalyScore: fingerprintSignals.tlsAnomalyScore,
+			latencyMismatchScore: fingerprintSignals.latencyMismatchScore,
 		}, config);
 
 		// 3.2: Determine blockTrigger if any specific threshold exceeded
 		// detectionType now represents the PRIMARY DETECTION LAYER that caught the fraud
 		// Note: duplicate_email is handled earlier and throws ConflictError (not rate limit)
-		let blockTrigger: 'email_fraud' | 'ephemeral_id_fraud' | 'ja4_session_hopping' | 'ip_diversity' | 'validation_frequency' | 'ip_rate_limit' | undefined = undefined;
+		let blockTrigger: 'email_fraud' | 'ephemeral_id_fraud' | 'ja4_session_hopping' | 'ip_diversity' | 'validation_frequency' | 'ip_rate_limit' | 'header_fingerprint' | 'tls_anomaly' | 'latency_mismatch' | undefined = undefined;
 		let detectionType: string | null = null;
 
 		if (emailFraudResult && emailFraudResult.decision === 'block') {
@@ -490,6 +506,9 @@ app.post('/', async (c) => {
 		} else if (ja4Signals && ja4Signals.detectionType) {
 			blockTrigger = 'ja4_session_hopping';
 			detectionType = 'ja4_fingerprinting'; // Layer 4: TLS fingerprinting
+		} else if (fingerprintSignals.trigger) {
+			blockTrigger = fingerprintSignals.trigger;
+			detectionType = fingerprintSignals.detectionType || 'fingerprint_anomaly';
 		}
 		// IP rate limit is NOT a blockTrigger on its own
 		// It contributes to risk score but doesn't trigger blocks independently
@@ -506,6 +525,9 @@ app.post('/', async (c) => {
 					uniqueIPCount: ephemeralSignals?.uniqueIPCount || 1,
 					ja4RawScore: ja4Signals?.rawScore || 0,
 					ipRateLimitScore: ipRateLimitSignals.riskScore,
+					headerFingerprintScore: fingerprintSignals.headerFingerprintScore,
+					tlsAnomalyScore: fingerprintSignals.tlsAnomalyScore,
+					latencyMismatchScore: fingerprintSignals.latencyMismatchScore,
 					blockTrigger,
 			  }, config)
 			: riskScore;
@@ -523,6 +545,9 @@ app.post('/', async (c) => {
 					ip_diversity: finalRiskScore.ipDiversity,
 					ja4_hopping: finalRiskScore.ja4SessionHopping,
 					ip_rate_limit: finalRiskScore.ipRateLimit,
+					header_fingerprint: finalRiskScore.headerFingerprint,
+					tls_anomaly: finalRiskScore.tlsAnomaly,
+					latency_mismatch: finalRiskScore.latencyMismatch,
 				},
 			},
 			'Holistic risk score calculated'
@@ -547,6 +572,7 @@ app.post('/', async (c) => {
 				...(ephemeralSignals?.warnings || []),
 				...(ja4Signals?.warnings || []),
 				...(ipRateLimitSignals.warnings || []),
+				...(fingerprintSignals.warnings || []),
 			];
 
 			const blockReason = `Risk score ${finalRiskScore.total} >= ${config.risk.blockThreshold}. Triggers: ${allWarnings.join(', ')}`;
@@ -570,6 +596,15 @@ app.post('/', async (c) => {
 					break;
 				case 'ja4_session_hopping':
 					userMessage = `Suspicious browser activity detected. Please wait ${waitTime} before trying again.`;
+					break;
+				case 'header_fingerprint':
+					userMessage = `Suspicious device signature detected. Please wait ${waitTime} before trying again.`;
+					break;
+				case 'tls_anomaly':
+					userMessage = `Untrusted connection fingerprint detected. Please wait ${waitTime} before trying again.`;
+					break;
+				case 'latency_mismatch':
+					userMessage = `Unusual network characteristics detected. Please wait ${waitTime} before trying again.`;
 					break;
 				default:
 					userMessage = `You have made too many submission attempts. Please wait ${waitTime} before trying again.`;
@@ -603,6 +638,7 @@ app.post('/', async (c) => {
 						raw_score: ja4Signals.rawScore,
 						detection_layer: ja4Signals.detectionLayer,
 					} : null,
+					fingerprint_signals: fingerprintSignals.details || null,
 					detected_at: new Date().toISOString(),
 				},
 				erfid,

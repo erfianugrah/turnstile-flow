@@ -18,6 +18,15 @@ export interface Submission {
 	ephemeral_id?: string | null;
 	risk_score?: number | null;
 	risk_score_breakdown?: string | null;
+	detection_type?: string | null;
+	fingerprint_header_score?: number;
+	fingerprint_tls_score?: number;
+	fingerprint_latency_score?: number;
+	fingerprint_flags?: {
+		headerReuse: boolean;
+		tlsAnomaly: boolean;
+		latencyMismatch: boolean;
+	};
 }
 
 export interface UseSubmissionsFilters {
@@ -26,6 +35,11 @@ export interface UseSubmissionsFilters {
 	botScoreRange: [number, number];
 	dateRange: { start: Date; end: Date };
 	allowedStatus: 'all' | 'allowed' | 'blocked';
+	fingerprintFlags?: {
+		headerReuse: boolean;
+		tlsAnomaly: boolean;
+		latencyMismatch: boolean;
+	};
 }
 
 export interface UseSubmissionsReturn {
@@ -95,6 +109,17 @@ export function useSubmissions(
 			}
 			// 'all' means no filter
 
+			// Fingerprint filters
+			if (filters.fingerprintFlags?.headerReuse) {
+				params.append('fingerprintHeader', 'true');
+			}
+			if (filters.fingerprintFlags?.tlsAnomaly) {
+				params.append('fingerprintTls', 'true');
+			}
+			if (filters.fingerprintFlags?.latencyMismatch) {
+				params.append('fingerprintLatency', 'true');
+			}
+
 			const res = await fetch(`/api/analytics/submissions?${params.toString()}`, { headers });
 
 			if (!res.ok) {
@@ -102,7 +127,23 @@ export function useSubmissions(
 			}
 
 			const data = await res.json();
-			setSubmissions((data as any).data);
+			const normalized = ((data as any).data || []).map((item: any) => {
+				const headerScore = Number(item.fingerprint_header_score ?? 0);
+				const tlsScore = Number(item.fingerprint_tls_score ?? 0);
+				const latencyScore = Number(item.fingerprint_latency_score ?? 0);
+				return {
+					...item,
+					fingerprint_header_score: headerScore,
+					fingerprint_tls_score: tlsScore,
+					fingerprint_latency_score: latencyScore,
+					fingerprint_flags: item.fingerprint_flags || {
+						headerReuse: headerScore > 0,
+						tlsAnomaly: tlsScore > 0,
+						latencyMismatch: latencyScore > 0,
+					},
+				};
+			});
+			setSubmissions(normalized);
 			setTotalCount((data as any).pagination?.total || 0);
 		} catch (err) {
 			console.error('Error loading submissions:', err);
@@ -125,6 +166,7 @@ export function useSubmissions(
 		filters.dateRange.start.toISOString(),
 		filters.dateRange.end.toISOString(),
 		filters.allowedStatus,
+		filters.fingerprintFlags ? `${filters.fingerprintFlags.headerReuse}-${filters.fingerprintFlags.tlsAnomaly}-${filters.fingerprintFlags.latencyMismatch}` : 'no-fp-filters',
 		pagination.pageIndex,
 		pagination.pageSize,
 		sorting.length > 0 ? sorting[0].id : '',

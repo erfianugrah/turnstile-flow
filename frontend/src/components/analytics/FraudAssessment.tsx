@@ -21,6 +21,9 @@ interface RiskBreakdown {
 		ipDiversity?: RiskComponent;
 		ja4SessionHopping?: RiskComponent;
 		ipRateLimit?: RiskComponent;
+		headerFingerprint?: RiskComponent;
+		tlsAnomaly?: RiskComponent;
+		latencyMismatch?: RiskComponent;
 	};
 }
 
@@ -89,15 +92,15 @@ export function FraudAssessment({ breakdown, config }: FraudAssessmentProps) {
 					<h4 className="font-semibold text-sm">Component Breakdown:</h4>
 
 					{/* Show ALL components in order, including zeros */}
-					{getOrderedComponents(components).map(([key, component]) =>
-						component ? (
-							<ComponentCard
-								key={key}
-								name={formatComponentName(key)}
-								component={component}
-							/>
-						) : null
-					)}
+			{getOrderedComponents(components).map(([key, component]) =>
+				component ? (
+					<ComponentCard
+						key={key}
+						id={key}
+						component={component}
+					/>
+				) : null
+			)}
 
 					{/* Total calculation */}
 					<div className="border-t-2 border-gray-300 dark:border-gray-700 pt-3 mt-3">
@@ -112,7 +115,7 @@ export function FraudAssessment({ breakdown, config }: FraudAssessmentProps) {
 	);
 }
 
-function ComponentCard({ name, component }: { name: string; component: RiskComponent }) {
+function ComponentCard({ id, component }: { id: string; component: RiskComponent }) {
 	const hasScore = component.score > 0;
 
 	const color = hasScore
@@ -128,7 +131,7 @@ function ComponentCard({ name, component }: { name: string; component: RiskCompo
 			<div className="flex items-start justify-between gap-4">
 				<div className="flex-1 min-w-0">
 					<div className="flex items-center gap-2 mb-1">
-						<span className="font-medium text-sm">{name}</span>
+						<span className="font-medium text-sm">{formatComponentName(id, component)}</span>
 						{!hasScore && <Badge variant="secondary" className="text-xs">Not Triggered</Badge>}
 					</div>
 					<div className="text-xs text-muted-foreground mb-2">
@@ -165,20 +168,28 @@ function getOrderedComponents(components: RiskBreakdown['components']): [string,
 		'ipDiversity',
 		'ja4SessionHopping',
 		'ipRateLimit',
+		'headerFingerprint',
+		'tlsAnomaly',
+		'latencyMismatch',
 	];
 
 	return order.map(key => [key, components[key as keyof typeof components]] as [string, RiskComponent | undefined]);
 }
 
-function formatComponentName(key: string): string {
+function formatComponentName(key: string, component: RiskComponent): string {
 	const names: Record<string, string> = {
-		tokenReplay: 'Token Replay (32%)',
-		emailFraud: 'Email Fraud (16%)',
-		ephemeralId: 'Device Tracking (17%)',
-		validationFrequency: 'Validation Frequency (12%)',
-		ipDiversity: 'IP Diversity (8%)',
-		ja4SessionHopping: 'Session Hopping (7%)',
-		ipRateLimit: 'IP Rate Limit (8%)',
+		tokenReplay: 'Token Replay',
+		emailFraud: 'Email Fraud',
+		ephemeralId: 'Device Tracking',
+		validationFrequency: 'Validation Frequency',
+		ipDiversity: 'IP Diversity',
+		ja4SessionHopping: 'Session Hopping',
+		ipRateLimit: 'IP Rate Limit',
+		headerFingerprint: 'Header Fingerprint Reuse',
+		tlsAnomaly: 'TLS Fingerprint Anomaly',
+		latencyMismatch: 'Latency / Device Mismatch',
 	};
-	return names[key] || key;
+	const label = names[key] || key;
+	const weightPercent = (component.weight * 100).toFixed(0);
+	return `${label} (${weightPercent}%)`;
 }

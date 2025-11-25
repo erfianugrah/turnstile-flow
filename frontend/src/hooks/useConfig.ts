@@ -19,6 +19,9 @@ export interface FraudDetectionConfig {
 			ipDiversity: number;
 			ja4SessionHopping: number;
 			ipRateLimit: number;
+			headerFingerprint: number;
+			tlsAnomaly: number;
+			latencyMismatch: number;
 		};
 	};
 	ja4: {
@@ -44,6 +47,23 @@ export interface FraudDetectionConfig {
 			extendedGlobalWindowMinutes: number;
 		};
 	};
+	fingerprint: {
+		headerReuse: {
+			windowMinutes: number;
+			minRequests: number;
+			minDistinctIps: number;
+			minDistinctJa4: number;
+		};
+		tlsAnomaly: {
+			baselineHours: number;
+			minJa4Observations: number;
+		};
+		latency: {
+			mobileRttThresholdMs: number;
+			inspectPlatforms: string[];
+		};
+		datacenterAsns: number[];
+	};
 	timeouts: {
 		schedule: number[];
 		maximum: number;
@@ -63,13 +83,16 @@ const DEFAULT_CONFIG: FraudDetectionConfig = {
 			high: { min: 70, max: 100 },
 		},
 		weights: {
-			tokenReplay: 0.32,
-			emailFraud: 0.16,
-			ephemeralId: 0.17,
-			validationFrequency: 0.12,
-			ipDiversity: 0.08,
-			ja4SessionHopping: 0.07,
-			ipRateLimit: 0.08,
+			tokenReplay: 0.28,
+			emailFraud: 0.14,
+			ephemeralId: 0.15,
+			validationFrequency: 0.10,
+			ipDiversity: 0.07,
+			ja4SessionHopping: 0.06,
+			ipRateLimit: 0.07,
+			headerFingerprint: 0.07,
+			tlsAnomaly: 0.04,
+			latencyMismatch: 0.02,
 		},
 	},
 	ja4: {
@@ -94,6 +117,23 @@ const DEFAULT_CONFIG: FraudDetectionConfig = {
 			extendedGlobalThreshold: 5,
 			extendedGlobalWindowMinutes: 60,
 		},
+	},
+	fingerprint: {
+		headerReuse: {
+			windowMinutes: 60,
+			minRequests: 3,
+			minDistinctIps: 2,
+			minDistinctJa4: 2,
+		},
+		tlsAnomaly: {
+			baselineHours: 24,
+			minJa4Observations: 5,
+		},
+		latency: {
+			mobileRttThresholdMs: 6,
+			inspectPlatforms: ['Android', 'iOS'],
+		},
+		datacenterAsns: [16509, 14618, 8075, 15169, 13335, 9009, 61317, 49544],
 	},
 	timeouts: {
 		schedule: [3600, 14400, 28800, 43200, 86400],

@@ -536,6 +536,35 @@ if (signalAnalysis.highGlobalDistribution &&
 }
 ```
 
+### Extended Request Fingerprints (Phase 4)
+
+The worker now captures a **header + TLS snapshot** for every request and stores it in the new `request_headers` and `extended_metadata` columns (see `schema.sql`). This supplements the 40+ Cloudflare fields with:
+
+- **HTTP client hints**: `sec-ch-ua*`, `sec-fetch-*`, HTTP/2 `priority`, DNT, Accept-Language/Encoding, etc.
+- **Header fingerprint**: deterministic FNV-1a hash of all non-sensitive headers so automation frameworks can be clustered even when JA4/ephemeral IDs rotate.
+- **TLS internals**: ClientHello length, ClientRandom, TLS extension SHA-1 digests, exported authenticator, and mutual TLS metadata. These survive beyond `ja4` strings and expose mismatched handshakes.
+- **Transport context**: `cf-ray`, `deviceType`, `clientTcpRtt`, `edgeRequestKeepAliveStatus`, and Cloudflare `requestPriority` for POP-level forensics.
+
+**How to use it**
+
+1. **Analytics pivots** – Query the JSON blobs to group submissions by header order, language mismatch, or TLS digest when hunting one-off attacks.
+2. **Future rules** – Combine with existing scoring (e.g., flag `sec-ch-ua-platform="Windows"` + mobile TLS hashes, or <5 ms RTT + residential ASN claims).
+3. **Downstream services** – The same metadata blob is serialized through `logValidation`/`createSubmission`, so Markov-Mail and analytics APIs can consume identical fingerprints without re-ingesting the request.
+
+This keeps Cloudflare’s own scores as advisory signals while giving you the raw material to fingerprint the very first attempt from a new attacker.
+
+### Fingerprint Signals Hooked Into Scoring
+
+Phase 4.5 pipes the raw telemetry above directly into the runtime scorer via `collectFingerprintSignals()`:
+
+- **Header fingerprint reuse** → `risk.weights.headerFingerprint` (default 7%). Triggers when the same sanitized header stack appears across multiple JA4 fingerprints and IPs within 60 minutes.
+- **TLS fingerprint anomaly** → `risk.weights.tlsAnomaly` (default 4%). Fires when a JA4 presents a TLS extension hash not seen in the last 24 hours (with ≥5 known-good baselines).
+- **Latency mismatch** → `risk.weights.latencyMismatch` (default 2%). Flags “mobile” claims with sub-6 ms RTTs from desktop device types or data-center ASNs.
+
+When any of these heuristics return a non-zero score they add weight to the holistic risk score; if they exceed the block threshold they now populate `blockTrigger` (`header_fingerprint`, `tls_anomaly`, `latency_mismatch`) so blacklist entries and analytics surfaces show the root cause.
+
+All safe combinations (header fingerprints, JA4+TLS hashes) are cached in the new `fingerprint_baselines` table. Known-good pairs refresh their `last_seen` timestamp automatically so the collector can skip redundant lookups, while unknown combos keep flowing through the anomaly logic.
+
 **Frontend Display** (`frontend/src/components/analytics/JA4SignalsDetail.tsx`):
 
 The analytics dashboard displays all 10 signals with:

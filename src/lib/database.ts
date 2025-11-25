@@ -32,6 +32,11 @@ export async function logValidation(
 		erfid?: string;  // Request tracking ID
 	}
 ): Promise<void> {
+	const requestHeadersJson = data.metadata.requestHeaders
+		? JSON.stringify(data.metadata.requestHeaders)
+		: null;
+	const extendedMetadataJson = JSON.stringify(data.metadata);
+
 	try {
 		await db
 			.prepare(
@@ -42,12 +47,12 @@ export async function logValidation(
 					continent, is_eu_country, asn, as_organization, colo, http_protocol,
 					tls_version, bot_score, client_trust_score, verified_bot, js_detection_passed,
 					detection_ids, ja3_hash, ja4, ja4_signals,
-					detection_type, risk_score_breakdown, erfid
+					detection_type, risk_score_breakdown, request_headers, extended_metadata, erfid
 				) VALUES (
 					?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
 					?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
 					?, ?, ?, ?, ?, ?, ?, ?, ?,
-					?, ?, ?
+					?, ?, ?, ?
 				)`
 			)
 			.bind(
@@ -82,15 +87,17 @@ export async function logValidation(
 				data.metadata.verifiedBot || false,
 				data.metadata.jsDetectionPassed || false,
 				data.metadata.detectionIds ? JSON.stringify(data.metadata.detectionIds) : null,
-				data.metadata.ja3Hash || null,
-				data.metadata.ja4 || null,
-				data.metadata.ja4Signals ? JSON.stringify(data.metadata.ja4Signals) : null,
-				// Phase 1.5: Detection type and risk score breakdown
-				data.detectionType || null,
-				data.riskScoreBreakdown ? JSON.stringify(data.riskScoreBreakdown) : null,
-				// Request tracking ID
-				data.erfid || null
-			)
+					data.metadata.ja3Hash || null,
+					data.metadata.ja4 || null,
+					data.metadata.ja4Signals ? JSON.stringify(data.metadata.ja4Signals) : null,
+					// Phase 1.5: Detection type and risk score breakdown
+					data.detectionType || null,
+					data.riskScoreBreakdown ? JSON.stringify(data.riskScoreBreakdown) : null,
+					requestHeadersJson,
+					extendedMetadataJson,
+					// Request tracking ID
+					data.erfid || null
+				)
 			.run();
 
 		logger.info({ tokenHash: data.tokenHash, success: data.validation.valid }, 'Validation logged');
@@ -191,6 +198,11 @@ export async function createSubmission(
 	extractedPhone?: string | null,
 	erfid?: string | null  // Request tracking ID
 ): Promise<number> {
+	const requestHeadersJson = metadata.requestHeaders
+		? JSON.stringify(metadata.requestHeaders)
+		: null;
+	const extendedMetadataJson = JSON.stringify(metadata);
+
 	try {
 		const result = await db
 			.prepare(
@@ -204,7 +216,7 @@ export async function createSubmission(
 					email_risk_score, email_fraud_signals, email_pattern_type,
 					email_markov_detected, email_ood_detected,
 					risk_score_breakdown,
-					form_data, extracted_email, extracted_phone, erfid
+					form_data, extracted_email, extracted_phone, request_headers, extended_metadata, erfid
 				) VALUES (
 					?, ?, ?, ?, ?, ?,
 					?, ?, ?, ?, ?, ?,
@@ -214,7 +226,7 @@ export async function createSubmission(
 					?, ?, ?,
 					?, ?, ?, ?, ?,
 					?,
-					?, ?, ?, ?
+					?, ?, ?, ?, ?, ?
 				)`
 			)
 			.bind(
@@ -259,6 +271,8 @@ export async function createSubmission(
 				rawPayload ? JSON.stringify(rawPayload) : null,
 				extractedEmail || null,
 				extractedPhone || null,
+				requestHeadersJson,
+				extendedMetadataJson,
 				// Request tracking ID
 				erfid || null
 			)
@@ -346,6 +360,11 @@ export interface SubmissionsFilters {
 	hasJa4?: boolean;
 	search?: string;
 	allowed?: boolean | 'all'; // Filter by allowed status: true = allowed only, false = blocked only, 'all' = show all
+	fingerprintFlags?: {
+		headerReuse?: boolean;
+		tlsAnomaly?: boolean;
+		latencyMismatch?: boolean;
+	};
 }
 
 /**
@@ -441,6 +460,7 @@ export async function getSubmissions(
 			bindings.push(searchTerm, searchTerm, searchTerm, searchTerm);
 		}
 
+
 		const whereClause = whereClauses.join(' AND ');
 
 		// Build main query - join with turnstile_validations to get risk scores
@@ -451,7 +471,11 @@ export async function getSubmissions(
 				s.id, s.first_name, s.last_name, s.email, s.country, s.city, s.bot_score,
 				s.created_at, s.remote_ip, s.user_agent, s.tls_version, s.asn,
 				s.ja3_hash, s.ja4, s.ephemeral_id, s.verified_bot, s.erfid,
-				tv.risk_score, tv.risk_score_breakdown, tv.erfid as validation_erfid
+				tv.risk_score, tv.risk_score_breakdown, tv.erfid as validation_erfid,
+				tv.detection_type,
+				COALESCE(json_extract(tv.risk_score_breakdown, '$.components.headerFingerprint.score'), 0) AS fingerprint_header_score,
+				COALESCE(json_extract(tv.risk_score_breakdown, '$.components.tlsAnomaly.score'), 0) AS fingerprint_tls_score,
+				COALESCE(json_extract(tv.risk_score_breakdown, '$.components.latencyMismatch.score'), 0) AS fingerprint_latency_score
 			FROM submissions s
 			LEFT JOIN turnstile_validations tv ON s.id = tv.submission_id
 			WHERE ${whereClause}
@@ -481,8 +505,25 @@ export async function getSubmissions(
 			'Submissions retrieved with filters'
 		);
 
+		const normalizedData = dataResult.results.map((row: any) => {
+			const headerScore = Number(row.fingerprint_header_score ?? 0);
+			const tlsScore = Number(row.fingerprint_tls_score ?? 0);
+			const latencyScore = Number(row.fingerprint_latency_score ?? 0);
+			return {
+				...row,
+				fingerprint_header_score: headerScore,
+				fingerprint_tls_score: tlsScore,
+				fingerprint_latency_score: latencyScore,
+				fingerprint_flags: {
+					headerReuse: headerScore > 0,
+					tlsAnomaly: tlsScore > 0,
+					latencyMismatch: latencyScore > 0,
+				},
+			};
+		});
+
 		return {
-			data: dataResult.results,
+			data: normalizedData,
 			total: countResult?.total || 0,
 		};
 	} catch (error) {
@@ -504,7 +545,10 @@ export async function getValidationStats(db: D1Database) {
 					SUM(CASE WHEN allowed = 1 THEN 1 ELSE 0 END) as allowed,
 					AVG(risk_score) as avg_risk_score,
 					COUNT(DISTINCT ephemeral_id) as unique_ephemeral_ids,
-					SUM(CASE WHEN allowed = 0 AND block_reason LIKE '%JA4%' THEN 1 ELSE 0 END) as ja4_fraud_blocks
+					SUM(CASE WHEN allowed = 0 AND block_reason LIKE '%JA4%' THEN 1 ELSE 0 END) as ja4_fraud_blocks,
+					SUM(CASE WHEN detection_type = 'header_fingerprint_reuse' THEN 1 ELSE 0 END) as header_fingerprint_blocks,
+					SUM(CASE WHEN detection_type = 'tls_fingerprint_anomaly' THEN 1 ELSE 0 END) as tls_anomaly_blocks,
+					SUM(CASE WHEN detection_type = 'latency_mismatch' THEN 1 ELSE 0 END) as latency_mismatch_blocks
 				 FROM turnstile_validations`
 			)
 			.first<{
@@ -514,6 +558,9 @@ export async function getValidationStats(db: D1Database) {
 				avg_risk_score: number;
 				unique_ephemeral_ids: number;
 				ja4_fraud_blocks: number;
+				header_fingerprint_blocks: number;
+				tls_anomaly_blocks: number;
+				latency_mismatch_blocks: number;
 			}>();
 
 		// Get email fraud statistics from submissions table (Phase 2)
