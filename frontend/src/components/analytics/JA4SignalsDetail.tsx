@@ -1,6 +1,6 @@
 import { Card, CardHeader, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
-import { AlertCircle, CheckCircle, AlertTriangle } from 'lucide-react';
+import { AlertCircle, CheckCircle, AlertTriangle, Info } from 'lucide-react';
 import type { FraudDetectionConfig } from '../../hooks/useConfig';
 
 interface JA4Signals {
@@ -49,6 +49,9 @@ export function JA4SignalsDetail({ signals, ja4Fingerprint, config }: JA4Signals
 			<CardHeader>
 				<h4 className="text-sm font-semibold">JA4 Intelligence (Cloudflare Global)</h4>
 				<p className="text-xs text-muted-foreground font-mono break-all">{ja4Fingerprint}</p>
+				<p className="text-xs text-muted-foreground mt-1">
+					1-hour Cloudflare telemetry feeds the Session Hopping component (6% weight) and seeds the fingerprint baseline cache used by the TLS/header anomaly detectors.
+				</p>
 			</CardHeader>
 			<CardContent className="space-y-3">
 				{/* Critical signals used in fraud detection */}
@@ -117,6 +120,14 @@ export function JA4SignalsDetail({ signals, ja4Fingerprint, config }: JA4Signals
 						format="percentage"
 						used={false}
 					/>
+				</div>
+
+				<div className="flex items-start gap-2 p-3 rounded-md border border-border/60 bg-muted/30 text-xs">
+					<Info className="h-4 w-4 mt-0.5 text-primary" />
+					<p>
+						Known-good JA4 + TLS combinations are cached so repeat traffic skips anomaly checks. New or suspicious combos bypass the cache and
+						contribute to the fingerprint risk components immediately.
+					</p>
 				</div>
 			</CardContent>
 		</Card>
