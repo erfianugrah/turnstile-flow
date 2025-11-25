@@ -74,7 +74,9 @@
 - JA4 (100): 100 * 0.07 = 7 points
 - **Total**: 44 points → ❌ **Allowed** (under 70, but blockTrigger ensures ≥70)
 
-**Impact**: ✅ **No change** - blockTrigger logic ensures blocked attempts score ≥70
+**Impact**: ✅ **No change** - blockTrigger logic ensures blocked attempts score ≥70*
+
+> *Core block triggers (ephemeral ID, validation frequency, IP diversity, JA4, token replay, IP rate limit) force the recalculated score up to the block threshold or higher. Operational triggers such as `turnstile_failed` and `duplicate_email` still block immediately earlier in the pipeline, so their logged scores can sit slightly below 70 even though the user already received a block response.*
 
 ### Scenario 6: All Signals High (Except Token Replay)
 **Before**:

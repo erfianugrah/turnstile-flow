@@ -18,7 +18,7 @@ export interface ValidationDetail {
 	risk_score_breakdown: string | null;
 	error_codes: string | null;
 	submission_id: number | null;
-	detection_type: string | null;
+	detection_type: 'email_fraud_detection' | 'ephemeral_id_tracking' | 'ja4_fingerprinting' | 'token_replay_protection' | 'turnstile_validation' | 'pre_validation_blacklist' | 'duplicate_email' | 'holistic_risk' | 'other' | null;
 	// Geographic data
 	remote_ip: string;
 	country: string | null;
@@ -58,6 +58,8 @@ function formatDetectionLayer(layer: string): string {
 		'token_replay_protection': 'Token Replay Protection',
 		'turnstile_validation': 'Turnstile Validation',
 		'pre_validation_blacklist': 'Pre-Validation Blacklist (Layer 0)',
+		'duplicate_email': 'Duplicate Email Enforcement',
+		'holistic_risk': 'Holistic Risk (Layer 3)',
 	};
 	return layerMap[layer] || layer;
 }

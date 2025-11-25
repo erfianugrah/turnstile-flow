@@ -24,7 +24,7 @@ type SecurityEvent = {
 	identifierType: 'ephemeral' | 'ip';
 	blockReason: string;
 	riskScore: number;
-	detectionType: 'email_fraud_detection' | 'ephemeral_id_tracking' | 'ja4_fingerprinting' | 'token_replay_protection' | 'turnstile_validation' | 'pre_validation_blacklist' | 'other' | null;
+	detectionType: 'email_fraud_detection' | 'ephemeral_id_tracking' | 'ja4_fingerprinting' | 'token_replay_protection' | 'turnstile_validation' | 'pre_validation_blacklist' | 'duplicate_email' | 'holistic_risk' | 'other' | null;
 	country?: string | null;
 	city?: string | null;
 	ja4?: string | null;
@@ -57,7 +57,7 @@ export function SecurityEvents({ activeBlocks, recentDetections, onLoadDetail, a
 		identifierType: entry.ephemeral_id ? 'ephemeral' : 'ip',
 		blockReason: entry.block_reason,
 		riskScore: entry.risk_score,
-		detectionType: inferDetectionType(entry.block_reason),
+		detectionType: (entry.detection_type as SecurityEvent['detectionType']) ?? inferDetectionType(entry.block_reason),
 		expiresAt: entry.expires_at,
 		offenseCount: entry.offense_count,
 		erfid: entry.erfid,
@@ -192,6 +192,18 @@ export function SecurityEvents({ activeBlocks, recentDetections, onLoadDetail, a
 				return (
 					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
 						Pre-Validation Blacklist (Layer 0)
+					</span>
+				);
+			case 'duplicate_email':
+				return (
+					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-300">
+						Duplicate Email Enforcement
+					</span>
+				);
+			case 'holistic_risk':
+				return (
+					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+						Holistic Risk (Layer 3)
 					</span>
 				);
 			default:
@@ -525,7 +537,7 @@ export function SecurityEvents({ activeBlocks, recentDetections, onLoadDetail, a
 	);
 }
 
-function inferDetectionType(blockReason: string): 'email_fraud_detection' | 'ephemeral_id_tracking' | 'ja4_fingerprinting' | 'token_replay_protection' | 'turnstile_validation' | 'pre_validation_blacklist' | 'other' {
+function inferDetectionType(blockReason: string): 'email_fraud_detection' | 'ephemeral_id_tracking' | 'ja4_fingerprinting' | 'token_replay_protection' | 'turnstile_validation' | 'pre_validation_blacklist' | 'duplicate_email' | 'other' {
 	const reason = blockReason.toLowerCase();
 
 	// Token replay protection
@@ -543,11 +555,16 @@ function inferDetectionType(blockReason: string): 'email_fraud_detection' | 'eph
 		return 'ja4_fingerprinting';
 	}
 
-	// Ephemeral ID tracking (Layer 2) - covers submission count, validation frequency, IP diversity, duplicate email
+	// Duplicate email enforcement
+	if (reason.includes('duplicate') && reason.includes('email')) {
+		return 'duplicate_email';
+	}
+
+	// Ephemeral ID tracking (Layer 2) - covers submission count, validation frequency, IP diversity
 	if (reason.includes('ephemeral') || reason.includes('automated') || reason.includes('multiple submissions') ||
 	    reason.includes('validation') || reason.includes('frequency') ||
 	    reason.includes('ip') && reason.includes('diversity') || reason.includes('multiple ip') ||
-	    reason.includes('duplicate') && reason.includes('email')) {
+	    reason.includes('duplicate') && reason.includes('attempt')) {
 		return 'ephemeral_id_tracking';
 	}
 

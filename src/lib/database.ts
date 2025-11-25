@@ -1136,6 +1136,7 @@ export async function getActiveBlacklistEntries(db: D1Database) {
 					COALESCE(fb.ip_address, tv.remote_ip) as ip_address,
 					COALESCE(fb.ja4, tv.ja4) as ja4,
 					fb.block_reason,
+					fb.detection_type,
 					fb.detection_confidence,
 					fb.erfid,
 					REPLACE(fb.blocked_at, ' ', 'T') || 'Z' AS blocked_at,

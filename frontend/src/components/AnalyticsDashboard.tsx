@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { subDays } from 'date-fns';
 import type { PaginationState, SortingState } from '@tanstack/react-table';
 import { Alert, AlertDescription } from './ui/alert';
@@ -6,16 +6,38 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { GlobalControlsBar } from './analytics/controls/GlobalControlsBar';
 import { FraudAlert } from './analytics/cards/FraudAlert';
 import { OverviewStats } from './analytics/sections/OverviewStats';
-import { RecentSubmissionsSection } from './analytics/sections/RecentSubmissionsSection';
-import { SecurityEvents } from './analytics/sections/SecurityEvents';
-import { ChartsSection } from './analytics/sections/ChartsSection';
-import { SubmissionDetailDialog, type SubmissionDetail } from './analytics/sections/SubmissionDetailDialog';
-import { ValidationDetailDialog, type ValidationDetail } from './analytics/sections/ValidationDetailDialog';
+import type { SubmissionDetail } from './analytics/sections/SubmissionDetailDialog';
+import type { ValidationDetail } from './analytics/sections/ValidationDetailDialog';
 import { useAnalytics } from '../hooks/useAnalytics';
 import { useSubmissions, type UseSubmissionsFilters } from '../hooks/useSubmissions';
 import { useBlacklist } from '../hooks/useBlacklist';
 import { useBlockedValidations } from '../hooks/useBlockedValidations';
 import { useConfig } from '../hooks/useConfig';
+
+const RecentSubmissionsSection = lazy(async () => {
+	const mod = await import('./analytics/sections/RecentSubmissionsSection');
+	return { default: mod.RecentSubmissionsSection };
+});
+
+const SecurityEvents = lazy(async () => {
+	const mod = await import('./analytics/sections/SecurityEvents');
+	return { default: mod.SecurityEvents };
+});
+
+const ChartsSection = lazy(async () => {
+	const mod = await import('./analytics/sections/ChartsSection');
+	return { default: mod.ChartsSection };
+});
+
+const SubmissionDetailDialog = lazy(async () => {
+	const mod = await import('./analytics/sections/SubmissionDetailDialog');
+	return { default: mod.SubmissionDetailDialog };
+});
+
+const ValidationDetailDialog = lazy(async () => {
+	const mod = await import('./analytics/sections/ValidationDetailDialog');
+	return { default: mod.ValidationDetailDialog };
+});
 
 export default function AnalyticsDashboard() {
 	// Fetch fraud detection configuration
@@ -316,61 +338,82 @@ export default function AnalyticsDashboard() {
 
 				<FraudAlert data={analyticsData.fraudPatterns} loading={analyticsData.loading} />
 
-				<RecentSubmissionsSection
-					submissions={submissionsData.submissions}
-					totalCount={submissionsData.totalCount}
-					countries={analyticsData.countries}
-					loading={submissionsData.loading}
-					onLoadDetail={loadSubmissionDetail}
-					searchQuery={searchQuery}
-					onSearchQueryChange={setSearchQuery}
-					selectedCountries={selectedCountries}
-					onSelectedCountriesChange={setSelectedCountries}
-					botScoreRange={botScoreRange}
-					onBotScoreRangeChange={setBotScoreRange}
-					allowedStatus={allowedStatus}
-					onAllowedStatusChange={setAllowedStatus}
-					dateRange={dateRange}
-					onDateRangeChange={setDateRange}
-					pagination={pagination}
-					onPaginationChange={setPagination}
-					sorting={sorting}
-					onSortingChange={setSorting}
-				/>
+				<Suspense fallback={<SectionSkeleton title="Recent submissions" />}>
+					<RecentSubmissionsSection
+						submissions={submissionsData.submissions}
+						totalCount={submissionsData.totalCount}
+						countries={analyticsData.countries}
+						loading={submissionsData.loading}
+						onLoadDetail={loadSubmissionDetail}
+						searchQuery={searchQuery}
+						onSearchQueryChange={setSearchQuery}
+						selectedCountries={selectedCountries}
+						onSelectedCountriesChange={setSelectedCountries}
+						botScoreRange={botScoreRange}
+						onBotScoreRangeChange={setBotScoreRange}
+						allowedStatus={allowedStatus}
+						onAllowedStatusChange={setAllowedStatus}
+						dateRange={dateRange}
+						onDateRangeChange={setDateRange}
+						pagination={pagination}
+						onPaginationChange={setPagination}
+						sorting={sorting}
+						onSortingChange={setSorting}
+					/>
+				</Suspense>
 
-				<SecurityEvents
-					activeBlocks={blacklistData.entries}
-					recentDetections={blockedValidationsData.validations}
-					onLoadDetail={loadValidationDetail}
-					apiKey={apiKey}
-				/>
+				<Suspense fallback={<SectionSkeleton title="Security events" />}>
+					<SecurityEvents
+						activeBlocks={blacklistData.entries}
+						recentDetections={blockedValidationsData.validations}
+						onLoadDetail={loadValidationDetail}
+						apiKey={apiKey}
+					/>
+				</Suspense>
 
+				<Suspense fallback={<SectionSkeleton title="Charts & distribution" />}>
+					<ChartsSection
+						timeSeriesData={analyticsData.timeSeriesData}
+						countries={analyticsData.countries}
+						botScores={analyticsData.botScores}
+						asnData={analyticsData.asnData}
+						tlsData={analyticsData.tlsData}
+						ja3Data={analyticsData.ja3Data}
+						ja4Data={analyticsData.ja4Data}
+					/>
+				</Suspense>
 
-				<ChartsSection
-					timeSeriesData={analyticsData.timeSeriesData}
-					countries={analyticsData.countries}
-					botScores={analyticsData.botScores}
-					asnData={analyticsData.asnData}
-					tlsData={analyticsData.tlsData}
-					ja3Data={analyticsData.ja3Data}
-					ja4Data={analyticsData.ja4Data}
-				/>
+				<Suspense fallback={null}>
+					{selectedSubmission && (
+						<SubmissionDetailDialog
+							submission={selectedSubmission}
+							loading={submissionModalLoading}
+							onClose={() => setSelectedSubmission(null)}
+							config={config}
+						/>
+					)}
+				</Suspense>
 
-				<SubmissionDetailDialog
-					submission={selectedSubmission}
-					loading={submissionModalLoading}
-					onClose={() => setSelectedSubmission(null)}
-					config={config}
-				/>
-
-				<ValidationDetailDialog
-					validation={selectedValidation}
-					loading={validationModalLoading}
-					onClose={() => setSelectedValidation(null)}
-					config={config}
-				/>
+				<Suspense fallback={null}>
+					{selectedValidation && (
+						<ValidationDetailDialog
+							validation={selectedValidation}
+							loading={validationModalLoading}
+							onClose={() => setSelectedValidation(null)}
+							config={config}
+						/>
+					)}
+				</Suspense>
 			</div>
 			)}
 		</>
+	);
+}
+
+function SectionSkeleton({ title }: { title: string }) {
+	return (
+		<div className="rounded-lg border border-dashed border-border/70 bg-muted/20 p-6 text-sm text-muted-foreground">
+			Loading {title}…
+		</div>
 	);
 }

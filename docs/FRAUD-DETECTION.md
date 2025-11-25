@@ -769,21 +769,48 @@ Total:                68%  (remaining 32% never triggered)
 
 ### Block Triggers
 
-When specific checks trigger blocks, minimum risk scores are enforced:
+When specific checks trigger blocks, we recompute the score with a floor tied to the configured block threshold (`config.risk.blockThreshold`, default **70**):
 
 ```typescript
+const baseScore = Object.values(components).reduce(
+  (sum, c) => sum + c.contribution,
+  0
+);
+const blockThreshold = config.risk.blockThreshold;
+
 switch (blockTrigger) {
-  case 'token_replay':       total = 100
-  case 'ip_diversity':       total = max(baseScore, 80)
-  case 'ja4_session_hopping': total = max(baseScore, 75)
-  case 'ephemeral_id_fraud': total = max(baseScore, 70)
-  case 'validation_frequency': total = max(baseScore, 70)
-  case 'turnstile_failed':   total = max(baseScore, 65)
-  case 'duplicate_email':    total = max(baseScore, 60)
+  case 'token_replay':
+    total = 100;
+    break;
+  case 'ip_diversity':
+    total = Math.max(baseScore, blockThreshold + 10);
+    break;
+  case 'ja4_session_hopping':
+    total = Math.max(baseScore, blockThreshold + 5);
+    break;
+  case 'ephemeral_id_fraud':
+  case 'validation_frequency':
+  case 'email_fraud':
+  case 'ip_rate_limit':
+    total = Math.max(baseScore, blockThreshold);
+    break;
+  case 'turnstile_failed':
+    total = Math.max(baseScore, blockThreshold - 5);
+    break;
+  case 'duplicate_email':
+    total = Math.max(baseScore, blockThreshold - 10);
+    break;
+  default:
+    total = Math.max(baseScore, blockThreshold);
 }
+
+total = Math.min(100, Math.round(total * 10) / 10);
 ```
 
-Block Threshold: riskScore ≥ 70
+- **Token replay** always forces a score of 100.
+- **Network / device hopping** (`ip_diversity`, `ja4_session_hopping`) receive a higher floor than the block threshold.
+- **Core behavioral triggers** (ephemeral ID, validation frequency, email fraud, IP rate limit) guarantee at least the threshold.
+- **Operational blocks** (`turnstile_failed`, `duplicate_email`) happen earlier in the pipeline, so their scores are logged just below the threshold but still capped at 100 and rounded to one decimal.
 
 ### Risk Score Breakdown
 
