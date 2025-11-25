@@ -269,7 +269,7 @@ src/
 1. **SHA256 Hashing** - Tokens hashed before storage (never store plaintext)
 2. **Unique Index** - `token_hash` column has unique constraint enforcing one-time use
 3. **Replay Detection** - Replay attempts logged with risk_score=100 for forensics
-4. **Ephemeral ID Tracking** - 7-day device tracking without cookies (Enterprise feature)
+4. **Ephemeral ID Tracking** - Device tracking for a few days without cookies (Enterprise feature)
 5. **IP Fallback** - Falls back to IP-based detection if ephemeral ID unavailable
 
 ### Server-Side Validation

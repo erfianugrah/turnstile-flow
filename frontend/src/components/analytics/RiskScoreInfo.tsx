@@ -20,43 +20,43 @@ export function RiskScoreInfo() {
 					<div className="flex items-start gap-2">
 						<Mail className="h-4 w-4 text-yellow-500 mt-0.5 flex-shrink-0" />
 						<div>
-							<p className="font-medium">Email Fraud (17%)</p>
+							<p className="font-medium">Email Fraud (16%)</p>
 							<p className="text-muted-foreground">ML pattern detection (Markov Chain, 83% accuracy)</p>
 						</div>
 					</div>
 					<div className="flex items-start gap-2">
 						<Fingerprint className="h-4 w-4 text-orange-500 mt-0.5 flex-shrink-0" />
 						<div>
-							<p className="font-medium">Device Tracking (18%)</p>
-							<p className="text-muted-foreground">Ephemeral ID tracks same device (~7 days)</p>
+							<p className="font-medium">Device Tracking (17%)</p>
+							<p className="text-muted-foreground">Ephemeral ID tracks same device (a few days)</p>
 						</div>
 					</div>
 					<div className="flex items-start gap-2">
 						<Clock className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
 						<div>
-							<p className="font-medium">Validation Frequency (13%)</p>
+							<p className="font-medium">Validation Frequency (12%)</p>
 							<p className="text-muted-foreground">Rapid-fire detection (3+ attempts in 1h)</p>
 						</div>
 					</div>
 					<div className="flex items-start gap-2">
 						<Network className="h-4 w-4 text-purple-500 mt-0.5 flex-shrink-0" />
 						<div>
-							<p className="font-medium">IP Diversity (9%)</p>
+							<p className="font-medium">IP Diversity (8%)</p>
 							<p className="text-muted-foreground">Proxy rotation (2+ IPs from same device)</p>
 						</div>
 					</div>
 					<div className="flex items-start gap-2">
 						<AlertCircle className="h-4 w-4 text-pink-500 mt-0.5 flex-shrink-0" />
 						<div>
-							<p className="font-medium">Session Hopping (8%)</p>
+							<p className="font-medium">Session Hopping (7%)</p>
 							<p className="text-muted-foreground">JA4 fingerprint detects incognito/browser switching</p>
 						</div>
 					</div>
 					<div className="flex items-start gap-2">
 						<Shield className="h-4 w-4 text-cyan-500 mt-0.5 flex-shrink-0" />
 						<div>
-							<p className="font-medium">Pre-Validation Cache</p>
-							<p className="text-muted-foreground">85-90% cost reduction, blocks in ~10ms</p>
+							<p className="font-medium">IP Rate Limit (8%)</p>
+							<p className="text-muted-foreground">Browser-switching detection (3 per hour from same IP)</p>
 						</div>
 					</div>
 				</div>

@@ -95,7 +95,7 @@ const DEFAULT_CONFIG = {
 		 * Rationale:
 		 * - Registration forms should only be submitted ONCE per user
 		 * - 2+ submissions in 24h = definite fraud
-		 * - Ephemeral IDs last ~7 days, so 24h window is reasonable
+		 * - Ephemeral IDs last a few days, so 24h window is reasonable
 		 * - Tested to have 0% false positives for registration flows
 		 */
 		ephemeralIdSubmissionThreshold: 2,
