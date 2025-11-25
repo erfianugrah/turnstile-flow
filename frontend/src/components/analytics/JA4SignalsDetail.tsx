@@ -79,6 +79,35 @@ export function JA4SignalsDetail({ signals, ja4Fingerprint, config }: JA4Signals
 					/>
 				</div>
 
+				{/* Global rankings */}
+				<div className="space-y-2">
+					<h5 className="text-xs font-semibold text-muted-foreground uppercase">
+						Global Rankings (Cloudflare 1h)
+					</h5>
+					<div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+						<RankRow
+							label="IP Diversity Rank"
+							value={signals.ips_rank_1h}
+							description="Lower rank ⇒ more IPs globally share this JA4."
+						/>
+						<RankRow
+							label="Request Volume Rank"
+							value={signals.reqs_rank_1h}
+							description="Lower rank ⇒ higher global volume."
+						/>
+						<RankRow
+							label="UA Diversity Rank"
+							value={signals.uas_rank_1h}
+							description="Tracks how many UA strings present this JA4."
+						/>
+						<RankRow
+							label="Path Diversity Rank"
+							value={signals.paths_rank_1h}
+							description="Measures path spread; low values usually automation."
+						/>
+					</div>
+				</div>
+
 				{/* Optional signals (captured but not used) */}
 				<div className="space-y-2">
 					<h5 className="text-xs font-semibold text-muted-foreground uppercase">
@@ -190,6 +219,34 @@ function SignalRow({ label, value, threshold, description, format, used }: Signa
 					Value: <span className="font-semibold">{displayValue}</span>
 				</p>
 			</div>
+		</div>
+	);
+}
+
+function RankRow({
+	label,
+	value,
+	description,
+}: {
+	label: string;
+	value: number | undefined;
+	description: string;
+}) {
+	return (
+		<div className="p-2 rounded border border-border/60 bg-muted/40">
+			<div className="flex items-center justify-between">
+				<span className="text-sm font-medium">{label}</span>
+				<Badge variant="outline" className="text-xs">
+					Rank
+				</Badge>
+			</div>
+			<p className="text-xs text-muted-foreground mt-1">{description}</p>
+			<p className="text-xs font-mono mt-1">
+				Value:{' '}
+				<span className="font-semibold">
+					{typeof value === 'number' ? `#${value}` : 'N/A'}
+				</span>
+			</p>
 		</div>
 	);
 }
