@@ -749,7 +749,7 @@ sequenceDiagram
     Worker->>D1: Check IP rate limit
     D1-->>Worker: 3 submissions from IP<br/>Risk: 50%
     Worker->>Worker: Calculate total risk
-    Note over Worker: IP: 50% × 8% = 4%<br/>Email pattern: 80% × 16% = 13%<br/>Total: 17%+
+    Note over Worker: IP: 50% × 7% = 3.5%<br/>Email pattern: 80% × 14% = 11.2%<br/>Total: 14.7%+
     Worker->>D1: Combined risk analysis
     Note over Worker,D1: If emails show patterns<br/>(sequential, dated, etc.)<br/>Total risk exceeds threshold
     Worker-->>Safari: 🚫 429 Rate Limit<br/>"Risk score 75 >= 70"

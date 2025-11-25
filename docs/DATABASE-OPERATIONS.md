@@ -198,24 +198,53 @@ wrangler d1 execute DB --command="
 #### Delete All Data (Fresh Start)
 
 ```bash
-# Delete all validations first (due to foreign key constraint)
-wrangler d1 execute DB --command="DELETE FROM turnstile_validations" --remote
-
-# Delete all submissions
-wrangler d1 execute DB --command="DELETE FROM submissions" --remote
-
-# Delete fraud blacklist
-wrangler d1 execute DB --command="DELETE FROM fraud_blacklist" --remote
+# Delete all data (single command)
+wrangler d1 execute DB --command="
+  DELETE FROM turnstile_validations;
+  DELETE FROM submissions;
+  DELETE FROM fraud_blacklist;
+  DELETE FROM fraud_blocks;
+  DELETE FROM fingerprint_baselines;
+" --remote
 
 # Verify all tables are empty
 wrangler d1 execute DB --command="
   SELECT 'submissions' as table_name, COUNT(*) as count FROM submissions
-  UNION ALL
-  SELECT 'validations', COUNT(*) FROM turnstile_validations
-  UNION ALL
-  SELECT 'blacklist', COUNT(*) FROM fraud_blacklist
+  UNION ALL SELECT 'validations', COUNT(*) FROM turnstile_validations
+  UNION ALL SELECT 'blacklist', COUNT(*) FROM fraud_blacklist
+  UNION ALL SELECT 'fraud_blocks', COUNT(*) FROM fraud_blocks
+  UNION ALL SELECT 'fingerprint_baselines', COUNT(*) FROM fingerprint_baselines
 " --remote
 ```
+
+**Note:** `turnstile_validations` must be deleted before `submissions` due to foreign key constraints.
+
+#### Reset Auto-Increment Counters
+
+SQLite's `AUTOINCREMENT` keeps track of the highest ID ever used, even after deletions. To reset IDs back to 1:
+
+```bash
+# Reset all auto-increment counters
+wrangler d1 execute DB --command="DELETE FROM sqlite_sequence" --remote
+
+# Reset specific table counter
+wrangler d1 execute DB --command="DELETE FROM sqlite_sequence WHERE name='submissions'" --remote
+```
+
+**Complete Fresh Start** (deletes data AND resets IDs):
+
+```bash
+wrangler d1 execute DB --command="
+  DELETE FROM turnstile_validations;
+  DELETE FROM submissions;
+  DELETE FROM fraud_blacklist;
+  DELETE FROM fraud_blocks;
+  DELETE FROM fingerprint_baselines;
+  DELETE FROM sqlite_sequence;
+" --remote
+```
+
+**Why IDs don't reset:** SQLite uses the `sqlite_sequence` table to track auto-increment values. Deleting rows doesn't reset this counter - you must explicitly clear `sqlite_sequence`.
 
 #### Delete Old Data (Cleanup)
 
@@ -664,20 +693,84 @@ wrangler d1 execute DB --command="
 ### Most Common Commands
 
 ```bash
+# List all databases
+wrangler d1 list
+
 # View recent data
 wrangler d1 execute DB --command="SELECT * FROM submissions ORDER BY created_at DESC LIMIT 10" --remote
 
-# Count records
-wrangler d1 execute DB --command="SELECT COUNT(*) FROM submissions" --remote
+# Count all records
+wrangler d1 execute DB --command="
+  SELECT 'submissions' as table_name, COUNT(*) as count FROM submissions
+  UNION ALL SELECT 'validations', COUNT(*) FROM turnstile_validations
+  UNION ALL SELECT 'blacklist', COUNT(*) FROM fraud_blacklist
+  UNION ALL SELECT 'fraud_blocks', COUNT(*) FROM fraud_blocks
+  UNION ALL SELECT 'fingerprint_baselines', COUNT(*) FROM fingerprint_baselines
+" --remote
 
-# Delete all data
-wrangler d1 execute DB --command="DELETE FROM turnstile_validations" --remote
-wrangler d1 execute DB --command="DELETE FROM submissions" --remote
-wrangler d1 execute DB --command="DELETE FROM fraud_blacklist" --remote
+# Delete all data (fresh start with ID reset)
+wrangler d1 execute DB --command="
+  DELETE FROM turnstile_validations;
+  DELETE FROM submissions;
+  DELETE FROM fraud_blacklist;
+  DELETE FROM fraud_blocks;
+  DELETE FROM fingerprint_baselines;
+  DELETE FROM sqlite_sequence;
+" --remote
 
-# View blacklist
+# View active blacklist
 wrangler d1 execute DB --command="SELECT * FROM fraud_blacklist WHERE expires_at > datetime('now')" --remote
 
 # Remove expired blacklist entries
 wrangler d1 execute DB --command="DELETE FROM fraud_blacklist WHERE expires_at <= datetime('now')" --remote
+
+# View table schema
+wrangler d1 execute DB --command="PRAGMA table_info(submissions)" --remote
+
+# List all tables
+wrangler d1 execute DB --command="SELECT name FROM sqlite_master WHERE type='table' ORDER BY name" --remote
+
+# Export data to JSON
+wrangler d1 execute DB --command="SELECT * FROM submissions" --remote > submissions_backup.json
+
+# Tail worker logs (monitor real-time activity)
+wrangler tail
+
+# Initialize/re-initialize database schema
+wrangler d1 execute DB --file=./schema.sql --remote
+
+# Run migration
+wrangler d1 execute DB --file=./migrations/003_add_extended_metadata.sql --remote
+```
+
+### Useful One-Liners
+
+```bash
+# Check database size
+wrangler d1 execute DB --command="SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()" --remote
+
+# Find duplicate emails
+wrangler d1 execute DB --command="SELECT email, COUNT(*) as count FROM submissions GROUP BY email HAVING count > 1" --remote
+
+# View fraud detection effectiveness
+wrangler d1 execute DB --command="
+  SELECT
+    COUNT(*) as total,
+    SUM(CASE WHEN allowed = 1 THEN 1 ELSE 0 END) as allowed,
+    SUM(CASE WHEN allowed = 0 THEN 1 ELSE 0 END) as blocked,
+    ROUND(AVG(risk_score), 2) as avg_risk
+  FROM turnstile_validations
+" --remote
+
+# Check auto-increment counters
+wrangler d1 execute DB --command="SELECT * FROM sqlite_sequence" --remote
+
+# View recent errors
+wrangler d1 execute DB --command="
+  SELECT created_at, error_codes, block_reason, remote_ip
+  FROM turnstile_validations
+  WHERE success = 0
+  ORDER BY created_at DESC
+  LIMIT 10
+" --remote
 ```
