@@ -1372,12 +1372,13 @@ Get fraud detection configuration.
         "high": { "min": 70, "max": 100 }
       },
       "weights": {
-        "tokenReplay": 0.35,
-        "emailFraud": 0.17,
-        "ephemeralId": 0.18,
-        "validationFrequency": 0.13,
-        "ipDiversity": 0.09,
-        "ja4SessionHopping": 0.08
+        "tokenReplay": 0.32,
+        "emailFraud": 0.16,
+        "ephemeralId": 0.17,
+        "validationFrequency": 0.12,
+        "ipDiversity": 0.08,
+        "ja4SessionHopping": 0.07,
+        "ipRateLimit": 0.08
       }
     },
     "ja4": {
@@ -1393,6 +1394,8 @@ Get fraud detection configuration.
       "validationFrequencyBlockThreshold": 3,
       "validationFrequencyWarnThreshold": 2,
       "ipDiversityThreshold": 2,
+      "ipRateLimitThreshold": 3,
+      "ipRateLimitWindow": 3600,
       "ja4Clustering": {
         "ipClusteringThreshold": 2,
         "rapidGlobalThreshold": 3,
@@ -1429,6 +1432,8 @@ Get fraud detection configuration.
 | data.detection.validationFrequencyBlockThreshold | number | Max validation attempts in 1h to block (default: 3) |
 | data.detection.validationFrequencyWarnThreshold | number | Validation attempts to warn (default: 2) |
 | data.detection.ipDiversityThreshold | number | Max IPs per device in 24h (default: 2) |
+| data.detection.ipRateLimitThreshold | number | Threshold for IP rate limit risk curve (default: 3) |
+| data.detection.ipRateLimitWindow | number | Window for IP rate limiting in seconds (default: 3600 = 1 hour) |
 | data.detection.ja4Clustering | object | JA4 session hopping detection thresholds |
 | data.timeouts | object | Progressive timeout schedule |
 

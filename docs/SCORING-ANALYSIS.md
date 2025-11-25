@@ -18,29 +18,30 @@
 ### After (Normalized to 100%)
 | Component | New Weight | Change | Example Contribution (high risk) |
 |-----------|------------|--------|----------------------------------|
-| Token Replay | 35% | -5% | 35 points |
-| Email Fraud | 17% | -3% | 17 points (100 score) |
-| Ephemeral ID | 18% | -2% | 18 points (100 score) |
-| Validation Frequency | 13% | -2% | 13 points (100 score) |
-| IP Diversity | 9% | -1% | 9 points (100 score) |
-| JA4 Session Hopping | 8% | -2% | 8 points (100 score) |
+| Token Replay | 32% | -8% | 32 points |
+| Email Fraud | 16% | -4% | 16 points (100 score) |
+| Ephemeral ID | 17% | -3% | 17 points (100 score) |
+| Validation Frequency | 12% | -3% | 12 points (100 score) |
+| IP Diversity | 8% | -2% | 8 points (100 score) |
+| JA4 Session Hopping | 7% | -3% | 7 points (100 score) |
+| IP Rate Limit | 8% | +8% | 8 points (100 score) |
 | **Total** | **100%** | **0%** | **100 points (no cap needed)** |
 
 ## Test Scenarios
 
 ### Scenario 1: Token Replay (Instant Block)
 **Before**: 40 points → **100** (instant block logic)
-**After**: 35 points → **100** (instant block logic)
+**After**: 32 points → **100** (instant block logic)
 **Impact**: ✅ **No change** - instant block logic overrides weight
 
 ### Scenario 2: Email Fraud Only (High Risk)
 **Before**: 100 * 0.20 = **20 points**
-**After**: 100 * 0.17 = **17 points**
+**After**: 100 * 0.16 = **16 points**
 **Impact**: ✅ **Still below threshold** (70) - correctly allows
 
 ### Scenario 3: Multiple Ephemeral IDs
 **Before**: 100 * 0.20 = **20 points**
-**After**: 100 * 0.18 = **18 points**
+**After**: 100 * 0.17 = **17 points**
 **Impact**: ✅ **Still below threshold** alone, but triggers block via blockTrigger logic
 
 ### Scenario 4: Combined Fraud (2 ephemeral IDs + 3 validations + email 60)

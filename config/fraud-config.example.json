@@ -16,12 +16,13 @@
       }
     },
     "weights": {
-      "tokenReplay": 0.35,
-      "emailFraud": 0.17,
-      "ephemeralId": 0.18,
-      "validationFrequency": 0.13,
-      "ipDiversity": 0.09,
-      "ja4SessionHopping": 0.08
+      "tokenReplay": 0.32,
+      "emailFraud": 0.16,
+      "ephemeralId": 0.17,
+      "validationFrequency": 0.12,
+      "ipDiversity": 0.08,
+      "ja4SessionHopping": 0.07,
+      "ipRateLimit": 0.08
     }
   },
   "ja4": {
@@ -37,6 +38,8 @@
     "validationFrequencyBlockThreshold": 3,
     "validationFrequencyWarnThreshold": 2,
     "ipDiversityThreshold": 2,
+    "ipRateLimitThreshold": 3,
+    "ipRateLimitWindow": 3600,
     "ja4Clustering": {
       "ipClusteringThreshold": 2,
       "rapidGlobalThreshold": 3,

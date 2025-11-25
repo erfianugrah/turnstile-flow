@@ -14,6 +14,7 @@ import { logValidation, createSubmission } from '../lib/database';
 import logger from '../lib/logger';
 import { checkPreValidationBlock, addToBlacklist } from '../lib/fraud-prevalidation';
 import { collectJA4Signals } from '../lib/ja4-fraud-detection';
+import { collectIPRateLimitSignals } from '../lib/ip-rate-limiting';
 import { calculateNormalizedRiskScore } from '../lib/scoring';
 import { checkEmailFraud } from '../lib/email-fraud-detection';
 import { extractField } from '../lib/field-mapper';
@@ -336,7 +337,23 @@ app.post('/', async (c) => {
 			);
 		}
 
-		// 2.4: Duplicate email check (hybrid approach)
+		// 2.4: IP Rate Limit signals
+		const ipRateLimitSignals = await collectIPRateLimitSignals(
+			metadata.remoteIp,
+			db,
+			config
+		);
+
+		logger.info(
+			{
+				submission_count: ipRateLimitSignals.submissionCount,
+				risk_score: ipRateLimitSignals.riskScore,
+				warnings: ipRateLimitSignals.warnings,
+			},
+			'IP rate limit signals collected'
+		);
+
+		// 2.5: Duplicate email check (hybrid approach)
 		const existingSubmission = await db
 			.prepare('SELECT id, created_at FROM submissions WHERE email = ? LIMIT 1')
 			.bind(sanitized.email)
@@ -449,12 +466,13 @@ app.post('/', async (c) => {
 			validationCount: ephemeralSignals?.validationCount || 1,
 			uniqueIPCount: ephemeralSignals?.uniqueIPCount || 1,
 			ja4RawScore: ja4Signals?.rawScore || 0,
+			ipRateLimitScore: ipRateLimitSignals.riskScore,
 		}, config);
 
 		// 3.2: Determine blockTrigger if any specific threshold exceeded
 		// detectionType now represents the PRIMARY DETECTION LAYER that caught the fraud
 		// Note: duplicate_email is handled earlier and throws ConflictError (not rate limit)
-		let blockTrigger: 'email_fraud' | 'ephemeral_id_fraud' | 'ja4_session_hopping' | 'ip_diversity' | 'validation_frequency' | undefined = undefined;
+		let blockTrigger: 'email_fraud' | 'ephemeral_id_fraud' | 'ja4_session_hopping' | 'ip_diversity' | 'validation_frequency' | 'ip_rate_limit' | undefined = undefined;
 		let detectionType: string | null = null;
 
 		if (emailFraudResult && emailFraudResult.decision === 'block') {
@@ -473,6 +491,10 @@ app.post('/', async (c) => {
 			blockTrigger = 'ja4_session_hopping';
 			detectionType = 'ja4_fingerprinting'; // Layer 4: TLS fingerprinting
 		}
+		// IP rate limit is NOT a blockTrigger on its own
+		// It contributes to risk score but doesn't trigger blocks independently
+		// This prevents false positives from shared IPs (offices, universities)
+		// Blocks only occur when combined risk >= threshold
 
 		// 3.3: Recalculate with blockTrigger for proper minimum scores
 		const finalRiskScore = blockTrigger
@@ -483,6 +505,7 @@ app.post('/', async (c) => {
 					validationCount: ephemeralSignals?.validationCount || 1,
 					uniqueIPCount: ephemeralSignals?.uniqueIPCount || 1,
 					ja4RawScore: ja4Signals?.rawScore || 0,
+					ipRateLimitScore: ipRateLimitSignals.riskScore,
 					blockTrigger,
 			  }, config)
 			: riskScore;
@@ -499,6 +522,7 @@ app.post('/', async (c) => {
 					validation_freq: finalRiskScore.validationFrequency,
 					ip_diversity: finalRiskScore.ipDiversity,
 					ja4_hopping: finalRiskScore.ja4SessionHopping,
+					ip_rate_limit: finalRiskScore.ipRateLimit,
 				},
 			},
 			'Holistic risk score calculated'
@@ -522,6 +546,7 @@ app.post('/', async (c) => {
 				...(emailFraudResult ? [`Email: ${emailFraudResult.signals.patternType || 'suspicious pattern'}`] : []),
 				...(ephemeralSignals?.warnings || []),
 				...(ja4Signals?.warnings || []),
+				...(ipRateLimitSignals.warnings || []),
 			];
 
 			const blockReason = `Risk score ${finalRiskScore.total} >= ${config.risk.blockThreshold}. Triggers: ${allWarnings.join(', ')}`;

@@ -48,29 +48,34 @@ Controls overall risk scoring and blocking behavior.
 
 Component weights for normalized risk scoring. **Must sum to 1.0**.
 
-- **`tokenReplay`** (default: `0.35`): Token replay attack weight (35%)
+- **`tokenReplay`** (default: `0.32`): Token replay attack weight (32%)
   - Highest weight because replays are definitive fraud
   - Instant block indicator
 
-- **`emailFraud`** (default: `0.17`): Email pattern fraud weight (17%)
+- **`emailFraud`** (default: `0.16`): Email pattern fraud weight (16%)
   - Markov-Mail detection: sequential, dated, formatted patterns
   - 83% accuracy, 0% false positives
 
-- **`ephemeralId`** (default: `0.18`): Device tracking weight (18%)
+- **`ephemeralId`** (default: `0.17`): Device tracking weight (17%)
   - Multiple submissions from same device
   - Core fraud signal
 
-- **`validationFrequency`** (default: `0.13`): Validation attempt rate weight (13%)
+- **`validationFrequency`** (default: `0.12`): Validation attempt rate weight (12%)
   - Rapid-fire submission attempts
   - Catches attacks before D1 replication
 
-- **`ipDiversity`** (default: `0.09`): Proxy rotation detection weight (9%)
+- **`ipDiversity`** (default: `0.08`): Proxy rotation detection weight (8%)
   - Same device from multiple IPs
   - Lower weight due to legitimate VPN usage
 
-- **`ja4SessionHopping`** (default: `0.08`): Browser hopping detection weight (8%)
+- **`ja4SessionHopping`** (default: `0.07`): Browser hopping detection weight (7%)
   - Incognito mode / browser switching attacks
   - Lower weight due to complexity
+
+- **`ipRateLimit`** (default: `0.08`): IP rate limiting weight (8%)
+  - Browser switching attacks (Firefox→Chrome→Safari)
+  - Behavioral signal, not hard block
+  - Prevents false positives for shared IPs
 
 ### JA4 Signal Configuration (`ja4`)
 
@@ -154,6 +159,24 @@ Core fraud detection behavior configuration.
 - **Common Values**: `2` (strict), `3` (balanced), `5` (lenient for mobile users)
 - **Window**: 24 hours
 - **Note**: VPN changes may trigger false positives (acceptable trade-off)
+
+#### `detection.ipRateLimitThreshold` (default: `3`)
+
+- **Type**: Integer
+- **Purpose**: Threshold for IP rate limit non-linear risk curve
+- **Rationale**: Detects browser-switching attacks (Firefox→Chrome→Safari) that bypass fingerprint detection
+- **Risk Curve**: 1→0%, 2→25%, 3→50%, 4→75%, 5+→100%
+- **Common Values**: `3` (balanced), `4` (lenient), `5` (very lenient)
+- **Window**: 1 hour (see `ipRateLimitWindow`)
+- **Note**: Behavioral signal (8% weight), not hard block - prevents false positives for shared IPs
+
+#### `detection.ipRateLimitWindow` (default: `3600`)
+
+- **Type**: Integer (seconds)
+- **Purpose**: Time window for IP rate limiting
+- **Rationale**: 1-hour window catches rapid browser switching while allowing legitimate office/university usage
+- **Common Values**: `3600` (1 hour), `7200` (2 hours), `1800` (30 minutes for strict)
+- **Note**: Shorter windows reduce false positives but may miss slower attacks
 
 #### `detection.ja4Clustering`
 
@@ -346,9 +369,9 @@ All fraud detection functions accept and use configuration:
    - Uses: `detection.ja4Clustering.*` (5 thresholds)
 
 3. **calculateNormalizedRiskScore()** - `src/lib/scoring.ts`
-   - Uses: `risk.weights.*` (6 components)
+   - Uses: `risk.weights.*` (7 components)
    - Uses: `risk.blockThreshold`
-   - Uses: `detection.*` (3 thresholds)
+   - Uses: `detection.*` (4 thresholds: ephemeral, validation, IP diversity, IP rate limit)
 
 ### Request Flow
 
@@ -399,8 +422,8 @@ Increase email fraud detection weight:
 {
 	"risk": {
 		"weights": {
-			"emailFraud": 0.3, // Increase from 0.17
-			"tokenReplay": 0.32 // Decrease from 0.35 (keep sum = 1.0)
+			"emailFraud": 0.3, // Increase from 0.16
+			"tokenReplay": 0.28 // Decrease from 0.32 (keep sum = 1.0)
 		}
 	}
 }
@@ -492,7 +515,7 @@ curl -s https://form.erfi.dev/api/config | jq '{customized, blockThreshold}'
 
 ```bash
 curl -s https://form.erfi.dev/api/config | jq '.data.risk.weights.tokenReplay'
-# 0.35 (default preserved when only blockThreshold customized) ✅
+# 0.32 (default preserved when only blockThreshold customized) ✅
 ```
 
 ## Implementation Details

@@ -18,6 +18,7 @@ export interface FraudDetectionConfig {
 			validationFrequency: number;
 			ipDiversity: number;
 			ja4SessionHopping: number;
+			ipRateLimit: number;
 		};
 	};
 	ja4: {
@@ -33,6 +34,8 @@ export interface FraudDetectionConfig {
 		validationFrequencyBlockThreshold: number;
 		validationFrequencyWarnThreshold: number;
 		ipDiversityThreshold: number;
+		ipRateLimitThreshold: number;
+		ipRateLimitWindow: number;
 		ja4Clustering: {
 			ipClusteringThreshold: number;
 			rapidGlobalThreshold: number;
@@ -60,12 +63,13 @@ const DEFAULT_CONFIG: FraudDetectionConfig = {
 			high: { min: 70, max: 100 },
 		},
 		weights: {
-			tokenReplay: 0.35,
-			emailFraud: 0.17,
-			ephemeralId: 0.18,
-			validationFrequency: 0.13,
-			ipDiversity: 0.09,
-			ja4SessionHopping: 0.08,
+			tokenReplay: 0.32,
+			emailFraud: 0.16,
+			ephemeralId: 0.17,
+			validationFrequency: 0.12,
+			ipDiversity: 0.08,
+			ja4SessionHopping: 0.07,
+			ipRateLimit: 0.08,
 		},
 	},
 	ja4: {
@@ -81,6 +85,8 @@ const DEFAULT_CONFIG: FraudDetectionConfig = {
 		validationFrequencyBlockThreshold: 3,
 		validationFrequencyWarnThreshold: 2,
 		ipDiversityThreshold: 2,
+		ipRateLimitThreshold: 3,
+		ipRateLimitWindow: 3600,
 		ja4Clustering: {
 			ipClusteringThreshold: 2,
 			rapidGlobalThreshold: 3,

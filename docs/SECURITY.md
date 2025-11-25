@@ -64,12 +64,13 @@ Only requests from configured allowed hostnames are accepted. Hostname validatio
 ### Normalized Risk Scoring
 
 All detections contribute to a 0-100 risk score with weighted components:
-- **Token Replay**: 35% (instant block)
-- **Ephemeral ID**: 18%
-- **Email Fraud**: 17%
-- **Validation Frequency**: 13%
-- **IP Diversity**: 9%
-- **JA4 Session Hopping**: 8%
+- **Token Replay**: 32% (instant block)
+- **Email Fraud**: 16%
+- **Ephemeral ID**: 17%
+- **Validation Frequency**: 12%
+- **IP Diversity**: 8%
+- **JA4 Session Hopping**: 7%
+- **IP Rate Limit**: 8%
 
 **Block Threshold**: Risk score ≥ 70
 

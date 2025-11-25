@@ -4,12 +4,13 @@
  * Implements weighted component system to normalize risk scores to 0-100 scale
  *
  * Component Weights (configurable, defaults sum to 100%):
- * - Token Replay: 35% (instant block, highest priority)
- * - Email Fraud: 17% (pattern detection via markov-mail)
- * - Ephemeral ID: 18% (device tracking, core fraud signal)
- * - Validation Frequency: 13% (attempt rate monitoring)
- * - IP Diversity: 9% (proxy rotation detection)
- * - JA4 Session Hopping: 8% (browser hopping detection)
+ * - Token Replay: 32% (instant block, highest priority)
+ * - Email Fraud: 16% (pattern detection via markov-mail)
+ * - Ephemeral ID: 17% (device tracking, core fraud signal)
+ * - Validation Frequency: 12% (attempt rate monitoring)
+ * - IP Diversity: 8% (proxy rotation detection)
+ * - JA4 Session Hopping: 7% (browser hopping detection)
+ * - IP Rate Limit: 8% (browser switching detection)
  *
  * All thresholds and weights are configurable via src/lib/config.ts
  * Block Threshold: Default 70/100 (configurable)
@@ -32,6 +33,7 @@ export interface RiskScoreBreakdown {
 	validationFrequency: number;
 	ipDiversity: number;
 	ja4SessionHopping: number;
+	ipRateLimit: number;
 	total: number;
 	components: Record<string, RiskComponent>;
 }
@@ -44,7 +46,8 @@ export function calculateNormalizedRiskScore(
 		validationCount: number;
 		uniqueIPCount: number;
 		ja4RawScore: number; // 0-230
-		blockTrigger?: 'token_replay' | 'email_fraud' | 'ephemeral_id_fraud' | 'ja4_session_hopping' | 'ip_diversity' | 'validation_frequency' | 'duplicate_email' | 'turnstile_failed'; // Phase 1.6 + Phase 4: Indicates which check triggered a block
+		ipRateLimitScore?: number; // 0-100
+		blockTrigger?: 'token_replay' | 'email_fraud' | 'ephemeral_id_fraud' | 'ja4_session_hopping' | 'ip_diversity' | 'validation_frequency' | 'ip_rate_limit' | 'duplicate_email' | 'turnstile_failed';
 	},
 	config: FraudDetectionConfig
 ): RiskScoreBreakdown {
@@ -139,6 +142,25 @@ export function calculateNormalizedRiskScore(
 					: 'Normal browser behavior',
 	};
 
+	// IP Rate Limit
+	const ipRateLimitScore = checks.ipRateLimitScore || 0; // Already normalized to 0-100
+	const ipRateLimitWeight = config.risk.weights.ipRateLimit;
+	components.ipRateLimit = {
+		score: ipRateLimitScore,
+		weight: ipRateLimitWeight,
+		contribution: ipRateLimitScore * ipRateLimitWeight,
+		reason:
+			ipRateLimitScore >= 100
+				? 'Extreme submission frequency from IP'
+				: ipRateLimitScore >= 75
+					? 'High submission frequency from IP'
+					: ipRateLimitScore >= 50
+						? 'Multiple submissions from IP'
+						: ipRateLimitScore >= 25
+							? 'Legitimate retry from IP'
+							: 'First submission from IP',
+	};
+
 	// Calculate total (weighted sum, capped at 100)
 	let total = 0;
 
@@ -174,6 +196,10 @@ export function calculateNormalizedRiskScore(
 				// Fraudulent email pattern detected (Phase 4) - high risk
 				total = Math.max(baseScore, blockThreshold);
 				break;
+			case 'ip_rate_limit':
+				// IP rate limit exceeded - medium-high risk
+				total = Math.max(baseScore, blockThreshold);
+				break;
 			case 'duplicate_email':
 				// Email already used - medium risk
 				total = Math.max(baseScore, blockThreshold - 10);
@@ -199,6 +225,7 @@ export function calculateNormalizedRiskScore(
 		validationFrequency: components.validationFrequency.score,
 		ipDiversity: components.ipDiversity.score,
 		ja4SessionHopping: components.ja4SessionHopping.score,
+		ipRateLimit: components.ipRateLimit.score,
 		total,
 		components,
 	};

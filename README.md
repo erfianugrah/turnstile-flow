@@ -305,12 +305,13 @@ Auto-populated when risk score ≥70:
 
 ### Normalized Risk Scoring
 All components contribute to normalized 0-100 risk score (weights total exactly 100%):
-- **Token Replay**: 35% (instant block, highest priority)
-- **Ephemeral ID**: 18% (device tracking, core fraud signal)
-- **Email Fraud**: 17% (Markov-Mail pattern detection)
-- **Validation Frequency**: 13% (attempt rate monitoring)
-- **IP Diversity**: 9% (proxy rotation detection)
-- **JA4 Session Hopping**: 8% (browser hopping detection)
+- **Token Replay**: 32% (instant block, highest priority)
+- **Email Fraud**: 16% (Markov-Mail pattern detection)
+- **Ephemeral ID**: 17% (device tracking, core fraud signal)
+- **Validation Frequency**: 12% (attempt rate monitoring)
+- **IP Diversity**: 8% (proxy rotation detection)
+- **JA4 Session Hopping**: 7% (browser hopping detection)
+- **IP Rate Limit**: 8% (browser switching detection)
 
 **Block Threshold**: riskScore >= 70
 

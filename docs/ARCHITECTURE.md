@@ -170,7 +170,7 @@ flowchart TD
 
     CallTurnstile --> TurnstileResult{Turnstile<br/>Success?}
     TurnstileResult -->|Failed| RejectTurnstile[Reject: Turnstile validation failed]
-    TurnstileResult -->|Success| FraudCheck[Fraud Detection<br/>Ephemeral ID or IP-based]
+    TurnstileResult -->|Success| FraudCheck[Multi-Layer Fraud Detection<br/>7 behavioral signals:<br/>Email, Ephemeral ID, JA4, IP]
 
     FraudCheck --> RiskScore{Risk Score<br/>≥ 70?}
     RiskScore -->|Yes| RejectFraud[Reject: Fraud detected<br/>Auto-blacklist]
@@ -226,23 +226,32 @@ flowchart TD
     Layer0 -->|In Blacklist| BlockFast[❌ Block: Fast reject<br/>~10ms lookup<br/>85-90% API reduction]
     Layer0 -->|Not in Blacklist| TokenReplay{Token Replay<br/>Detection}
 
-    TokenReplay -->|Replay| Block1[❌ Block: Token replay<br/>risk_score=100<br/>35% weight]
-    TokenReplay -->|New Token| Layer1{Layer 1:<br/>Email Fraud<br/>Markov-Mail RPC}
+    TokenReplay -->|Replay| Block1[❌ Block: Token replay<br/>risk_score=100<br/>32% weight]
+    TokenReplay -->|New Token| TurnstileCheck[Validate with<br/>Turnstile API]
 
-    Layer1 -->|Fraud Detected| Block2[❌ Block: Email fraud<br/>Pattern/OOD/Disposable<br/>17% weight<br/>+ Add to blacklist 1h]
-    Layer1 -->|Pass/Fail-open| Layer2{Layer 2:<br/>Ephemeral ID<br/>Submission Count}
+    TurnstileCheck --> SignalCollection[SIGNAL COLLECTION:<br/>Email, Ephemeral ID,<br/>JA4, IP Rate Limit]
 
-    Layer2 -->|≥2 submissions<br/>in 24h| Block3[❌ Block: Duplicate device<br/>risk_score≥70<br/>18% weight]
-    Layer2 -->|Pass| Layer3{Layer 3:<br/>Validation<br/>Frequency}
+    SignalCollection --> Layer1{Layer 1:<br/>Email Fraud<br/>Markov-Mail RPC}
 
-    Layer3 -->|≥3 attempts<br/>in 1h| Block4[❌ Block: Rate limit<br/>risk_score≥70<br/>13% weight]
-    Layer3 -->|Pass| Layer4{Layer 4:<br/>IP Diversity}
+    Layer1 -->|Fraud Detected| EmailBlock[Email fraud signal<br/>Pattern/OOD/Disposable<br/>16% weight]
+    Layer1 -->|Pass/Fail-open| Layer2{Layer 2:<br/>Ephemeral ID<br/>Tracking}
 
-    Layer4 -->|≥2 IPs<br/>in 24h| Block5[❌ Block: Proxy rotation<br/>risk_score≥80<br/>9% weight]
-    Layer4 -->|Pass| Layer5{Layer 5:<br/>JA4 Session<br/>Hopping}
+    EmailBlock --> RiskCalc
 
-    Layer5 -->|Clustering<br/>Rapid/Extended| Block6[❌ Block: Browser hopping<br/>risk_score≥75<br/>8% weight]
-    Layer5 -->|Pass| RiskCalc[Calculate Total<br/>Risk Score<br/>0-100 normalized]
+    Layer2 -->|≥2 submissions<br/>or ≥3 validations<br/>or ≥2 IPs| EphemeralBlock[Ephemeral fraud signal<br/>Submission/Validation/IP<br/>17% + 12% + 8% weights]
+    Layer2 -->|Pass| Layer4{Layer 4:<br/>JA4 Session<br/>Hopping}
+
+    EphemeralBlock --> RiskCalc
+
+    Layer4 -->|Clustering<br/>Rapid/Extended| JA4Block[JA4 fraud signal<br/>Browser hopping<br/>7% weight]
+    Layer4 -->|Pass| Layer05{Layer 0.5:<br/>IP Rate Limit<br/>Behavioral}
+
+    JA4Block --> RiskCalc
+
+    Layer05 -->|Multiple<br/>submissions| IPSignal[IP rate signal<br/>Browser switching<br/>8% weight]
+    Layer05 -->|Pass| RiskCalc[Calculate Total<br/>Risk Score<br/>All signals combined]
+
+    IPSignal --> RiskCalc
 
     RiskCalc --> FinalCheck{Risk Score<br/>≥ 70?}
     FinalCheck -->|Yes| BlockFinal[❌ Block + Auto-Blacklist<br/>Progressive timeout:<br/>1h→4h→8h→12h→24h]
@@ -250,11 +259,6 @@ flowchart TD
 
     BlockFast --> End([End])
     Block1 --> End
-    Block2 --> End
-    Block3 --> End
-    Block4 --> End
-    Block5 --> End
-    Block6 --> End
     BlockFinal --> End
     Allow --> End
 
@@ -262,24 +266,32 @@ flowchart TD
     style Allow fill:#a3be8c
     style BlockFast fill:#bf616a
     style Block1 fill:#bf616a
-    style Block2 fill:#bf616a
-    style Block3 fill:#bf616a
-    style Block4 fill:#bf616a
-    style Block5 fill:#bf616a
-    style Block6 fill:#bf616a
     style BlockFinal fill:#bf616a
+    style SignalCollection fill:#88c0d0
+    style EmailBlock fill:#d08770
+    style EphemeralBlock fill:#d08770
+    style JA4Block fill:#d08770
+    style IPSignal fill:#d08770
 ```
 
-**Ephemeral ID Detection**:
-- Enterprise Bot Management feature
-- 7-day detection window (IDs rotate after a few days)
-- Checks: submission count, validation attempts, unique emails, rapid submissions
-- Risk score calculation with 70-point block threshold
+**Behavioral Signal Architecture**:
+- All detection layers collect signals (not hard blocks)
+- Signals combined via weighted risk scoring (7 components)
+- Holistic decision made based on total risk ≥ 70
+- Prevents false positives from single signal triggers
 
-**IP-based Fallback**:
-- Used when ephemeral ID unavailable
-- 1-hour detection window
-- Lower risk scores to reduce false positives on shared IPs
+**Layer 0.5: IP Rate Limiting**:
+- Detects browser-switching attacks (Firefox→Chrome→Safari)
+- 1-hour window, tracks submissions per IP
+- Non-linear risk curve: 1→0%, 2→25%, 3→50%, 4→75%, 5+→100%
+- 8% weight in total risk score
+- Complements fingerprint-based detection (Layers 2 & 4)
+
+**Ephemeral ID Detection (Layer 2)**:
+- Enterprise Bot Management feature
+- 24h window for submissions, 1h for validation frequency
+- Tracks: submission count (≥2), validation attempts (≥3), IP diversity (≥2)
+- 17% + 12% + 8% combined weights in risk score
 
 ### Database Schema Design
 

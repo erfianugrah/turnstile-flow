@@ -20,6 +20,7 @@ interface RiskBreakdown {
 		validationFrequency?: RiskComponent;
 		ipDiversity?: RiskComponent;
 		ja4SessionHopping?: RiskComponent;
+		ipRateLimit?: RiskComponent;
 	};
 }
 
@@ -163,6 +164,7 @@ function getOrderedComponents(components: RiskBreakdown['components']): [string,
 		'validationFrequency',
 		'ipDiversity',
 		'ja4SessionHopping',
+		'ipRateLimit',
 	];
 
 	return order.map(key => [key, components[key as keyof typeof components]] as [string, RiskComponent | undefined]);
@@ -170,12 +172,13 @@ function getOrderedComponents(components: RiskBreakdown['components']): [string,
 
 function formatComponentName(key: string): string {
 	const names: Record<string, string> = {
-		tokenReplay: 'Token Replay (35%)',
-		emailFraud: 'Email Fraud (17%)',
-		ephemeralId: 'Device Tracking (18%)',
-		validationFrequency: 'Validation Frequency (13%)',
-		ipDiversity: 'IP Diversity (9%)',
-		ja4SessionHopping: 'Session Hopping (8%)',
+		tokenReplay: 'Token Replay (32%)',
+		emailFraud: 'Email Fraud (16%)',
+		ephemeralId: 'Device Tracking (17%)',
+		validationFrequency: 'Validation Frequency (12%)',
+		ipDiversity: 'IP Diversity (8%)',
+		ja4SessionHopping: 'Session Hopping (7%)',
+		ipRateLimit: 'IP Rate Limit (8%)',
 	};
 	return names[key] || key;
 }

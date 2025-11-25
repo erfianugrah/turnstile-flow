@@ -65,7 +65,7 @@ export function RiskScoreInfo() {
 					<div className="flex items-start gap-1.5 text-xs text-muted-foreground">
 						<Info className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
 						<p>
-							Successful submissions show 5 components (65% total). Token replay (35%) only appears in validation logs
+							Successful submissions show 6 components (68% total). Token replay (32%) only appears in validation logs
 							as blocked attempts can't create submissions.
 						</p>
 					</div>

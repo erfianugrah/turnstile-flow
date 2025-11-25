@@ -27,14 +27,19 @@ const DEFAULT_CONFIG = {
 			high: { min: 70, max: 100 },
 		},
 
-		/** Component weights (must sum to 1.0) */
+		/**
+		 * Component weights (must sum to 1.0)
+		 *
+		 * Adjusted to include IP rate limiting as behavioral signal
+		 */
 		weights: {
-			tokenReplay: 0.35,
-			emailFraud: 0.17,
-			ephemeralId: 0.18,
-			validationFrequency: 0.13,
-			ipDiversity: 0.09,
-			ja4SessionHopping: 0.08,
+			tokenReplay: 0.32,          // 32% (reduced from 35%)
+			emailFraud: 0.16,            // 16% (reduced from 17%)
+			ephemeralId: 0.17,           // 17% (reduced from 18%)
+			validationFrequency: 0.12,   // 12% (reduced from 13%)
+			ipDiversity: 0.08,           // 8%  (reduced from 9%)
+			ja4SessionHopping: 0.07,     // 7%  (reduced from 8%)
+			ipRateLimit: 0.08,           // 8%  (NEW - catches browser switching)
 		},
 	},
 
@@ -117,6 +122,26 @@ const DEFAULT_CONFIG = {
 		 * - VPN changes trigger this (acceptable false positive rate)
 		 */
 		ipDiversityThreshold: 2,
+
+		/**
+		 * IP rate limiting threshold: 3 submissions per hour (Layer 0.5)
+		 *
+		 * Rationale:
+		 * - Catches browser-switching attacks (Firefox → Chrome → Safari)
+		 * - Independent of ephemeral_id, JA4, or any fingerprint
+		 * - 3 submissions = 1 original + 2 retries (reasonable)
+		 * - 1h window matches validation frequency window
+		 * - Shared IPs (offices, universities): Acceptable false positive rate
+		 * - Can be bypassed with VPN rotation (but adds friction)
+		 *
+		 * Use case: Attacker uses different browsers to get new fingerprints
+		 * - Firefox normal → ephemeral_id=A, ja4=Firefox
+		 * - Chrome incognito → ephemeral_id=B, ja4=Chrome
+		 * - Safari private → ephemeral_id=C, ja4=Safari
+		 * All fingerprints different, but SAME IP → Caught by this layer
+		 */
+		ipRateLimitThreshold: 3,
+		ipRateLimitWindow: 3600, // 1 hour in seconds
 
 		/**
 		 * JA4 Session Hopping Detection Thresholds

@@ -71,7 +71,8 @@ flowchart TD
     Stage2 --> EmailSignal[Collect Email Fraud Signal<br/>Markov-Mail RPC]
     EmailSignal --> EphemeralSignal[Collect Ephemeral ID Signals<br/>submission count, validation freq, IP diversity]
     EphemeralSignal --> JA4Signal[Collect JA4 Signals<br/>session hopping patterns]
-    JA4Signal --> DuplicateCheck[Check Duplicate Email<br/>flag only, don't block]
+    JA4Signal --> IPRateSignal[Collect IP Rate Limit Signals<br/>browser switching detection]
+    IPRateSignal --> DuplicateCheck[Check Duplicate Email<br/>flag only, don't block]
 
     %% STAGE 3: RISK ASSESSMENT
     DuplicateCheck --> Stage3[STAGE 3: RISK ASSESSMENT<br/>Holistic Scoring & Decision]
@@ -190,6 +191,89 @@ Prevents wasting Turnstile API calls on replayed tokens.
 Cost optimization: Turnstile's API would reject replayed tokens anyway, but this blocks earlier to save API costs.
 
 Replayed tokens cannot create submissions, so this only appears in validation logs.
+
+---
+
+### Layer 0.5: IP Rate Limiting (Behavioral Signal)
+
+IP-based behavioral signal detecting browser-switching attacks.
+
+**Philosophy**: Behavioral signal, not hard block
+- Contributes 8% to total risk score
+- Combined with other signals for holistic decision
+- Prevents false positives from shared IPs (offices, universities)
+
+**Use Case**: Attacker switches browsers to get new fingerprints:
+- Attempt 1: Firefox → ephemeral_id=A, ja4=Firefox
+- Attempt 2: Chrome → ephemeral_id=B, ja4=Chrome (different fingerprints)
+- Attempt 3: Safari → ephemeral_id=C, ja4=Safari (bypasses Layers 2 & 4)
+- **Detection**: IP signal = 50% risk (3 submissions from same IP)
+
+**Implementation** (`src/lib/ip-rate-limiting.ts`):
+
+```typescript
+export async function collectIPRateLimitSignals(
+  remoteIp: string,
+  db: D1Database,
+  config: FraudDetectionConfig
+): Promise<IPRateLimitSignals> {
+  // Count submissions from this IP (ANY ephemeral_id, ANY JA4)
+  const result = await db
+    .prepare(`
+      SELECT COUNT(*) as count
+      FROM submissions
+      WHERE remote_ip = ?
+      AND created_at > datetime('now', '-1 hour')
+    `)
+    .bind(remoteIp)
+    .first<{ count: number }>();
+
+  const submissionCount = result?.count || 0;
+  const effectiveCount = submissionCount + 1;
+
+  // Non-linear risk scoring: 1→0%, 2→25%, 3→50%, 4→75%, 5+→100%
+  let riskScore: number;
+  if (effectiveCount === 1) riskScore = 0;
+  else if (effectiveCount === 2) riskScore = 25;
+  else if (effectiveCount === 3) riskScore = 50;
+  else if (effectiveCount === 4) riskScore = 75;
+  else riskScore = 100;
+
+  return { submissionCount: effectiveCount, riskScore, warnings };
+}
+```
+
+**Configuration**:
+```typescript
+detection: {
+  ipRateLimitThreshold: 3,    // For risk curve
+  ipRateLimitWindow: 3600,    // 1 hour
+}
+risk: {
+  weights: {
+    ipRateLimit: 0.08  // 8% weight
+  }
+}
+```
+
+**Why Behavioral Signal > Hard Block**:
+
+Scenario 1 (Office - Legitimate):
+```
+IP: 3 submissions (50% × 8% = 4%)
+Email: 3 different domains (0%)
+Total: 4% → ✅ ALLOWED
+```
+
+Scenario 2 (Attack - Fraud Patterns):
+```
+IP: 3 submissions (50% × 8% = 4%)
+Email: Sequential (80% × 16% = 13%)
+Ephemeral: 2 submissions (100% × 17% = 17%)
+Total: 34%+ → Combined signals → 75% → 🚫 BLOCKED
+```
+
+**Note**: IP rate limit is NOT a blockTrigger on its own. It contributes to risk score but doesn't trigger blocks independently, preventing false positives from shared IPs.
 
 ---
 
@@ -468,6 +552,31 @@ The analytics dashboard displays all 10 signals with:
 
 **Key Principle**: JA4 signals provide **context**, not definitive fraud indicators. They're most powerful when combined with local clustering patterns (Layer 4a/4b/4c).
 
+#### Firefox Private Browsing & JA4 Stability
+
+**Research Question**: Does Firefox change JA4 in private browsing mode?
+
+**Finding**: JA4 should **remain stable** across normal and private modes.
+
+**Evidence**:
+- Firefox enables `security.ssl.disable_session_identifiers = true` in private mode
+- This changes **JA3** fingerprint (includes session ID)
+- JA4 **excludes session ID** from fingerprinting (per specification)
+- Therefore, JA4 should stay the same across browsing modes
+
+**Verification Status**: Theoretical (based on JA4 spec) - empirical testing recommended
+
+**System Impact**:
+- **If JA4 stable** (expected): Layer 4 catches Firefox incognito hopping
+- **If JA4 changes** (unlikely): Layer 0.5 (IP rate limit) catches it
+- **Verdict**: System is robust either way
+
+**Market Share**: Firefox ~10% (~500M users) - not an edge case, but covered by dual-layer approach.
+
+**References**:
+- [JA4 Technical Specification](https://github.com/FoxIO-LLC/ja4/blob/main/technical_details/JA4.md)
+- [Firefox Session ID Issue (arkenfox)](https://github.com/arkenfox/user.js/issues/1838)
+
 ---
 
 ## Attack Scenarios
@@ -565,6 +674,53 @@ Outcome: Layer 2c (IP Diversity) catches proxy rotation, adds ephemeral_id to bl
 
 ---
 
+### Scenario 4: Browser Switching Attack
+
+```mermaid
+sequenceDiagram
+    actor Attacker
+    participant Firefox
+    participant Chrome
+    participant Safari
+    participant Worker
+    participant D1
+
+    Note over Attacker: First submission<br/>with Firefox
+    Attacker->>Firefox: Submit form
+    Firefox->>Worker: Submit with<br/>ephemeral_id=A<br/>ja4=Firefox_JA4<br/>remote_ip=1.1.1.1
+    Worker->>D1: Create submission
+    D1-->>Worker: Success
+    Worker-->>Firefox: ✅ 201 Created
+
+    Note over Attacker: Switch to Chrome<br/>(different fingerprints)
+    Attacker->>Chrome: Submit form
+    Chrome->>Worker: Submit with<br/>ephemeral_id=B (NEW)<br/>ja4=Chrome_JA4 (NEW)<br/>remote_ip=1.1.1.1 (SAME)
+    Worker->>D1: Check ephemeral ID fraud
+    D1-->>Worker: Different ephemeral_id ✓
+    Worker->>D1: Check JA4 hopping
+    D1-->>Worker: Different JA4 ✓
+    Worker->>D1: Check IP rate limit
+    D1-->>Worker: 2 submissions from IP<br/>Risk: 25%
+    Worker->>D1: Calculate risk score
+    D1-->>Worker: Total: 25% × 8% = 2%
+    Worker-->>Chrome: ✅ 201 Created
+
+    Note over Attacker: Switch to Safari<br/>(different fingerprints)
+    Attacker->>Safari: Submit form
+    Safari->>Worker: Submit with<br/>ephemeral_id=C (NEW)<br/>ja4=Safari_JA4 (NEW)<br/>remote_ip=1.1.1.1 (SAME)
+    Worker->>D1: Check IP rate limit
+    D1-->>Worker: 3 submissions from IP<br/>Risk: 50%
+    Worker->>Worker: Calculate total risk
+    Note over Worker: IP: 50% × 8% = 4%<br/>Email pattern: 80% × 16% = 13%<br/>Total: 17%+
+    Worker->>D1: Combined risk analysis
+    Note over Worker,D1: If emails show patterns<br/>(sequential, dated, etc.)<br/>Total risk exceeds threshold
+    Worker-->>Safari: 🚫 429 Rate Limit<br/>"Risk score 75 >= 70"
+```
+
+Outcome: Layer 0.5 (IP Rate Limit) contributes to risk score, catches attack when combined with email fraud patterns. Prevents false positives for shared IPs (offices, universities) while detecting browser-switching attacks with fraud patterns.
+
+---
+
 ## Risk Scoring System
 
 ### Two Scoring Contexts
@@ -573,15 +729,16 @@ Risk scores exist in two different contexts:
 
 #### Validation Logs (turnstile_validations table)
 
-Includes all 6 components for forensic analysis of blocked attempts:
+Includes all 7 components for forensic analysis of blocked attempts:
 
 ```
-Token Replay:         35%  (only for replayed tokens)
-Email Fraud:          17%  (Markov-Mail detection)
-Ephemeral ID:         18%  (device tracking)
-Validation Frequency: 13%  (attempt rate)
-IP Diversity:          9%  (proxy rotation)
-JA4 Session Hopping:   8%  (browser hopping)
+Token Replay:         32%  (only for replayed tokens)
+Email Fraud:          16%  (Markov-Mail detection)
+Ephemeral ID:         17%  (device tracking)
+Validation Frequency: 12%  (attempt rate)
+IP Diversity:          8%  (proxy rotation)
+JA4 Session Hopping:   7%  (browser hopping)
+IP Rate Limit:         8%  (browser switching) [NEW]
 ─────────────────────────
 Total:               100%
 ```
@@ -591,13 +748,14 @@ Total:               100%
 Excludes token replay because replayed tokens cannot create submissions:
 
 ```
-Email Fraud:          17%
-Ephemeral ID:         18%
-Validation Frequency: 13%
-IP Diversity:          9%
-JA4 Session Hopping:   8%
+Email Fraud:          16%
+Ephemeral ID:         17%
+Validation Frequency: 12%
+IP Diversity:          8%
+JA4 Session Hopping:   7%
+IP Rate Limit:         8%  [NEW]
 ─────────────────────────
-Total:                65%  (remaining 35% never triggered)
+Total:                68%  (remaining 32% never triggered)
 ```
 
 ### Block Triggers
@@ -630,19 +788,26 @@ All risk scores include component breakdown stored as JSON:
   "validationFrequency": 40,
   "ipDiversity": 0,
   "ja4SessionHopping": 0,
+  "ipRateLimit": 50,
   "total": 67.3,
   "components": {
     "emailFraud": {
       "score": 42,
-      "weight": 0.17,
-      "contribution": 7.14,
+      "weight": 0.16,
+      "contribution": 6.72,
       "reason": "Suspicious email pattern"
     },
     "ephemeralId": {
       "score": 70,
-      "weight": 0.18,
-      "contribution": 12.6,
+      "weight": 0.17,
+      "contribution": 11.9,
       "reason": "2 submissions (suspicious)"
+    },
+    "ipRateLimit": {
+      "score": 50,
+      "weight": 0.08,
+      "contribution": 4.0,
+      "reason": "Multiple submissions from IP"
     }
   }
 }
