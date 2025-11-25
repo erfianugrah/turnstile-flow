@@ -213,3 +213,10 @@ CREATE INDEX IF NOT EXISTS idx_fraud_blocks_detection_type ON fraud_blocks(detec
 CREATE INDEX IF NOT EXISTS idx_fraud_blocks_created_at ON fraud_blocks(created_at);
 CREATE INDEX IF NOT EXISTS idx_fraud_blocks_remote_ip ON fraud_blocks(remote_ip);
 CREATE INDEX IF NOT EXISTS idx_fraud_blocks_country ON fraud_blocks(country);
+-- Phase 1.5: Indexes for detection_type analytics
+CREATE INDEX IF NOT EXISTS idx_validations_detection_type ON turnstile_validations(detection_type);
+CREATE INDEX IF NOT EXISTS idx_blacklist_detection_type ON fraud_blacklist(detection_type);
+-- Phase 1.1: Indexes for erfid tracking
+CREATE INDEX IF NOT EXISTS idx_submissions_erfid ON submissions(erfid);
+CREATE INDEX IF NOT EXISTS idx_validations_erfid ON turnstile_validations(erfid);
+CREATE INDEX IF NOT EXISTS idx_blacklist_erfid ON fraud_blacklist(erfid) WHERE erfid IS NOT NULL;
