@@ -1,10 +1,13 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../ui/dialog';
 import type { BlacklistEntry } from '../../../hooks/useBlacklist';
+import type { FraudDetectionConfig } from '../../../hooks/useConfig';
 import { formatDistanceToNow } from 'date-fns';
+import { JA4SignalsDetail } from '../JA4SignalsDetail';
 
 interface BlacklistDetailDialogProps {
 	entry: BlacklistEntry | null;
 	onClose: () => void;
+	config?: FraudDetectionConfig;
 }
 
 const detectionLabels: Record<string, string> = {
@@ -20,7 +23,7 @@ const detectionLabels: Record<string, string> = {
 	'latency_mismatch': 'Latency / Device Mismatch (Layer 4.5)',
 };
 
-export function BlacklistDetailDialog({ entry, onClose }: BlacklistDetailDialogProps) {
+export function BlacklistDetailDialog({ entry, onClose, config }: BlacklistDetailDialogProps) {
 	if (!entry) {
 		return null;
 	}
@@ -108,6 +111,15 @@ export function BlacklistDetailDialog({ entry, onClose }: BlacklistDetailDialogP
 							</div>
 						</div>
 					)}
+
+					{entry.ja4 && entry.ja4_signals && (() => {
+						try {
+							const signals = JSON.parse(entry.ja4_signals);
+							return <JA4SignalsDetail signals={signals} ja4Fingerprint={entry.ja4} config={config} />;
+						} catch (_err) {
+							return null;
+						}
+					})()}
 				</div>
 			</DialogContent>
 		</Dialog>

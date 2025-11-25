@@ -1191,6 +1191,7 @@ export async function getActiveBlacklistEntries(db: D1Database) {
 					fb.submission_count,
 					REPLACE(fb.last_seen_at, ' ', 'T') || 'Z' AS last_seen_at,
 					fb.detection_metadata,
+					tv.ja4_signals,
 					-- Enrich with metadata from most recent validation
 					tv.country,
 					tv.city,

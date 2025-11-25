@@ -433,6 +433,7 @@ export default function AnalyticsDashboard() {
 						<BlacklistDetailDialog
 							entry={selectedBlacklistEntry}
 							onClose={() => setSelectedBlacklistEntry(null)}
+							config={config}
 						/>
 					)}
 				</Suspense>
