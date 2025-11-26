@@ -182,11 +182,11 @@ Core fraud detection behavior configuration.
 
 - **Type**: Integer
 - **Purpose**: Threshold for IP rate limit non-linear risk curve
-- **Rationale**: Detects browser-switching attacks (Firefox→Chrome→Safari) that bypass fingerprint detection
+- **Rationale**: Detects **browser switching** (Firefox→Chrome→Safari) that bypasses fingerprint-based session hopping detection
 - **Risk Curve**: 1→0%, 2→25%, 3→50%, 4→75%, 5+→100%
 - **Common Values**: `3` (balanced), `4` (lenient), `5` (very lenient)
 - **Window**: 1 hour (see `ipRateLimitWindow`)
-- **Note**: Behavioral signal (8% weight), not hard block - prevents false positives for shared IPs
+- **Note**: Behavioral signal (8% weight), not hard block - prevents false positives for shared IPs while complementing JA4 session hopping for same-browser attacks
 
 #### `detection.ipRateLimitWindow` (default: `3600`)
 
@@ -198,15 +198,17 @@ Core fraud detection behavior configuration.
 
 #### `detection.ja4Clustering`
 
-JA4 session hopping detection for incognito/browser switching attacks.
+JA4 session hopping detection for incognito / same-browser resets where the JA4 fingerprint stays the same.
+
+- **Goal**: Catch **session hopping** in the same browser/JA4 (incognito tab resets, new Turnstile tokens) while **browser switching** is handled separately by the IP rate limit detector above.
 
 - **`ipClusteringThreshold`** (default: `2`): Ephemeral IDs from same IP/subnet (1h window)
-  - Catches incognito mode from same location
+  - Catches incognito mode from same location and other same-browser resets
   - IPv6 /64 subnet matching for privacy extensions
   - **Common Values**: `2` (strict), `3` (balanced)
 
 - **`rapidGlobalThreshold`** (default: `3`): Ephemeral IDs globally (5min window)
-  - Legitimate users can't create 3 sessions in 5 minutes
+  - Legitimate users can't create 3 sessions in 5 minutes from the **same JA4**
   - Catches VPN hopping and IPv4↔IPv6 switching
   - **Common Values**: `3` (strict), `5` (lenient)
 

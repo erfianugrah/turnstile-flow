@@ -55,7 +55,7 @@ Only requests from configured allowed hostnames are accepted. Hostname validatio
 - **4a**: IP Clustering (same subnet + same JA4 + 2+ ephemeral IDs in 1h)
 - **4b**: Rapid Global (same JA4 + 3+ ephemeral IDs in 5 min)
 - **4c**: Extended Global (same JA4 + 5+ ephemeral IDs in 1h)
-- Detects incognito/browser switching attacks via TLS fingerprinting
+- Detects incognito/same-browser session hopping where the JA4 fingerprint stays constant (browser switching is handled by the IP rate-limit behavioral signal)
 
 **Layer 5 - IP Diversity Detection** (24h window):
 - Blocks 2+ unique IPs for same ephemeral ID
@@ -69,8 +69,8 @@ All detections contribute to a 0-100 risk score with weighted components:
 - **Ephemeral ID**: 15%
 - **Validation Frequency**: 10%
 - **IP Diversity**: 7%
-- **JA4 Session Hopping**: 6%
-- **IP Rate Limit**: 7%
+- **JA4 Session Hopping**: 6% (same-browser/incognito resets)
+- **IP Rate Limit**: 7% (browser switching velocity)
 - **Header Fingerprint**: 7%
 - **TLS Anomaly**: 4%
 - **Latency Mismatch**: 2%

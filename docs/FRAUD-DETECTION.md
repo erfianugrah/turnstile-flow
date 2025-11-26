@@ -374,7 +374,7 @@ Mitigation: Adds `ephemeral_id` to blacklist with progressive timeout.
 
 ### Layer 4: JA4 Session Hopping Detection
 
-TLS fingerprinting to detect attacks bypassing ephemeral ID tracking by opening incognito/private windows or switching browsers.
+TLS fingerprinting to detect attacks bypassing ephemeral ID tracking by opening incognito/private windows or otherwise minting new sessions **without changing browsers**. True browser switching (different JA4s) is handled separately by the IP rate limit detector.
 
 JA4 fingerprint tracks the TLS client (browser + OS) which doesn't change when cookies are cleared or incognito mode is used.
 Only **new** ephemeral IDs observed in the query window count toward the clustering thresholds—reusing the same Turnstile session no longer increments the total, so legitimate users resubmitting from the same tab won't be flagged as “two fingerprints.”
@@ -409,7 +409,7 @@ WHERE ja4 = ? AND remote_ip IN (same /64 subnet)
 - `true`: Use multi-signal risk scoring (reduces false positives)
 - `false`: Block immediately when count threshold reached (old behavior)
 
-Detects: Incognito mode, browser hopping from same location
+Detects: Incognito mode, same-browser session hopping from the same location
 
 #### Layer 4b: Rapid Global (5min window, no IP filter)
 
@@ -590,6 +590,11 @@ The analytics dashboard displays all 10 signals with:
 ```
 
 **Key Principle**: JA4 signals provide **context**, not definitive fraud indicators. They're most powerful when combined with local clustering patterns (Layer 4a/4b/4c).
+
+#### Session Hopping vs Browser Switching
+
+- **Session hopping (same browser / same JA4)**: Attackers close and reopen incognito tabs or clear storage to mint fresh Turnstile tokens without changing the underlying TLS fingerprint. Layer 4 (`ja4Clustering`) uses the JA4 hash plus ephemeral ID churn to flag this pattern (IP clustering, rapid, and extended windows). These detections power the `ja4_session_hopping` risk component and can hard-block when thresholds hit.
+- **Browser switching (different JA4s)**: Attackers cycle through different browsers or profiles (Firefox → Chrome → Safari) so every pass arrives with a brand-new JA4 and ephemeral ID. Because the TLS fingerprint changes, Layer 4 will not correlate them, so Layer 0.5 (`ipRateLimit`) watches the shared IP velocity instead. This behavioral signal contributes via the `ip_rate_limit` component and only tips blocks when paired with other fraud cues (e.g., email patterns).
 
 #### Firefox Private Browsing & JA4 Stability
 
@@ -776,8 +781,8 @@ Email Fraud:          14%  (Markov-Mail pattern score)
 Ephemeral ID:         15%  (device tracking)
 Validation Frequency: 10%  (attempt rate)
 IP Diversity:          7%  (proxy rotation)
-JA4 Session Hopping:   6%  (browser hopping)
-IP Rate Limit:         7%  (browser switching)
+JA4 Session Hopping:   6%  (same-browser session hopping)
+IP Rate Limit:         7%  (browser switching velocity)
 Header Fingerprint:    7%  (shared header stacks)
 TLS Anomaly:           4%  (unknown ClientHello)
 Latency Mismatch:      2%  (impossible RTT/device combo)
@@ -794,8 +799,8 @@ Email Fraud:          14%
 Ephemeral ID:         15%
 Validation Frequency: 10%
 IP Diversity:          7%
-JA4 Session Hopping:   6%
-IP Rate Limit:         7%
+JA4 Session Hopping:   6%  (same-browser session hopping)
+IP Rate Limit:         7%  (browser switching velocity)
 Header Fingerprint:    7%
 TLS Anomaly:           4%
 Latency Mismatch:      2%

@@ -3,6 +3,8 @@ import { Badge } from '../ui/badge';
 import { AlertCircle, CheckCircle, AlertTriangle, Info } from 'lucide-react';
 import type { FraudDetectionConfig } from '../../hooks/useConfig';
 
+const DEFAULT_JA4_WEIGHT = 0.06;
+
 interface JA4Signals {
 	ips_quantile_1h?: number;
 	ips_rank_1h?: number;
@@ -30,6 +32,7 @@ export function JA4SignalsDetail({ signals, ja4Fingerprint, config }: JA4Signals
 	const browserThreshold = config?.ja4.browserRatioThreshold ?? 0.2;
 	const h2h3Threshold = config?.ja4.h2h3RatioThreshold ?? 0.9;
 	const cacheThreshold = config?.ja4.cacheRatioThreshold ?? 0.5;
+	const ja4WeightPercent = Math.round(((config?.risk.weights.ja4SessionHopping ?? DEFAULT_JA4_WEIGHT) * 100));
 
 	if (!signals || Object.keys(signals).length === 0) {
 		return (
@@ -46,13 +49,13 @@ export function JA4SignalsDetail({ signals, ja4Fingerprint, config }: JA4Signals
 
 	return (
 		<Card>
-			<CardHeader>
-				<h4 className="text-sm font-semibold">JA4 Intelligence (Cloudflare Global)</h4>
-				<p className="text-xs text-muted-foreground font-mono break-all">{ja4Fingerprint}</p>
-				<p className="text-xs text-muted-foreground mt-1">
-					1-hour Cloudflare telemetry feeds the Session Hopping component (6% weight) and seeds the fingerprint baseline cache used by the TLS/header anomaly detectors.
-				</p>
-			</CardHeader>
+				<CardHeader>
+					<h4 className="text-sm font-semibold">JA4 Intelligence (Cloudflare Global)</h4>
+					<p className="text-xs text-muted-foreground font-mono break-all">{ja4Fingerprint}</p>
+					<p className="text-xs text-muted-foreground mt-1">
+						1-hour Cloudflare telemetry feeds the Session Hopping component ({ja4WeightPercent}% weight) and seeds the fingerprint baseline cache used by the TLS/header anomaly detectors.
+					</p>
+				</CardHeader>
 			<CardContent className="space-y-3">
 				{/* Critical signals used in fraud detection */}
 				<div className="space-y-2">
