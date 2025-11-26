@@ -513,6 +513,10 @@ app.get('/time-series', async (c) => {
 			'bot_score_avg',
 			'risk_score_avg',
 			'allowed_rate',
+			'fingerprint_header_blocks',
+			'fingerprint_tls_blocks',
+			'fingerprint_latency_blocks',
+			'testing_bypass',
 		];
 		if (!validMetrics.includes(metric)) {
 			return c.json(

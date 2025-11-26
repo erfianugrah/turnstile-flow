@@ -30,6 +30,27 @@ export function OverviewStats({ stats }: OverviewStatsProps) {
 	const tlsBlocks = stats?.tls_anomaly_blocks || 0;
 	const latencyBlocks = stats?.latency_mismatch_blocks || 0;
 	const fingerprintBlocks = headerBlocks + tlsBlocks + latencyBlocks;
+	const fingerprintBlockRate = stats?.fingerprint_block_rate || 0;
+	const testingBypassTotal = stats?.testing_bypass_total || 0;
+	const turnstileEffectiveness = stats?.turnstile_effectiveness ?? [];
+	const nonBypassTotals = turnstileEffectiveness.filter(entry => !entry.testing_bypass);
+	const passedAllowed = nonBypassTotals.find(entry => entry.success && entry.allowed);
+	const passedBlocked = nonBypassTotals.find(entry => entry.success && !entry.allowed);
+	const failedBlocked = nonBypassTotals.find(entry => !entry.success && !entry.allowed);
+	const bypassTotals = turnstileEffectiveness.filter(entry => entry.testing_bypass);
+	const bypassAllowedCount = bypassTotals
+		.filter(entry => entry.allowed)
+		.reduce((sum, entry) => sum + entry.count, 0);
+	const bypassBlockedCount = bypassTotals
+		.filter(entry => !entry.allowed)
+		.reduce((sum, entry) => sum + entry.count, 0);
+	const velocity = stats?.velocity_insights;
+	const clientHints = stats?.client_hint_instability;
+	const trackedClientIps = clientHints?.tracked_ips || 0;
+	const unstableClientIps = clientHints?.unstable_ips || 0;
+	const clientHintInstabilityRate = trackedClientIps > 0
+		? (unstableClientIps / trackedClientIps) * 100
+		: 0;
 
 	const allowedStatus = getAllowedRateStatus(allowedRate);
 	const riskStatus = getRiskScoreStatus(avgRiskScore);
@@ -123,6 +144,74 @@ export function OverviewStats({ stats }: OverviewStatsProps) {
 						<div>Header reuse: <span className="font-semibold">{headerBlocks}</span></div>
 						<div>TLS anomaly: <span className="font-semibold">{tlsBlocks}</span></div>
 						<div>Latency mismatch: <span className="font-semibold">{latencyBlocks}</span></div>
+						<div className="text-xs text-muted-foreground mt-2">
+							Rate: <span className="font-semibold">{fingerprintBlockRate.toFixed(2)}%</span> of all validations
+						</div>
+					</div>
+				</CardContent>
+			</Card>
+
+			<Card className="min-w-0">
+				<CardHeader className="pb-2">
+					<CardTitle className="text-sm font-medium text-muted-foreground break-words" title="Turnstile outcomes">
+						Turnstile Outcomes
+					</CardTitle>
+				</CardHeader>
+				<CardContent>
+					<div className="text-xs text-muted-foreground space-y-2">
+						<div className="flex items-center justify-between">
+							<span>Pass → Allow</span>
+							<span className="font-semibold">{passedAllowed?.count ?? 0}</span>
+						</div>
+						<div className="flex items-center justify-between">
+							<span>Pass → Block</span>
+							<span className="font-semibold text-amber-600 dark:text-amber-400">{passedBlocked?.count ?? 0}</span>
+						</div>
+						<div className="flex items-center justify-between">
+							<span>Fail → Block</span>
+							<span className="font-semibold text-red-600 dark:text-red-400">{failedBlocked?.count ?? 0}</span>
+						</div>
+						<div className="pt-2 border-t border-border/70 mt-2">
+							<p className="text-xs text-muted-foreground">
+								Testing bypass runs: <span className="font-semibold">{testingBypassTotal}</span> ({bypassAllowedCount} allowed, {bypassBlockedCount} blocked)
+							</p>
+						</div>
+					</div>
+				</CardContent>
+			</Card>
+
+			<Card className="min-w-0">
+				<CardHeader className="pb-2">
+					<CardTitle className="text-sm font-medium text-muted-foreground break-words">
+						Signal Stability
+					</CardTitle>
+				</CardHeader>
+				<CardContent>
+					<div className="text-xs text-muted-foreground space-y-2">
+						<div className="flex items-center justify-between">
+							<span>JA4 peak (1h)</span>
+							<span className="font-semibold text-foreground">
+								{velocity?.ja4_peak_last_hour ? velocity.ja4_peak_last_hour.toFixed(0) : '0'}
+							</span>
+						</div>
+						<div className="flex items-center justify-between">
+							<span>IP peak (1h)</span>
+							<span className="font-semibold text-foreground">
+								{velocity?.ip_peak_last_hour ? velocity.ip_peak_last_hour.toFixed(0) : '0'}
+							</span>
+						</div>
+						<div className="flex items-center justify-between">
+							<span>Client hint drift</span>
+							<span className="font-semibold">
+								{clientHintInstabilityRate.toFixed(1)}%
+							</span>
+						</div>
+						<div className="flex items-center justify-between">
+							<span>Timeouts (24h)</span>
+							<span className="font-semibold">
+								{velocity?.progressive_timeouts_24h ?? 0}
+							</span>
+						</div>
 					</div>
 				</CardContent>
 			</Card>

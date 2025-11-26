@@ -135,7 +135,7 @@ app.post('/', async (c) => {
 		const apiKey = c.req.header('X-API-KEY');
 		const expectedKey = c.env['X-API-KEY'];
 		const allowBypass = c.env.ALLOW_TESTING_BYPASS === 'true';
-		const skipTurnstile = allowBypass && apiKey && apiKey === expectedKey;
+		const skipTurnstile = Boolean(allowBypass && apiKey && apiKey === expectedKey);
 
 		if (skipTurnstile) {
 			logger.info({ event: 'testing_bypass_activated' }, 'Testing bypass activated');
@@ -234,6 +234,7 @@ app.post('/', async (c) => {
 					blockReason: 'Token replay attack detected',
 					detectionType: 'token_replay_protection', // Special: Token validation layer
 					erfid,
+					testingBypass: skipTurnstile,
 				});
 
 				throw new ValidationError(
@@ -271,6 +272,7 @@ app.post('/', async (c) => {
 				blockReason: validation.reason,
 				detectionType: 'turnstile_validation', // Special: Turnstile CAPTCHA layer
 				erfid,
+				testingBypass: skipTurnstile,
 			});
 
 			throw new ExternalServiceError(
@@ -677,6 +679,7 @@ app.post('/', async (c) => {
 				blockReason,
 				detectionType: detectionType || 'holistic_risk',
 				erfid,
+				testingBypass: skipTurnstile,
 			});
 
 			logger.warn(
@@ -718,7 +721,8 @@ app.post('/', async (c) => {
 				rawPayload,
 				extractedEmail,
 				extractedPhone,
-				erfid
+				erfid,
+				skipTurnstile
 			);
 		} catch (dbError) {
 			// Handle UNIQUE constraint violation (duplicate email)
@@ -752,6 +756,7 @@ app.post('/', async (c) => {
 			allowed: true,
 			submissionId,
 			erfid,
+			testingBypass: skipTurnstile,
 		});
 
 		logger.info(

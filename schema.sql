@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS submissions (
 	extended_metadata TEXT, -- JSON blob of full RequestMetadata for fingerprinting
 	-- Request tracking
 	erfid TEXT, -- Unique request identifier for lifecycle tracking
+	testing_bypass BOOLEAN DEFAULT FALSE,
 	-- Timestamps
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -106,6 +107,7 @@ CREATE TABLE IF NOT EXISTS turnstile_validations (
 	extended_metadata TEXT, -- JSON blob of full RequestMetadata for fingerprinting
 	-- Request tracking
 	erfid TEXT, -- Unique request identifier for lifecycle tracking
+	testing_bypass BOOLEAN DEFAULT FALSE,
 	-- Timestamps
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 	FOREIGN KEY (submission_id) REFERENCES submissions(id)

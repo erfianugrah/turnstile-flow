@@ -2,7 +2,16 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../..
 import { TimeSeriesChart } from '../charts/TimeSeriesChart';
 import { BarChart } from '../charts/BarChart';
 import { DonutChart } from '../charts/DonutChart';
-import type { CountryData, BotScoreData, AsnData, TlsData, Ja3Data, Ja4Data } from '../../../hooks/useAnalytics';
+import type {
+	CountryData,
+	BotScoreData,
+	AsnData,
+	TlsData,
+	Ja3Data,
+	Ja4Data,
+	FingerprintSeries,
+	TimeSeriesPoint,
+} from '../../../hooks/useAnalytics';
 
 interface ChartsSectionProps {
 	timeSeriesData: any[];
@@ -12,6 +21,8 @@ interface ChartsSectionProps {
 	tlsData: TlsData[];
 	ja3Data: Ja3Data[];
 	ja4Data: Ja4Data[];
+	fingerprintSeries: FingerprintSeries;
+	testingBypassSeries: TimeSeriesPoint[];
 }
 
 export function ChartsSection({
@@ -22,7 +33,28 @@ export function ChartsSection({
 	tlsData,
 	ja3Data,
 	ja4Data,
+	fingerprintSeries,
+	testingBypassSeries,
 }: ChartsSectionProps) {
+	const mergeSeries = (seriesMap: Record<string, TimeSeriesPoint[]>) => {
+		const merged = new Map<string, any>();
+		for (const [key, series] of Object.entries(seriesMap)) {
+			series?.forEach((point) => {
+				if (!point) return;
+				const entry = merged.get(point.timestamp) || { timestamp: point.timestamp };
+				entry[key] = point.value ?? 0;
+				merged.set(point.timestamp, entry);
+			});
+		}
+		return Array.from(merged.values()).sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+	};
+
+	const fingerprintTrendData = mergeSeries({
+		header: fingerprintSeries.header,
+		tls: fingerprintSeries.tls,
+		latency: fingerprintSeries.latency,
+	});
+
 	return (
 		<>
 			{/* Submissions Time Series */}
@@ -47,6 +79,58 @@ export function ChartsSection({
 					)}
 				</CardContent>
 			</Card>
+
+			{/* Fingerprint & Bypass Trends */}
+			<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+				<Card className="min-w-0">
+					<CardHeader>
+						<CardTitle>Fingerprint Blocks Over Time</CardTitle>
+						<CardDescription>Header reuse, TLS anomalies, and latency mismatches</CardDescription>
+					</CardHeader>
+					<CardContent>
+						{fingerprintTrendData.length ? (
+							<TimeSeriesChart
+								data={fingerprintTrendData}
+								height={250}
+								series={[
+									{ key: 'header', label: 'Header reuse', color: 'hsl(200, 82%, 55%)' },
+									{ key: 'tls', label: 'TLS anomaly', color: 'hsl(28, 82%, 58%)' },
+									{ key: 'latency', label: 'Latency mismatch', color: 'hsl(353, 82%, 58%)' },
+								]}
+								yAxisLabel="Blocks"
+								formatTooltip={(value) => `${value?.toFixed ? value.toFixed(0) : value} blocks`}
+								showGrid
+							/>
+						) : (
+							<div className="flex items-center justify-center h-[250px]">
+								<p className="text-muted-foreground text-sm">No fingerprint anomalies detected</p>
+							</div>
+						)}
+					</CardContent>
+				</Card>
+
+				<Card className="min-w-0">
+					<CardHeader>
+						<CardTitle>Testing Bypass Usage</CardTitle>
+						<CardDescription>Daily runs of the API-key testing shortcut</CardDescription>
+					</CardHeader>
+					<CardContent>
+						{testingBypassSeries.length ? (
+							<TimeSeriesChart
+								data={testingBypassSeries}
+								height={250}
+								type="line"
+								yAxisLabel="Runs"
+								formatTooltip={(value) => `${value?.toFixed ? value.toFixed(0) : value} runs`}
+							/>
+						) : (
+							<div className="flex items-center justify-center h-[250px]">
+								<p className="text-muted-foreground text-sm">No bypass activity recorded</p>
+							</div>
+						)}
+					</CardContent>
+				</Card>
+			</div>
 
 			{/* Country Distribution and Bot Scores */}
 			<div className="grid grid-cols-1 md:grid-cols-2 gap-6">

@@ -404,6 +404,8 @@ export default function AnalyticsDashboard() {
 						tlsData={analyticsData.tlsData}
 						ja3Data={analyticsData.ja3Data}
 						ja4Data={analyticsData.ja4Data}
+						fingerprintSeries={analyticsData.fingerprintSeries}
+						testingBypassSeries={analyticsData.testingBypassSeries}
 					/>
 				</Suspense>
 

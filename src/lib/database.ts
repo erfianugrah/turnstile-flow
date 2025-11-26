@@ -92,6 +92,7 @@ export async function logValidation(
 		detectionType?: string;  // Phase 1.5: Which fraud check triggered
 		riskScoreBreakdown?: RiskScoreBreakdown;  // Phase 1.5: Normalized breakdown
 		erfid?: string;  // Request tracking ID
+		testingBypass?: boolean; // Testing bypass flag
 	}
 ): Promise<void> {
 	const requestHeadersJson = data.metadata.requestHeaders
@@ -109,12 +110,12 @@ export async function logValidation(
 					continent, is_eu_country, asn, as_organization, colo, http_protocol,
 					tls_version, bot_score, client_trust_score, verified_bot, js_detection_passed,
 					detection_ids, ja3_hash, ja4, ja4_signals,
-					detection_type, risk_score_breakdown, request_headers, extended_metadata, erfid
+					detection_type, risk_score_breakdown, request_headers, extended_metadata, erfid, testing_bypass
 				) VALUES (
 					?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
 					?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
 					?, ?, ?, ?, ?, ?, ?, ?, ?,
-					?, ?, ?, ?, ?
+					?, ?, ?, ?, ?, ?
 				)`
 			)
 			.bind(
@@ -158,7 +159,8 @@ export async function logValidation(
 					requestHeadersJson,
 					extendedMetadataJson,
 					// Request tracking ID
-					data.erfid || null
+					data.erfid || null,
+					data.testingBypass ? 1 : 0
 				)
 			.run();
 
@@ -258,7 +260,8 @@ export async function createSubmission(
 	rawPayload?: Record<string, any> | null,
 	extractedEmail?: string | null,
 	extractedPhone?: string | null,
-	erfid?: string | null  // Request tracking ID
+	erfid?: string | null,  // Request tracking ID
+	testingBypass?: boolean
 ): Promise<number> {
 	const requestHeadersJson = metadata.requestHeaders
 		? JSON.stringify(metadata.requestHeaders)
@@ -278,7 +281,7 @@ export async function createSubmission(
 					email_risk_score, email_fraud_signals, email_pattern_type,
 					email_markov_detected, email_ood_detected,
 					risk_score_breakdown,
-					form_data, extracted_email, extracted_phone, request_headers, extended_metadata, erfid
+					form_data, extracted_email, extracted_phone, request_headers, extended_metadata, erfid, testing_bypass
 				) VALUES (
 					?, ?, ?, ?, ?, ?,
 					?, ?, ?, ?, ?, ?,
@@ -288,7 +291,7 @@ export async function createSubmission(
 					?, ?, ?,
 					?, ?, ?, ?, ?,
 					?,
-					?, ?, ?, ?, ?, ?
+					?, ?, ?, ?, ?, ?, ?
 				)`
 			)
 			.bind(
@@ -336,7 +339,8 @@ export async function createSubmission(
 				requestHeadersJson,
 				extendedMetadataJson,
 				// Request tracking ID
-				erfid || null
+				erfid || null,
+				testingBypass ? 1 : 0
 			)
 			.run();
 
@@ -599,61 +603,194 @@ export async function getSubmissions(
  */
 export async function getValidationStats(db: D1Database) {
 	try {
-		const stats = await db
-			.prepare(
-				`SELECT
-					COUNT(*) as total,
-					SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successful,
-					SUM(CASE WHEN allowed = 1 THEN 1 ELSE 0 END) as allowed,
-					AVG(risk_score) as avg_risk_score,
-					COUNT(DISTINCT ephemeral_id) as unique_ephemeral_ids,
-					SUM(CASE WHEN allowed = 0 AND block_reason LIKE '%JA4%' THEN 1 ELSE 0 END) as ja4_fraud_blocks,
-					SUM(CASE WHEN detection_type = 'header_fingerprint_reuse' THEN 1 ELSE 0 END) as header_fingerprint_blocks,
-					SUM(CASE WHEN detection_type = 'tls_fingerprint_anomaly' THEN 1 ELSE 0 END) as tls_anomaly_blocks,
-					SUM(CASE WHEN detection_type = 'latency_mismatch' THEN 1 ELSE 0 END) as latency_mismatch_blocks
-				 FROM turnstile_validations`
-			)
-			.first<{
-				total: number;
-				successful: number;
-				allowed: number;
-				avg_risk_score: number;
-				unique_ephemeral_ids: number;
-				ja4_fraud_blocks: number;
-				header_fingerprint_blocks: number;
-				tls_anomaly_blocks: number;
-				latency_mismatch_blocks: number;
-			}>();
+		const [
+			stats,
+			emailStats,
+			blacklistCount,
+			turnstileRows,
+			riskBuckets,
+			clientHintInstability,
+			velocityInsights,
+		] = await Promise.all([
+			db
+				.prepare(
+					`SELECT
+						COUNT(*) as total,
+						SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successful,
+						SUM(CASE WHEN allowed = 1 THEN 1 ELSE 0 END) as allowed,
+						AVG(risk_score) as avg_risk_score,
+						COUNT(DISTINCT ephemeral_id) as unique_ephemeral_ids,
+						SUM(CASE WHEN allowed = 0 AND block_reason LIKE '%JA4%' THEN 1 ELSE 0 END) as ja4_fraud_blocks,
+						SUM(CASE WHEN detection_type = 'header_fingerprint_reuse' THEN 1 ELSE 0 END) as header_fingerprint_blocks,
+						SUM(CASE WHEN detection_type = 'tls_fingerprint_anomaly' THEN 1 ELSE 0 END) as tls_anomaly_blocks,
+						SUM(CASE WHEN detection_type = 'latency_mismatch' THEN 1 ELSE 0 END) as latency_mismatch_blocks
+					 FROM turnstile_validations`
+				)
+				.first<{
+					total: number;
+					successful: number;
+					allowed: number;
+					avg_risk_score: number;
+					unique_ephemeral_ids: number;
+					ja4_fraud_blocks: number;
+					header_fingerprint_blocks: number;
+					tls_anomaly_blocks: number;
+					latency_mismatch_blocks: number;
+				}>(),
+			db
+				.prepare(
+					`SELECT
+						COUNT(*) as total_with_email_check,
+						SUM(CASE WHEN email_markov_detected = 1 THEN 1 ELSE 0 END) as markov_detected,
+						SUM(CASE WHEN email_ood_detected = 1 THEN 1 ELSE 0 END) as ood_detected,
+						AVG(email_risk_score) as avg_email_risk_score
+					 FROM submissions
+					 WHERE email_risk_score IS NOT NULL`
+				)
+				.first<{
+					total_with_email_check: number;
+					markov_detected: number;
+					ood_detected: number;
+					avg_email_risk_score: number;
+				}>(),
+			db
+				.prepare(
+					`SELECT COUNT(*) as active_blacklist
+					 FROM fraud_blacklist
+					 WHERE expires_at > datetime('now')`
+				)
+				.first<{ active_blacklist: number }>(),
+			db
+				.prepare(
+					`SELECT
+						success,
+						allowed,
+						testing_bypass as testingBypass,
+						COUNT(*) as count,
+						AVG(risk_score) as avg_risk_score,
+						AVG(bot_score) as avg_bot_score
+					 FROM turnstile_validations
+					 GROUP BY success, allowed, testing_bypass`
+				)
+				.all(),
+			db
+				.prepare(
+					`SELECT
+						SUM(CASE WHEN risk_score < 30 THEN 1 ELSE 0 END) as low,
+						SUM(CASE WHEN risk_score >= 30 AND risk_score < 60 THEN 1 ELSE 0 END) as medium,
+						SUM(CASE WHEN risk_score >= 60 AND risk_score < 80 THEN 1 ELSE 0 END) as high,
+						SUM(CASE WHEN risk_score >= 80 THEN 1 ELSE 0 END) as critical
+					 FROM turnstile_validations`
+				)
+				.first<{
+					low: number;
+					medium: number;
+					high: number;
+					critical: number;
+				}>(),
+			db
+				.prepare(
+					`WITH recent AS (
+						SELECT
+							remote_ip,
+							json_extract(extended_metadata, '$.clientHints.ua') as ua_hint,
+							json_extract(extended_metadata, '$.clientHints.platform') as platform_hint
+						FROM turnstile_validations
+						WHERE extended_metadata IS NOT NULL
+							AND created_at >= datetime('now', '-24 hours')
+					),
+					aggregated AS (
+						SELECT
+							remote_ip,
+							COUNT(DISTINCT ua_hint) as ua_variants,
+							COUNT(DISTINCT platform_hint) as platform_variants
+						FROM recent
+						WHERE ua_hint IS NOT NULL OR platform_hint IS NOT NULL
+						GROUP BY remote_ip
+					)
+					SELECT
+						COUNT(*) as tracked_ips,
+						SUM(CASE WHEN ua_variants > 1 OR platform_variants > 1 THEN 1 ELSE 0 END) as unstable_ips,
+						AVG(ua_variants) as avg_ua_variants,
+						AVG(platform_variants) as avg_platform_variants
+					FROM aggregated`
+				)
+				.first<{
+					tracked_ips: number;
+					unstable_ips: number;
+					avg_ua_variants: number;
+					avg_platform_variants: number;
+				}>(),
+			db
+				.prepare(
+					`SELECT
+						(SELECT MAX(submission_count) FROM (
+							SELECT COUNT(*) as submission_count
+							FROM submissions
+							WHERE ja4 IS NOT NULL
+								AND created_at >= datetime('now', '-1 hour')
+							GROUP BY ja4
+						)) as ja4_peak_last_hour,
+						(SELECT MAX(submission_count) FROM (
+							SELECT COUNT(*) as submission_count
+							FROM submissions
+							WHERE remote_ip IS NOT NULL
+								AND created_at >= datetime('now', '-1 hour')
+							GROUP BY remote_ip
+						)) as ip_peak_last_hour,
+						(SELECT AVG(submission_count) FROM (
+							SELECT COUNT(*) as submission_count
+							FROM submissions
+							WHERE ephemeral_id IS NOT NULL
+								AND created_at >= datetime('now', '-24 hours')
+							GROUP BY ephemeral_id
+						)) as avg_submissions_per_ephemeral_day,
+						(SELECT COUNT(*) FROM fraud_blacklist WHERE blocked_at >= datetime('now', '-24 hours')) as progressive_timeouts_24h`
+				)
+				.first<{
+					ja4_peak_last_hour: number;
+					ip_peak_last_hour: number;
+					avg_submissions_per_ephemeral_day: number;
+					progressive_timeouts_24h: number;
+				}>(),
+		]);
 
-		// Get email fraud statistics from submissions table (Phase 2)
-		const emailStats = await db
-			.prepare(
-				`SELECT
-					COUNT(*) as total_with_email_check,
-					SUM(CASE WHEN email_markov_detected = 1 THEN 1 ELSE 0 END) as markov_detected,
-					SUM(CASE WHEN email_ood_detected = 1 THEN 1 ELSE 0 END) as ood_detected,
-					AVG(email_risk_score) as avg_email_risk_score
-				 FROM submissions
-				 WHERE email_risk_score IS NOT NULL`
-			)
-			.first<{
-				total_with_email_check: number;
-				markov_detected: number;
-				ood_detected: number;
-				avg_email_risk_score: number;
-			}>();
+		const turnstileEffectiveness =
+			turnstileRows?.results?.map((row: any) => ({
+				success: !!row.success,
+				allowed: !!row.allowed,
+				testing_bypass: !!row.testingBypass,
+				count: row.count || 0,
+				avg_risk_score: row.avg_risk_score || 0,
+				avg_bot_score: row.avg_bot_score || 0,
+			})) || [];
 
-		// Get active blacklist count
-		const blacklistCount = await db
-			.prepare(
-				`SELECT COUNT(*) as active_blacklist
-				 FROM fraud_blacklist
-				 WHERE expires_at > datetime('now')`
-			)
-			.first<{ active_blacklist: number }>();
+		const testingBypassTotal = turnstileEffectiveness.reduce((sum, row) => {
+			return row.testing_bypass ? sum + row.count : sum;
+		}, 0);
+
+		const baseStats = stats || {
+			total: 0,
+			successful: 0,
+			allowed: 0,
+			avg_risk_score: 0,
+			unique_ephemeral_ids: 0,
+			ja4_fraud_blocks: 0,
+			header_fingerprint_blocks: 0,
+			tls_anomaly_blocks: 0,
+			latency_mismatch_blocks: 0,
+		};
+
+		const fingerprintTotalBlocks =
+			(stats?.header_fingerprint_blocks || 0) +
+			(stats?.tls_anomaly_blocks || 0) +
+			(stats?.latency_mismatch_blocks || 0);
+
+		const fingerprintBlockRate =
+			stats && stats.total > 0 ? (fingerprintTotalBlocks / stats.total) * 100 : 0;
 
 		return {
-			...stats,
+			...baseStats,
 			active_blacklist: blacklistCount?.active_blacklist || 0,
 			email_fraud: emailStats || {
 				total_with_email_check: 0,
@@ -661,6 +798,22 @@ export async function getValidationStats(db: D1Database) {
 				ood_detected: 0,
 				avg_email_risk_score: 0,
 			},
+			turnstile_effectiveness: turnstileEffectiveness,
+			risk_distribution: riskBuckets || { low: 0, medium: 0, high: 0, critical: 0 },
+			client_hint_instability: clientHintInstability || {
+				tracked_ips: 0,
+				unstable_ips: 0,
+				avg_ua_variants: 0,
+				avg_platform_variants: 0,
+			},
+			velocity_insights: velocityInsights || {
+				ja4_peak_last_hour: 0,
+				ip_peak_last_hour: 0,
+				avg_submissions_per_ephemeral_day: 0,
+				progressive_timeouts_24h: 0,
+			},
+			fingerprint_block_rate: fingerprintBlockRate,
+			testing_bypass_total: testingBypassTotal,
 		};
 	} catch (error) {
 		logger.error({ error }, 'Error fetching validation stats');
@@ -970,6 +1123,61 @@ export async function getTimeSeriesData(
 						COUNT(*) as count
 					FROM turnstile_validations
 					WHERE created_at >= ? AND created_at <= ?
+					GROUP BY strftime('${formatString}', created_at)
+					ORDER BY timestamp ASC
+				`;
+				break;
+
+			case 'fingerprint_header_blocks':
+				query = `
+					SELECT
+						strftime('${formatString}', created_at) as timestamp,
+						COUNT(*) as value
+					FROM turnstile_validations
+					WHERE created_at >= ? AND created_at <= ?
+						AND allowed = 0
+						AND detection_type = 'header_fingerprint_reuse'
+					GROUP BY strftime('${formatString}', created_at)
+					ORDER BY timestamp ASC
+				`;
+				break;
+
+			case 'fingerprint_tls_blocks':
+				query = `
+					SELECT
+						strftime('${formatString}', created_at) as timestamp,
+						COUNT(*) as value
+					FROM turnstile_validations
+					WHERE created_at >= ? AND created_at <= ?
+						AND allowed = 0
+						AND detection_type = 'tls_fingerprint_anomaly'
+					GROUP BY strftime('${formatString}', created_at)
+					ORDER BY timestamp ASC
+				`;
+				break;
+
+			case 'fingerprint_latency_blocks':
+				query = `
+					SELECT
+						strftime('${formatString}', created_at) as timestamp,
+						COUNT(*) as value
+					FROM turnstile_validations
+					WHERE created_at >= ? AND created_at <= ?
+						AND allowed = 0
+						AND detection_type = 'latency_mismatch'
+					GROUP BY strftime('${formatString}', created_at)
+					ORDER BY timestamp ASC
+				`;
+				break;
+
+			case 'testing_bypass':
+				query = `
+					SELECT
+						strftime('${formatString}', created_at) as timestamp,
+						COUNT(*) as value
+					FROM turnstile_validations
+					WHERE created_at >= ? AND created_at <= ?
+						AND testing_bypass = 1
 					GROUP BY strftime('${formatString}', created_at)
 					ORDER BY timestamp ASC
 				`;
