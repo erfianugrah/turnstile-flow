@@ -150,7 +150,7 @@ sequenceDiagram
     Worker->>D1: 8. Create submission
     Worker->>D1: 9. Log validation attempt
 
-    Note over D1: Tables:<br/>• submissions (42 fields)<br/>• turnstile_validations (35 fields)<br/><br/>Metadata:<br/>• Geographic (country, city, etc)<br/>• Network (ASN, colo, TLS)<br/>• Bot signals (scores, JA3, JA4)<br/>• Detection IDs, JA4 signals
+    Note over D1: Tables:<br/>• submissions<br/>• turnstile_validations<br/>• fraud_blocks<br/>• fraud_blacklist<br/>• fingerprint_baselines<br/><br/>Metadata:<br/>• Geographic + network context<br/>• Bot scores, JA3/JA4, header fingerprints<br/>• TLS internals, latency, client hints<br/>• Risk breakdowns + testing_bypass flag
 
     Worker->>Browser: 10. Return success/error
 ```
@@ -170,13 +170,13 @@ flowchart TD
 
     CallTurnstile --> TurnstileResult{Turnstile<br/>Success?}
     TurnstileResult -->|Failed| RejectTurnstile[Reject: Turnstile validation failed]
-    TurnstileResult -->|Success| FraudCheck[Multi-Layer Fraud Detection<br/>7 behavioral signals:<br/>Email, Ephemeral ID, JA4, IP]
+    TurnstileResult -->|Success| FraudCheck[Multi-Layer Fraud Detection<br/>Email, Ephemeral ID, JA4, IP velocity,<br/>header/TLS fingerprints, latency sanity checks]
 
     FraudCheck --> RiskScore{Risk Score<br/>≥ 70?}
     RiskScore -->|Yes| RejectFraud[Reject: Fraud detected<br/>Auto-blacklist]
-    RiskScore -->|No| CreateSubmission[Create Submission in D1<br/>42 fields + metadata]
+    RiskScore -->|No| CreateSubmission[Create Submission in D1<br/>payload + metadata + testing_bypass flag]
 
-    CreateSubmission --> LogValidation[Log Validation Attempt<br/>35 fields]
+    CreateSubmission --> LogValidation[Log Validation Attempt<br/>risk breakdown + fingerprints]
     LogValidation --> Success([Return Success])
 
     RejectReplay --> LogRejection[Log Rejection]
@@ -393,34 +393,32 @@ erDiagram
     }
 ```
 
-**Four Main Tables**:
+**Core Tables**:
 
-1. **submissions** (42 fields)
-   - Form data (first_name, last_name, email, etc.)
-   - Geographic metadata (country, region, city, postal_code, lat/long, timezone, continent, is_eu_country)
-   - Network metadata (ASN, colo, HTTP protocol, TLS version/cipher)
-   - Bot signals (bot_score, client_trust_score, verified_bot, detection_ids)
-   - Fingerprints (JA3 hash, JA4, JA4 signals)
-   - Tracking (ephemeral_id, remote_ip, user_agent, created_at)
+1. **submissions**
+   - Form payload (names, email, optional phone/address/DOB)
+   - Full request metadata (geo, network, TLS, client hints, header snapshot)
+   - Bot & fingerprint data (bot scores, JA3/JA4, JA4 signals, header fingerprint)
+   - Risk artifacts (`risk_score_breakdown`, `email_fraud_signals`, `form_data`, `extended_metadata`)
+   - Tracking (`ephemeral_id`, `erfid`, `testing_bypass`, request headers JSON)
 
-2. **turnstile_validations** (35 fields)
-   - Validation result (success, allowed, block_reason, risk_score)
-   - Turnstile data (challenge_ts, hostname, action, ephemeral_id)
-   - Request metadata (same as submissions)
-   - Linking (submission_id foreign key, token_hash for replay protection)
+2. **turnstile_validations**
+   - Raw Turnstile response (success, allowed, block_reason, challenge_ts, hostname, action)
+   - Token replay hash and optional `submission_id` FK
+   - Same metadata payload as submissions for blocked attempts
+   - Detection context: `detection_type`, `risk_score`, `risk_score_breakdown`, `testing_bypass`
 
-3. **fraud_blocks** (16 fields)
-   - Pre-Turnstile fraud detection (email fraud, etc.)
-   - Detection info (detection_type, block_reason, risk_score)
-   - Email fraud signals (pattern_type, markov_detected, ood_detected, disposable_domain, tld_risk_score)
-   - Request metadata (remote_ip, user_agent, country)
-   - Tracking (erfid, created_at)
+3. **fraud_blocks**
+   - Pre-Turnstile blocks (email fraud heuristic, pre-validation blacklist, etc.)
+   - Stores detection metadata, email-specific fields, `risk_score`, `fraud_signals_json`, `erfid`
 
-4. **fraud_blacklist** (15 fields)
-   - Active blocking cache (ephemeral_id, ip_address, ja4, email)
-   - Block metadata (block_reason, detection_confidence, detection_type, risk_score, risk_score_breakdown JSON)
-   - Timing (blocked_at, expires_at, last_seen_at, submission_count)
-   - Progressive timeout + forensic context (detection_metadata, erfid)
+4. **fraud_blacklist**
+   - Progressive timeout entries for email / IP / JA4 / ephemeral IDs
+   - Includes `risk_score`, `risk_score_breakdown`, `detection_metadata`, `offense_count`, `expires_at`
+
+5. **fingerprint_baselines**
+   - Cache of known-good header/TLS fingerprints keyed by JA4 + ASN buckets
+   - Used to short-circuit anomaly lookups while keeping a trail of when a fingerprint was last seen
 
 **Key Indexes**:
 - `token_hash` (unique) - Prevents token reuse

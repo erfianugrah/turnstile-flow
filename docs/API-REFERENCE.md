@@ -1365,7 +1365,7 @@ X-API-KEY: your_api_key_here
 
 ### GET /api/analytics/time-series
 
-Get time-series data for trend visualization with 6 metrics across 4 intervals.
+Get time-series data for trend visualization with multiple fraud/telemetry metrics across 4 intervals.
 
 **Location:** `/src/routes/analytics.ts`
 
@@ -1380,7 +1380,7 @@ X-API-KEY: your_api_key_here
 
 | Parameter | Type | Required | Description | Valid Values |
 |-----------|------|----------|-------------|--------------|
-| metric | string | Yes | Metric to retrieve | submissions, validations, validation_success_rate, bot_score_avg, risk_score_avg, allowed_rate |
+| metric | string | Yes | Metric to retrieve | submissions, validations, validation_success_rate, bot_score_avg, risk_score_avg, allowed_rate, fingerprint_header_blocks, fingerprint_tls_blocks, fingerprint_latency_blocks, testing_bypass |
 | interval | string | Yes | Time interval for grouping | hour, day, week, month |
 | start | string | No | Start date (ISO 8601) | YYYY-MM-DDTHH:mm:ss.sssZ (default: 30 days ago) |
 | end | string | No | End date (ISO 8601) | YYYY-MM-DDTHH:mm:ss.sssZ (default: now) |
@@ -1412,6 +1412,21 @@ X-API-KEY: your_api_key_here
   }
 }
 ```
+
+**Metric overview**
+
+| Metric | Description |
+|--------|-------------|
+| `submissions` | Count of stored submissions per interval |
+| `validations` | Count of Turnstile validations (pass + fail) |
+| `validation_success_rate` | Average % of validations reporting `success=1` |
+| `bot_score_avg` | Average bot score from `submissions.bot_score` |
+| `risk_score_avg` | Average normalized risk score from `turnstile_validations` |
+| `allowed_rate` | % of validations where `allowed=1` |
+| `fingerprint_header_blocks` | Count of validations blocked due to header fingerprint reuse |
+| `fingerprint_tls_blocks` | Count of TLS fingerprint anomaly blocks |
+| `fingerprint_latency_blocks` | Count of latency mismatch blocks (non-zero RTT measurements only) |
+| `testing_bypass` | Count of validations/submissions flagged with `testing_bypass=1` |
 
 **Field details:**
 

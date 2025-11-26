@@ -16,9 +16,11 @@ Forminator uses a single `schema.sql` file that contains the complete database s
 
 **Tables**:
 
-- `submissions` - Form submission data with full request.cf metadata
-- `turnstile_validations` - Turnstile validation attempts with token replay protection
-- `fraud_blacklist` - Pre-validation blacklist for performance optimization
+- `submissions` – Form payload + request.cf metadata, normalized fraud signals, request snapshots, and the `testing_bypass` flag
+- `turnstile_validations` – Turnstile challenge attempts, risk breakdowns, fingerprint snapshots, and `testing_bypass`
+- `fraud_blacklist` – Progressive timeout store for emails, IPs, JA4, and ephemeral IDs
+- `fraud_blocks` – Pre-Turnstile fraud events (email heuristics, pre-validation blacklist, etc.)
+- `fingerprint_baselines` – Header/TLS fingerprint allow‑list cache used by the anomaly detectors
 
 **Initialize Database**:
 
@@ -36,32 +38,33 @@ wrangler d1 execute DB --file=./schema.sql --local
 # Check tables were created
 wrangler d1 execute DB --command="SELECT name FROM sqlite_master WHERE type='table'" --remote
 
-# Expected output:
+# Expected output (minimum):
 # - submissions
 # - turnstile_validations
 # - fraud_blacklist
+# - fraud_blocks
+# - fingerprint_baselines
 ```
 
 ---
 
 ## Schema Version
 
-**Version**: 1.0 (Production Ready)
-**Last Updated**: 2025-11-17
-**Columns**: 54 total
+**Version**: 1.2 (Production Ready)  
+**Last Updated**: 2025-12-XX  
+**Highlights**:
 
-| Category      | Columns                                                                                              |
-| ------------- | ---------------------------------------------------------------------------------------------------- |
-| Form Fields   | first_name, last_name, email, phone, address, date_of_birth                                          |
-| Geographic    | country, region, city, postal_code, timezone, latitude, longitude, continent, is_eu_country          |
-| Network       | asn, as_organization, colo, http_protocol, tls_version, tls_cipher                                   |
-| Bot Detection | bot_score, client_trust_score, verified_bot, detection_ids                                           |
-| Fingerprints  | ja3_hash, ja4, ja4_signals                                                                           |
-| Email Fraud   | email_risk_score, email_fraud_signals, email_pattern_type, email_markov_detected, email_ood_detected |
-| Request Snapshots | form_data, request_headers, extended_metadata                                                       |
-| Fingerprint Cache | fingerprint_baselines (type, fingerprint_key, ja4_bucket, asn_bucket, hit_count, last_seen)        |
+| Category              | Key Columns / Tables                                                                                                                                         |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Core Form Payload     | `submissions.first_name`, `last_name`, `email`, `phone`, `address`, `date_of_birth`                                                                          |
+| Geo & Network         | `country`, `region`, `city`, `postal_code`, `timezone`, `latitude`, `longitude`, `continent`, `is_eu_country`, `asn`, `as_organization`, `colo`, `deviceType` |
+| Bot/Fingerprint       | `bot_score`, `client_trust_score`, `verified_bot`, `ja3_hash`, `ja4`, `ja4_signals`, `headersFingerprint`, TLS snapshot columns                               |
+| Email Fraud Signals   | `email_risk_score`, `email_fraud_signals`, `email_pattern_type`, `email_markov_detected`, `email_ood_detected`, `fraud_blocks.*`                              |
+| Risk & Analytics      | `risk_score_breakdown`, `form_data`, `request_headers`, `extended_metadata`, `erfid`, `testing_bypass`                                                       |
+| Blacklist & Timeouts  | `fraud_blacklist.*` (offense counts, confidence, `risk_score_breakdown`)                                                                                      |
+| Fingerprint Baseline  | `fingerprint_baselines` table with (`type`, `fingerprint_key`, `ja4_bucket`, `asn_bucket`, `hit_count`, `last_seen`)                                          |
 
-**Indexes**: 14 indexes for performance
+> **Note:** Both `submissions` and `turnstile_validations` now include a `testing_bypass` boolean used by analytics to audit Turnstile shortcut usage.
 
 ---
 

@@ -119,6 +119,16 @@ Three sub-layers detecting browser/incognito hopping:
 
 Detects attacks where users clear cookies or open incognito mode to bypass ephemeral ID tracking (JA4 fingerprint remains constant).
 
+**Layer 4.5: Fingerprint Enforcement**
+
+After JA4 checks, the worker inspects the extended metadata collected from Cloudflare:
+
+- **Header Fingerprint Reuse** – Counts how often the normalized header stack (`headersFingerprint`) appears across different JA4/IP/email combinations inside a rolling window. Multiple JA4s/IPs sharing the same header order triggers `header_fingerprint` detection and bumps the weighted risk.
+- **TLS Anomalies** – Compares the request's TLS extension hash + JA4 pairing against the `fingerprint_baselines` table. Unknown combinations with enough historical baselines flag `tls_anomaly`.
+- **Latency Mismatch** – Uses `clientTcpRtt`, device type, ASN, and claimed platform to spot “mobile” claims with impossible RTTs (only when Cloudflare reports a non-zero RTT). Values of `0` (missing data) are ignored.
+
+Each signal feeds into `collectFingerprintSignals()`, which returns component scores + warnings that are added to the normalized risk score and logged to analytics. The `testing_bypass` flag is stored alongside every validation/submission so analytics can audit when Turnstile was skipped legitimately.
+
 **Validation Result Check** (lines 185-208)
 
 After fraud detection runs, check if Turnstile validation was successful:

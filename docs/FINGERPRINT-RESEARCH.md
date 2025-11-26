@@ -135,12 +135,12 @@ SELECT
   json_extract(extended_metadata, '$.colo')    AS colo,
   created_at
 FROM submissions
-WHERE CAST(json_extract(extended_metadata, '$.clientTcpRtt') AS INTEGER) < 4
+WHERE CAST(json_extract(extended_metadata, '$.clientTcpRtt') AS INTEGER) BETWEEN 1 AND 4
   AND json_extract(extended_metadata, '$.clientHints.platform') = '"Android"'
   AND colo NOT IN ('SIN', 'KUL', 'BOM');
 ```
 
-Mobile devices rarely establish <4 ms RTT outside the same metro POP. Flagged rows are likely desktop automation spoofing mobile UA hints.
+Mobile devices rarely establish <4 ms RTT outside the same metro POP. Flagged rows are likely desktop automation spoofing mobile UA hints. Skip `clientTcpRtt = 0` results—Cloudflare emits zero when the handshake latency is missing/not measured, and the backend now treats those as “unknown” instead of “too fast.”
 
 ### 3.2 Combine with IP data
 

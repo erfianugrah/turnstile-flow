@@ -560,7 +560,7 @@ Phase 4.5 pipes the raw telemetry above directly into the runtime scorer via `co
 
 - **Header fingerprint reuse** → `risk.weights.headerFingerprint` (default 7%). Triggers when the same sanitized header stack appears across multiple JA4 fingerprints and IPs within 60 minutes.
 - **TLS fingerprint anomaly** → `risk.weights.tlsAnomaly` (default 4%). Fires when a JA4 presents a TLS extension hash not seen in the last 24 hours (with ≥5 known-good baselines).
-- **Latency mismatch** → `risk.weights.latencyMismatch` (default 2%). Flags “mobile” claims with sub-6 ms RTTs from desktop device types or data-center ASNs.
+- **Latency mismatch** → `risk.weights.latencyMismatch` (default 2%). Flags “mobile” claims with sub-6 ms RTTs from desktop device types or data-center ASNs **only when Cloudflare reports a non-zero `clientTcpRtt`**. Missing/zero RTT readings are treated as “unknown” and do not score the request.
 
 When any of these heuristics return a non-zero score they add weight to the holistic risk score; if they exceed the block threshold they now populate `blockTrigger` (`header_fingerprint`, `tls_anomaly`, `latency_mismatch`) so blacklist entries and analytics surfaces show the root cause.
 

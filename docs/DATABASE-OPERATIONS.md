@@ -25,9 +25,11 @@ The application uses **Cloudflare D1**, a serverless SQLite database. All databa
 **Database ID:** `f36739a7-badb-456f-bbab-da0732722cae`
 
 **Tables:**
-1. `submissions` - Form submissions (42 fields)
-2. `turnstile_validations` - Token validation attempts (35 fields)
-3. `fraud_blacklist` - Blocked ephemeral IDs/IPs (15 fields)
+1. `submissions` – Form submissions + request metadata, risk breakdowns, and `testing_bypass`
+2. `turnstile_validations` – Turnstile attempts with fingerprints, risk context, and replay hashes
+3. `fraud_blocks` – Pre-validation blocks (email heuristics, blacklist hits)
+4. `fraud_blacklist` – Progressive timeout cache (email/IP/JA4/ephemeral IDs)
+5. `fingerprint_baselines` – Known-good header/TLS fingerprints for anomaly detection
 
 ---
 
