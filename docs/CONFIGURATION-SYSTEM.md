@@ -9,6 +9,33 @@
 
 Comprehensive configuration system for fraud detection thresholds and risk scoring weights. Allows users to customize detection behavior via environment variables without code changes.
 
+## Current Defaults (source: `src/lib/config.ts`, as of 2025-12-11)
+
+### Risk weights (sum = 1.0)
+| Component | Weight |
+|-----------|--------|
+| tokenReplay | 0.28 |
+| emailFraud | 0.14 |
+| ephemeralId | 0.15 |
+| validationFrequency | 0.10 |
+| ipDiversity | 0.07 |
+| ja4SessionHopping | 0.06 |
+| ipRateLimit | 0.07 |
+| headerFingerprint | 0.07 |
+| tlsAnomaly | 0.04 |
+| latencyMismatch | 0.02 |
+
+### Key thresholds
+- `risk.blockThreshold`: **70**
+- `risk.mode`: **"defensive"** (deterministic triggers can floor the score); set to `"additive"` to disable floors.
+- Ephemeral submissions (`detection.ephemeralIdSubmissionThreshold`): **2** per 24h
+- Validation attempts (`detection.validationFrequencyBlockThreshold`): **3** per hour (warn at 2)
+- IP diversity (`detection.ipDiversityThreshold`): **2** unique IPs per 24h
+- IP rate limit behavioral curve: threshold **3** submissions per hour (window **3600s**); contributes risk only (never blocks alone)
+- JA4 clustering: IP clustering **2** epi IDs /1h; rapid global **3** epi IDs /5m; extended global **5** /1h; velocity floor **10 min**; `useRiskScoreThreshold: true`
+- Fingerprint heuristics: header reuse window **60 min**, minRequests **3**, minDistinctIps **2**, minDistinctJa4 **2**; TLS baseline **24h** with minJa4Observations **5**; latency mobile RTT threshold **6 ms** on platforms `Android`/`iOS`
+- Progressive timeouts: 1h → 4h → 8h → 12h → 24h (maximum)
+
 ## Features
 
 ✅ **Centralized Configuration** - Single source of truth in `src/lib/config.ts`

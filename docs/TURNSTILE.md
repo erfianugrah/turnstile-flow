@@ -102,7 +102,7 @@ Three sub-layers analyzing behavioral patterns:
 
 - **Layer 2a: Submission Count (24h)** - 2+ submissions from same device → Block
 - **Layer 2b: Validation Frequency (1h)** - 3+ validation attempts → Block (catches rapid-fire before D1 replication)
-- **Layer 2c: IP Diversity (24h)** - 2+ unique IPs for same device → Block (proxy rotation detection)
+- **Layer 2c: IP Diversity (24h)** - 2+ unique IPs for same device → Adds risk (weighted-only; avoids overblocking shared IPs)
 
 ```typescript
 const fraudCheck = await checkEphemeralIdFraud(ephemeralId, db);

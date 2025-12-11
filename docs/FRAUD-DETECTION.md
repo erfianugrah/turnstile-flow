@@ -808,59 +808,18 @@ Latency Mismatch:      2%
 Total:                72%  (the token-replay 28% only appears in validation logs)
 ```
 
-### Block Triggers
+### Block Triggers (actual runtime logic)
 
-When specific checks trigger blocks, we recompute the score with a floor tied to the configured block threshold (`config.risk.blockThreshold`, default **70**):
+All ten components are summed (`score * weight`) to a **base score** and then adjusted by the trigger that fired:
 
-```typescript
-const baseScore = Object.values(components).reduce(
-  (sum, c) => sum + c.contribution,
-  0
-);
-const blockThreshold = config.risk.blockThreshold;
+- **Force-block triggers**: `token_replay`, `turnstile_failed` → score forced to **100** (or at least `blockThreshold`) regardless of weights.
+- **Deterministic triggers** (only when `risk.mode === "defensive"`): `email_fraud`, `ephemeral_id_fraud`, `validation_frequency`, `ja4_session_hopping`, `duplicate_email`, `repeat_offender`.  
+  - These raise the final score to at least `blockThreshold` **if** `qualifiesForDeterministicBlock()` confirms the paired condition (see `src/lib/scoring.ts`).  
+  - In **additive** mode the deterministic floor is disabled; only the weighted sum is used.
+- **Behavior-only signal**: `ip_rate_limit` **never** acts as a block trigger; it only contributes to the weighted score to avoid false positives on shared IPs.
+- **Fingerprint triggers**: `header_fingerprint`, `tls_anomaly`, `latency_mismatch` become the `blockTrigger` when their scores are non-zero so the primary cause is recorded, but they do **not** override the threshold on their own—blocking still requires the weighted total to reach `blockThreshold` (or another deterministic trigger).
 
-switch (blockTrigger) {
-  case 'token_replay':
-    total = 100;
-    break;
-  case 'ip_diversity':
-    total = Math.max(baseScore, blockThreshold + 10);
-    break;
-  case 'ja4_session_hopping':
-    total = Math.max(baseScore, blockThreshold + 5);
-    break;
-  case 'ephemeral_id_fraud':
-  case 'validation_frequency':
-  case 'email_fraud':
-  case 'ip_rate_limit':
-    total = Math.max(baseScore, blockThreshold);
-    break;
-  case 'header_fingerprint':
-    total = Math.max(baseScore, blockThreshold + 5);
-    break;
-  case 'tls_anomaly':
-    total = Math.max(baseScore, blockThreshold + 5);
-    break;
-  case 'latency_mismatch':
-    total = Math.max(baseScore, blockThreshold);
-    break;
-  case 'turnstile_failed':
-    total = Math.max(baseScore, blockThreshold - 5);
-    break;
-  case 'duplicate_email':
-    total = Math.max(baseScore, blockThreshold - 10);
-    break;
-  default:
-    total = Math.max(baseScore, blockThreshold);
-}
-
-total = Math.min(100, Math.round(total * 10) / 10);
-```
-
-- **Token replay** always forces a score of 100.
-- **Network / device hopping** (`ip_diversity`, `ja4_session_hopping`) receive a higher floor than the block threshold.
-- **Core behavioral triggers** (ephemeral ID, validation frequency, email fraud, IP rate limit) guarantee at least the threshold.
-- **Operational blocks** (`turnstile_failed`, `duplicate_email`) happen earlier in the pipeline, so their scores are logged just below the threshold but still capped at 100 and rounded to one decimal.
+After trigger adjustment the score is capped at 100 and rounded to one decimal (`calculateNormalizedRiskScore`).
 
 ### Risk Score Breakdown
 
@@ -903,6 +862,21 @@ All risk scores include component breakdown stored as JSON:
 ```
 
 **Implementation**: `src/lib/scoring.ts`
+
+### Component Reference (what each component measures)
+
+| Component | Signal source | Window / threshold | Normalization | Block role |
+|-----------|---------------|--------------------|---------------|------------|
+| Token Replay | Turnstile token hash reuse | Instant | 0 or 100 | Force-block (always 100) |
+| Email Fraud | Markov-Mail RPC risk (0–1) | Per email | ×100 | Deterministic in defensive mode; can block alone |
+| Ephemeral ID | Submissions per `ephemeral_id` | 24h, threshold 2 | 1→10, 2→70, ≥3→100 | Deterministic when paired |
+| Validation Frequency | Turnstile attempts per `ephemeral_id` | 1h, warn=2, block=3 | 1→0, 2→40, ≥3→100 | Deterministic when paired |
+| IP Diversity | Unique IPs per `ephemeral_id` | 24h, threshold 2 | 1→0, 2→50, ≥3→100 | Weighted-only (helps score, doesn’t force block) |
+| JA4 Session Hopping | JA4 clustering + velocity | 5m / 1h windows | 0–230 → normalized | Deterministic when paired |
+| IP Rate Limit | Submissions per IP | 1h curve: 1→0 … 5+→100 | Direct curve | Behavioral only (never blocks alone) |
+| Header Fingerprint | Shared header stack across IPs/JA4s | 60m; min 3 reqs/2 IPs/2 JA4 | 0 or 100 | Attribution trigger; needs total ≥ threshold |
+| TLS Anomaly | JA4 + TLS extension hash baseline | 24h; ≥5 JA4 samples | 0 or 100 | Attribution trigger; needs total ≥ threshold |
+| Latency Mismatch | RTT vs claimed mobile/device/ASN | Immediate; <6 ms on mobile/ASN list | 0 or 80 | Attribution trigger; needs total ≥ threshold |
 
 ---
 

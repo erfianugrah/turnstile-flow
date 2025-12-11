@@ -107,6 +107,10 @@ export function FraudAssessment({ breakdown, config }: FraudAssessmentProps) {
 							<p className="font-medium mb-1">How risk scores are calculated:</p>
 							<p>Each component contributes: <span className="font-mono">Score × Weight = Contribution</span></p>
 							<p className="mt-1">Final score = Sum of all contributions (max 100)</p>
+							<p className="mt-1">
+								<strong>Blocking rules:</strong> Token replay & Turnstile failures always block. Email/ephemeral/validation/JA4 can floor the score in
+								defensive mode. IP rate limit is behavioral only. Fingerprint signals are attribution triggers — they still need the total to reach the threshold.
+							</p>
 						</div>
 					</div>
 

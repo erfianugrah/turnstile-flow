@@ -3,6 +3,7 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import type { Env } from './lib/types';
 import { getRouteConfig, matchRoute, stripRoutePrefix } from './lib/router';
+import { getConfig } from './lib/config';
 import submissionsRoute from './routes/submissions';
 import analyticsRoute from './routes/analytics';
 import geoRoute from './routes/geo';
@@ -107,11 +108,16 @@ app.all('*', async (c) => {
 				return configRoute.fetch(normalizedRequest, c.env, c.executionCtx);
 
 			case 'health':
+				const cfg = getConfig(c.env);
 				return c.json({
 					status: 'ok',
 					timestamp: new Date().toISOString(),
 					version: '1.0.0',
-					routes: routes  // Show configured routes for debugging
+					routes: routes,  // Show configured routes for debugging
+					risk: {
+						mode: cfg.risk.mode,
+						blockThreshold: cfg.risk.blockThreshold,
+					},
 				});
 
 			case 'admin':

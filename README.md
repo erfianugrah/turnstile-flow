@@ -112,6 +112,13 @@ ALLOW_TESTING_BYPASS=true
 EOF
 ```
 
+**Optional env vars**
+- `ALLOWED_ORIGINS`: Comma-separated CORS allowlist (defaults to `https://form.erfi.dev`; dev also whitelists `http://localhost:8787` and `http://localhost:4321` automatically).
+- `DISABLE_STATIC_ASSETS`: `"true"` to run backend-only (no Astro assets).
+- `ROUTES`: JSON map to rename `/api/*` prefixes (e.g., `{"submissions":"/forms"}`).
+- `FRAUD_CONFIG`: JSON to override risk weights/thresholds (deep-merged with defaults).
+- `ERFID_CONFIG`: JSON to customize the `erfid` generator (prefix/entropy/length).
+
 ### 4. Update Configuration
 
 Edit `wrangler.jsonc`:

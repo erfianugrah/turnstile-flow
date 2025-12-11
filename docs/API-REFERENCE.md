@@ -49,19 +49,46 @@ This document provides exhaustive details on every API endpoint, including reque
 
 **Protected endpoints (require X-API-KEY header):**
 - GET /api/analytics/* (all analytics endpoints)
+- If `X-API-KEY` is **not** configured in the environment, analytics routes fall back to open access but log a warning (backward compatibility in code at `src/routes/analytics.ts`).
 
-**Implementation:**
+**Implementation (middleware extract):**
 ```typescript
-// src/routes/analytics.ts
 const apiKey = c.req.header('X-API-KEY');
 const expectedKey = c.env['X-API-KEY'];
 
 if (!expectedKey) {
-  console.warn('X-API-KEY not configured - analytics temporarily unprotected');
-} else if (!apiKey || apiKey !== expectedKey) {
-  return c.json({ error: 'Unauthorized' }, 401);
+  logger.warn('X-API-KEY not configured in environment - analytics unprotected');
+  return next();
+}
+
+if (!apiKey || apiKey !== expectedKey) {
+  return c.json(
+    { success: false, error: 'Unauthorized - Invalid or missing X-API-KEY header' },
+    401
+  );
 }
 ```
+
+## Routing & CORS (worker entrypoint: `src/index.ts`)
+
+- **Dynamic route map** – Every path is looked up in `ROUTES` (JSON string or object). Defaults:
+  - submissions `/api/submissions`
+  - analytics `/api/analytics`
+  - geo `/api/geo`
+  - health `/api/health`
+  - config `/api/config`
+  - admin `/api/admin` (not implemented, returns `501`)
+- **Prefix stripping** – Matched prefix is removed before handing off to the route module, so sub-routes keep stable shapes even when you rename the prefix.
+- **Longest-prefix match** – Prevents `/api` from shadowing `/api/submissions`.
+- **Static assets fallback** – If a route is not matched and `DISABLE_STATIC_ASSETS` is not `"true"`, the worker serves `ASSETS`. Otherwise it returns a JSON 404 pointing to `docs/backend-only.md`.
+
+### CORS behavior
+- `ALLOWED_ORIGINS` env var (comma-separated). Default: `https://form.erfi.dev`. In non-production environments the worker automatically appends `http://localhost:8787` and `http://localhost:4321`.
+- Allowed methods: `GET, POST, OPTIONS`
+- Allowed headers: `Content-Type, X-API-KEY`
+- Exposed headers: `X-Request-Id` (mirrors the `erfid` for tracing)
+- `maxAge`: `86400` seconds
+- Security headers are added on **every** response: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection: 1; mode=block`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: geolocation=(), microphone=(), camera=()`, and a CSP of `default-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; connect-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:;`.
 
 ## Rate Limiting
 
@@ -413,7 +440,7 @@ Get user's country code based on IP geolocation.
 
 #### Request
 
-**Headers:** `X-API-KEY: your_api_key_here`
+**Headers:** None (public)
 
 **Query parameters:** None
 
@@ -434,7 +461,7 @@ Get user's country code based on IP geolocation.
 | Field | Type | Description |
 |-------|------|-------------|
 | success | boolean | Always true |
-| countryCode | string | ISO 3166-1 alpha-2 country code (lowercase) |
+| countryCode | string | ISO 3166-1 alpha-2 country code (lowercase). Defaults to `"us"` when Cloudflare metadata is missing (local dev) |
 
 **Country codes:** See [ISO 3166-1 alpha-2](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2)
 
@@ -1929,11 +1956,9 @@ Health check endpoint.
 
 #### Request
 
-**Headers:** `X-API-KEY: your_api_key_here`
+**Headers:** None (public)
 
-**Query parameters:** None
-
-**Body:** None
+**Query parameters / Body:** None
 
 #### Response
 
@@ -1941,7 +1966,16 @@ Health check endpoint.
 ```json
 {
   "status": "ok",
-  "timestamp": "2024-11-12T20:30:45.123Z"
+  "timestamp": "2025-12-11T20:30:45.123Z",
+  "version": "1.0.0",
+  "routes": {
+    "submissions": "/api/submissions",
+    "analytics": "/api/analytics",
+    "admin": "/api/admin",
+    "geo": "/api/geo",
+    "health": "/api/health",
+    "config": "/api/config"
+  }
 }
 ```
 
@@ -1949,8 +1983,10 @@ Health check endpoint.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| status | string | Always "ok" if responding |
+| status | string | Always `"ok"` if responding |
 | timestamp | string | Current server time (ISO 8601) |
+| version | string | Worker version string (currently `"1.0.0"`) |
+| routes | object | The active route map after applying the `ROUTES` environment override |
 
 #### Usage
 

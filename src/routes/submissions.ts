@@ -48,7 +48,8 @@ async function getOffenseCount(
 	db: D1Database,
 	email?: string,
 	ephemeralId?: string | null,
-	ipAddress?: string
+	ipAddress?: string,
+	ja4?: string | null
 ): Promise<number> {
 	const oneDayAgo = toSQLiteDateTime(new Date(Date.now() - 24 * 60 * 60 * 1000));
 
@@ -67,6 +68,10 @@ async function getOffenseCount(
 	if (ipAddress) {
 		conditions.push('ip_address = ?');
 		bindings.push(ipAddress);
+	}
+	if (ja4) {
+		conditions.push('ja4 = ?');
+		bindings.push(ja4);
 	}
 
 	if (conditions.length === 0) {
@@ -135,10 +140,13 @@ app.post('/', async (c) => {
 		const apiKey = c.req.header('X-API-KEY');
 		const expectedKey = c.env['X-API-KEY'];
 		const allowBypass = c.env.ALLOW_TESTING_BYPASS === 'true';
-		const skipTurnstile = Boolean(allowBypass && apiKey && apiKey === expectedKey);
+		const isProduction = c.env.ENVIRONMENT === 'production';
+		const skipTurnstile = Boolean(allowBypass && !isProduction && apiKey && apiKey === expectedKey);
 
 		if (skipTurnstile) {
 			logger.info({ event: 'testing_bypass_activated' }, 'Testing bypass activated');
+		} else if (allowBypass && isProduction && apiKey && apiKey === expectedKey) {
+			logger.warn({ event: 'testing_bypass_blocked_prod' }, 'Testing bypass denied in production environment');
 		}
 
 		// ========== EXTRACT METADATA ==========
@@ -404,7 +412,13 @@ app.post('/', async (c) => {
 				);
 
 				// Add to blacklist with progressive timeout
-				const offenseCount = await getOffenseCount(db, sanitized.email, validation.ephemeralId || null, metadata.remoteIp);
+				const offenseCount = await getOffenseCount(
+					db,
+					sanitized.email,
+					validation.ephemeralId || null,
+					metadata.remoteIp,
+					metadata.ja4 ?? null
+				);
 				const expiresIn = calculateProgressiveTimeout(offenseCount);
 				const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
 
@@ -512,6 +526,11 @@ app.post('/', async (c) => {
 		let blockTrigger: 'email_fraud' | 'ephemeral_id_fraud' | 'ja4_session_hopping' | 'ip_diversity' | 'validation_frequency' | 'ip_rate_limit' | 'header_fingerprint' | 'tls_anomaly' | 'latency_mismatch' | undefined = undefined;
 		let detectionType: string | null = null;
 
+		// Special case: validation burst with few submissions (many token attempts, few posts)
+		const validationBurst =
+			(ephemeralSignals?.validationCount || 0) >= 5 &&
+			(ephemeralSignals?.submissionCount || 0) < 2;
+
 		if (emailFraudResult && emailFraudResult.decision === 'block') {
 			blockTrigger = 'email_fraud';
 			detectionType = 'email_fraud_detection'; // Layer 1: Email pattern analysis
@@ -521,6 +540,9 @@ app.post('/', async (c) => {
 		} else if (ephemeralSignals && ephemeralSignals.validationCount >= config.detection.validationFrequencyBlockThreshold) {
 			blockTrigger = 'validation_frequency';
 			detectionType = 'ephemeral_id_tracking'; // Layer 2: Device tracking (validation frequency)
+		} else if (validationBurst && config.risk.mode === 'defensive') {
+			blockTrigger = 'validation_frequency';
+			detectionType = 'ephemeral_id_tracking';
 		} else if (ephemeralSignals && ephemeralSignals.uniqueIPCount >= config.detection.ipDiversityThreshold) {
 			blockTrigger = 'ip_diversity';
 			detectionType = 'ephemeral_id_tracking'; // Layer 2: Device tracking (IP diversity)
@@ -582,7 +604,8 @@ app.post('/', async (c) => {
 				db,
 				sanitized.email,
 				validation.ephemeralId || null,
-				metadata.remoteIp
+				metadata.remoteIp,
+				metadata.ja4 ?? null
 			);
 			const expiresIn = calculateProgressiveTimeout(offenseCount);
 			const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
@@ -596,7 +619,13 @@ app.post('/', async (c) => {
 				...(fingerprintSignals.warnings || []),
 			];
 
-			const blockReason = `Risk score ${finalRiskScore.total} >= ${config.risk.blockThreshold}. Triggers: ${allWarnings.join(', ')}`;
+			// Top component scores for transparency
+			const componentsArray = Object.entries(finalRiskScore.components)
+				.sort(([, a], [, b]) => (b?.score ?? 0) - (a?.score ?? 0))
+				.slice(0, 3)
+				.map(([name, comp]) => `${name}=${comp?.score ?? 0}`);
+
+			const blockReason = `Risk score ${finalRiskScore.total} >= ${config.risk.blockThreshold}. Triggers: ${allWarnings.join(', ')}. Top components: ${componentsArray.join(', ')}`;
 
 			// Generate user-friendly message based on primary block trigger
 			let userMessage: string;

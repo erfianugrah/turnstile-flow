@@ -58,8 +58,8 @@ Only requests from configured allowed hostnames are accepted. Hostname validatio
 - Detects incognito/same-browser session hopping where the JA4 fingerprint stays constant (browser switching is handled by the IP rate-limit behavioral signal)
 
 **Layer 5 - IP Diversity Detection** (24h window):
-- Blocks 2+ unique IPs for same ephemeral ID
-- Detects proxy rotation and distributed attacks
+- Adds weighted risk for 2+ unique IPs on the same ephemeral ID (no hard block to avoid shared-IP false positives)
+- Detects proxy rotation and distributed attacks when combined with other signals
 
 ### Normalized Risk Scoring
 
@@ -138,24 +138,26 @@ HTML and potentially dangerous characters are stripped from user inputs before s
 
 ### CORS Configuration
 
-- Strict origin validation
-- Only configured origins allowed
-- Credentials support for authenticated requests
-- Preflight caching for performance
+- Allowlist comes from `ALLOWED_ORIGINS` (comma-separated). If unset the worker defaults to `https://form.erfi.dev`.
+- In **non-production** environments it automatically appends `http://localhost:8787` and `http://localhost:4321` so local frontends work without extra config.
+- Allowed methods: `GET, POST, OPTIONS`
+- Allowed headers: `Content-Type, X-API-KEY`
+- Exposed headers: `X-Request-Id` (mirrors the `erfid` generated per request)
+- Preflight caching: `maxAge = 86400` seconds
 
 ### Origin Validation
 
-Middleware validates both `Origin` and `Referer` headers against allowlist before processing requests.
+Middleware validates the request origin against the allowlist derived above before processing requests.
 
 ## Security Headers
 
-The following security headers are applied to all responses:
+The following security headers are applied to every response by `src/index.ts`:
 
 - `X-Content-Type-Options: nosniff` - Prevents MIME type sniffing
 - `X-Frame-Options: DENY` - Prevents clickjacking
 - `X-XSS-Protection: 1; mode=block` - Enables browser XSS protection
 - `Referrer-Policy: strict-origin-when-cross-origin` - Controls referrer information
-- `Permissions-Policy` - Restricts browser features (geolocation, camera, microphone)
+- `Permissions-Policy: geolocation=(), microphone=(), camera=()` - Denies access to these sensors
 - `Content-Security-Policy` - Defines trusted content sources
 
 ### Content Security Policy
@@ -188,9 +190,9 @@ Enterprise-only fields (bot_score, ja3_hash, ja4, detection_ids) require Cloudfl
 
 Analytics endpoints are protected with API key authentication:
 
-- Require `X-API-Key` header
-- Key validated against environment variable
-- Returns 401 for missing or invalid keys
+- Require `X-API-KEY` header when the `X-API-KEY` environment variable is present
+- If the variable is **unset**, the middleware allows open access and logs a warning (backward compatibility)
+- Returns 401 for missing or invalid keys when the variable is set
 
 ### Testing Bypass
 
