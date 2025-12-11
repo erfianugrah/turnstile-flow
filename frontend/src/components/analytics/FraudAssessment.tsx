@@ -94,7 +94,6 @@ export function FraudAssessment({ breakdown, config }: FraudAssessmentProps) {
 				<div>
 					<div className="flex justify-between text-sm mb-2">
 						<span>Final Risk Score</span>
-						<span className="font-mono font-semibold">{total}/100</span>
 					</div>
 					<Progress value={total} className="h-3" />
 				</div>
