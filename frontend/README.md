@@ -51,7 +51,7 @@ npm run preview
 Handles Cloudflare Turnstile integration with:
 - Explicit rendering
 - Execution mode: `execute` (manual trigger)
-- Appearance: `interaction-only` (hidden until needed)
+- Appearance: `execute` (hidden until run, revealed on demand)
 - All callbacks implemented (success, error, expired, timeout, unsupported)
 - Dark mode sync with system preferences
 
@@ -72,12 +72,12 @@ Visualizes:
 ## Configuration
 
 ### Turnstile Sitekey
-Located in `src/components/TurnstileWidget.tsx`:
-```typescript
-const TURNSTILE_SITEKEY = '0x4AAAAAACAjw0bmUZ7V7fh2';
+Provided via environment at build time:
 ```
+PUBLIC_TURNSTILE_SITE_KEY=your_site_key
+```
+Read in `src/components/TurnstileWidget.tsx` as `import.meta.env.PUBLIC_TURNSTILE_SITE_KEY`.
 
-Update this with your actual sitekey for production.
 
 ## Build Process
 

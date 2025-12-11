@@ -24,7 +24,7 @@ turnstile.render(container, {
   retry: 'auto',                    // Auto-retry failed challenges
   'refresh-expired': 'auto',        // Auto-refresh expired tokens
   'response-field': false,          // Manual token handling via callback
-  action: 'submit-form',            // Analytics tracking
+  action: 'registration-form',      // Analytics tracking (matches SubmissionForm)
   callback, error-callback, expired-callback, timeout-callback,
   'before-interactive-callback', 'after-interactive-callback', 'unsupported-callback',
   language: 'auto',
