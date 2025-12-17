@@ -41,6 +41,8 @@ export async function checkEmailFraud(
 
 			// Basic headers
 			headers['cf-connecting-ip'] = request.headers.get('cf-connecting-ip');
+			headers['true-client-ip'] = request.headers.get('true-client-ip');
+			headers['cf-ray'] = request.headers.get('cf-ray');
 			headers['user-agent'] = request.headers.get('user-agent');
 			headers['cf-asn'] = cf?.asn ? String(cf.asn) : null;
 			headers['cf-device-type'] = request.headers.get('cf-device-type') || (cf?.deviceType ? String(cf.deviceType) : null);
@@ -74,6 +76,10 @@ export async function checkEmailFraud(
 			headers['cf-js-detection-passed'] = cf?.botManagement?.jsDetection?.passed ? 'true' : 'false';
 			headers['cf-detection-ids'] = cf?.botManagement?.detectionIds ? JSON.stringify(cf.botManagement.detectionIds) : null;
 			headers['cf-ja4-signals'] = cf?.botManagement?.ja4Signals ? JSON.stringify(cf.botManagement.ja4Signals) : null;
+
+			// Client-side headers for geo signal detection
+			headers['accept-language'] = request.headers.get('accept-language');
+			headers['sec-ch-ua-timezone'] = request.headers.get('sec-ch-ua-timezone');
 		}
 
 		// Call markov-mail via RPC with enhanced headers
@@ -86,10 +92,13 @@ export async function checkEmailFraud(
 
 		const emailHash = await hashEmail(email);
 
+		// Convert risk score to 0-100 scale for consistency
+		const scaledRiskScore = result.riskScore * 100;
+
 		logger.info({
 			event: 'email_fraud_check',
 			email_hash: emailHash,
-			risk_score: result.riskScore,
+			risk_score: scaledRiskScore, // Log as 0-100 to match decision values
 			decision: result.decision,
 			pattern: result.signals.patternType,
 			markov_detected: result.signals.markovDetected,
@@ -98,7 +107,7 @@ export async function checkEmailFraud(
 		});
 
 		return {
-			riskScore: result.riskScore * 100, // Convert 0.0-1.0 to 0-100
+			riskScore: scaledRiskScore,
 			decision: result.decision,
 			signals: result.signals,
 		};
